@@ -1233,10 +1233,8 @@
         const x = e.touches[0].clientX;
         const diff = x - startX;
 
-        // Left Swipe (Open) or Right Swipe (Close if open)
-        // We assume if it's already open (transform set), we offset from there?
-        // Simplified: Always calculate from 0 state? NO, complex.
-        // Let's rely on CSS class 'open'? 
+        // Dead Zone (15px) to prevent accidental jitters
+        if (Math.abs(diff) < 15) return;
 
         // Re-calc:
         if (el.classList.contains('swiped-open')) {
@@ -1253,7 +1251,8 @@
           // Diff < 0 means opening
           if (diff < 0) {
             currentTranslate = diff;
-            if (currentTranslate < limit) currentTranslate = limit - 20; // Resistance
+            // Resistance logic
+            if (currentTranslate < limit) currentTranslate = limit - 10;
             el.style.transform = `translateX(${currentTranslate}px)`;
             isDragging = true;
           }
@@ -1264,22 +1263,28 @@
         el.style.transition = 'transform 0.3s ease';
         isDragging = false;
 
+        // Thresholds
+        const openThreshold = -60; // Must drag at least 60px left to open
+        const closeThreshold = limit + 40; // closing...
+
         if (el.classList.contains('swiped-open')) {
-          // If moved right significantly, close
-          // limit is -140. current is e.g. -100. Diff +40.
-          if (currentTranslate > limit + 40) {
+          // Closing Logic
+          if (currentTranslate > closeThreshold) {
             closeSwipe(el);
           } else {
             openSwipe(el, limit);
           }
         } else {
-          // If moved left significantly, open
-          if (currentTranslate < -50) {
+          // Opening Logic
+          if (currentTranslate < openThreshold) {
             openSwipe(el, limit);
           } else {
             closeSwipe(el);
           }
         }
+
+        // Reset
+        currentTranslate = 0;
       });
     }
 
