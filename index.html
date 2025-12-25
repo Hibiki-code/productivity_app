@@ -1,0 +1,2262 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Life OS</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&family=Nunito:wght@600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <style>
+    /* ... existing styles ... */
+    #migration-btn {
+      position: fixed !important;
+      top: 10px !important;
+      left: 10px !important;
+      bottom: auto !important;
+      width: 200px !important;
+      height: 60px !important;
+      font-size: 20px !important;
+      z-index: 2147483647 !important;
+      background: red !important;
+      color: white !important;
+      border: 4px solid yellow !important;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.5) !important;
+      cursor: pointer;
+    }
+
+    :root {
+      --bg-color: #FDF9E8;
+      --primary: #5E6CD8;
+      --text: #4A4A4A;
+      --text-sub: #999;
+      --warm-orange: #FF9F43;
+      --bg-card: #FFF;
+      --radius: 18px;
+    }
+
+    body {
+      font-family: 'M PLUS Rounded 1c', 'Nunito', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      padding-bottom: 90px;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    .header {
+      padding: 30px 20px 10px;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--bg-color);
+    }
+
+    .header-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: #555;
+    }
+
+    .view {
+      display: none;
+      padding: 0 16px;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    /* Task Sections */
+    .section-container {
+      background: rgba(0, 0, 0, 0.02);
+      border-radius: var(--radius);
+      margin-bottom: 15px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    .list-content {
+      display: grid;
+      grid-template-rows: 1fr;
+      transition: grid-template-rows 0.3s ease-out;
+    }
+
+    .list-content>div {
+      overflow: hidden;
+    }
+
+    .list-content.collapsed {
+      grid-template-rows: 0fr;
+    }
+
+    .habit-list-container {
+      display: grid;
+      grid-template-rows: 1fr;
+      transition: grid-template-rows 0.3s ease-out;
+    }
+
+    .habit-list-container>div {
+      overflow: hidden;
+    }
+
+    .habit-list-container.collapsed {
+      grid-template-rows: 0fr;
+    }
+
+    .toggle-icon {
+      transition: transform 0.3s;
+      display: inline-block;
+    }
+
+    .section-header.closed .toggle-icon {
+      transform: rotate(180deg);
+    }
+
+    .task-item {
+      background: #FFF;
+      padding: 14px 16px;
+      border-radius: 12px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+
+    .task-item.done {
+      opacity: 0.6;
+    }
+
+    .task-check {
+      width: 22px;
+      height: 22px;
+      border: 2px solid #E0E0E0;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .task-item.done .task-check {
+      background: #CCC;
+      border-color: #CCC;
+    }
+
+    .task-content {
+      flex: 1;
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .task-item.done .task-content {
+      text-decoration: line-through;
+      color: #999;
+    }
+
+    .btn-add-circle {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #AAA;
+      font-size: 20px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Habit Styles (TickTick) */
+    .section-habit {
+      margin-bottom: 15px;
+      background: rgba(0, 0, 0, 0.02);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+
+
+    .habit-item {
+      background: white;
+      border-radius: 16px;
+      padding: 15px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+
+    .habit-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #E0E0E0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      margin-right: 15px;
+      color: white;
+    }
+
+    .habit-item:nth-child(3n+1) .habit-icon {
+      background: #81C784;
+    }
+
+    .habit-item:nth-child(3n+2) .habit-icon {
+      background: #64B5F6;
+    }
+
+    .habit-item:nth-child(3n+3) .habit-icon {
+      background: #FFB74D;
+    }
+
+    .habit-info {
+      flex: 1;
+    }
+
+    .habit-name {
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+
+    .habit-stats-right {
+      text-align: right;
+      min-width: 80px;
+    }
+
+    .habit-check-area {
+      padding: 10px;
+      margin-left: 10px;
+      cursor: pointer;
+    }
+
+    .check-circle {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid #EEE;
+    }
+
+    .habit-item.done {
+      opacity: 0.7;
+    }
+
+    .habit-item.done .check-circle {
+      background: var(--warm-orange);
+      border-color: var(--warm-orange);
+      position: relative;
+    }
+
+    .habit-item.done .check-circle::after {
+      content: '✓';
+      color: white;
+      font-size: 14px;
+      position: absolute;
+      top: 1px;
+      left: 5px;
+    }
+
+    /* Calendar Strip */
+    .calendar-strip {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 15px;
+      background: var(--bg-color);
+      margin-bottom: 10px;
+    }
+
+    .date-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 6px;
+      border-radius: 20px;
+      min-width: 36px;
+    }
+
+    .date-item.active {
+      background: #FFF;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .date-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #999;
+    }
+
+    /* --- SECTION CONTAINERS (Grouping) --- */
+    .section-container {
+      margin-bottom: 5px;
+      background: transparent;
+      border-radius: 12px;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+
+    .section-container.expanded {
+      background: #FFFFFF;
+      /* White card bg when expanded */
+      /* box-shadow: 0 2px 8px rgba(0,0,0,0.05); Optional: Slight shadow for lift */
+      padding-bottom: 5px;
+      /* Space at bottom */
+      margin-bottom: 12px;
+      /* Extra space between cards */
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 14px;
+      /* Slightly more padding */
+      background: #FFFFFF;
+      border-radius: 12px;
+      /* Full radius by default */
+      cursor: pointer;
+      font-size: 0.95em;
+    }
+
+    .section-container.expanded .section-header {
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      /* Separator line between header and content? */
+      border-bottom: 1px solid #f5f5f5;
+    }
+
+    .list-content {
+      /* Padding inside the card - Removed to align width */
+      padding: 0;
+    }
+
+    .list-content>div {
+      /* Inner wrapper */
+    }
+
+    /* Task Item adjustments for inside card */
+    .task-wrapper {
+      margin-bottom: 0;
+      /* Remove vertical gaps for unity */
+      box-shadow: none;
+      /* Remove shadow inside card? Or keep? */
+      /* If we want "unity", maybe tasks should look cleaner */
+      border-bottom: 1px solid #eee;
+      /* Light separator */
+      border-radius: 0;
+      /* Square borders for stack */
+      background: transparent;
+      /* Slightly distinct from white card? or just white */
+    }
+
+    .task-wrapper:last-child {
+      margin-bottom: 0;
+      border-bottom: none;
+    }
+
+    /* Enforce White Background on Task Item always */
+    .task-item {
+      background: #FFF !important;
+      /* Always opaque */
+      padding: 12px 14px;
+      /* Match Header Padding */
+    }
+
+    /* Clean up the expanded rule too just in case */
+    .section-container.expanded .task-item {
+      background: #FFF !important;
+    }
+
+    /* Swipe actions might need bg */
+    .task-actions {
+      z-index: 0;
+    }
+
+    border-radius: 50%;
+    }
+
+    .date-item.active .date-num {
+      background: var(--warm-orange);
+      color: white;
+    }
+
+    /* Modals */
+    .modal-fullscreen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg-color);
+      z-index: 3000;
+      display: none;
+      flex-direction: column;
+      animation: fadeIn 0.2s;
+      overflow-y: auto;
+    }
+
+    .modal-fullscreen.open {
+      display: flex;
+    }
+
+    .detail-header {
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .detail-hero {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .detail-icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+
+    .detail-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #444;
+    }
+
+    .detail-stats-row {
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 20px;
+    }
+
+    .stat-box {
+      background: white;
+      border-radius: 16px;
+      padding: 15px;
+      width: 40%;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+    }
+
+    .stat-num {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--primary);
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #999;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    .calendar-card {
+      background: white;
+      border-radius: 20px;
+      margin: 20px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    }
+
+    .cal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      font-weight: 800;
+      color: #555;
+    }
+
+    .cal-arrow {
+      font-size: 24px;
+      padding: 0 10px;
+      cursor: pointer;
+      color: #888;
+    }
+
+    .cal-arrow.disabled {
+      opacity: 0.2;
+      pointer-events: none;
+    }
+
+    /* Class added by JS */
+
+    .detail-cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+      text-align: center;
+    }
+
+    .cal-cell {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      border-radius: 50%;
+      font-weight: 700;
+      color: #555;
+      box-sizing: border-box;
+      /* Important for border */
+    }
+
+    .cal-header-cell {
+      color: #999;
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    /* Calendar Status Colors */
+    .cal-cell.status-done {
+      background: var(--warm-orange);
+      color: white;
+      border: 2px solid var(--warm-orange);
+      /* Match size */
+    }
+
+    .cal-cell.status-failed {
+      background: transparent;
+      color: #555;
+      border: 3px solid #D0D0D0;
+      /* Visible Gray Ring */
+    }
+
+    /* Gray for missed */
+    .cal-cell.status-none {}
+
+    /* Future or none */
+
+    /* Bottom Nav */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      height: 70px;
+      background: white;
+      border-top: 1px solid #F0F0F0;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 100;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: #CCC;
+      width: 60px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .nav-item.active {
+      color: var(--primary);
+    }
+
+    .nav-icon {
+      font-size: 22px;
+      margin-bottom: 4px;
+    }
+
+    /* Modal Simple */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.3);
+      z-index: 3100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal-box {
+      background: white;
+      width: 85%;
+      max-width: 360px;
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    }
+
+    .btn-save {
+      width: 100%;
+      padding: 14px;
+      background: #333;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-weight: 800;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+
+    .input-std {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #EEE;
+      border-radius: 8px;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+      font-family: inherit;
+    }
+
+    .glass-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      /* Parent handles layout & text, background handled by ::before */
+      padding: 35px 20px 15px;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.5px;
+      isolation: isolate;
+      /* Create stacking context */
+    }
+
+    .glass-header::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+
+      /* Blur Effect */
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+
+      /* Background Gradient: Top(0.25) -> Bottom(0) Smooth Fade */
+      background: linear-gradient(to bottom,
+          rgba(253, 249, 232, 0.25) 0%,
+          rgba(253, 249, 232, 0) 100%);
+
+      /* Smooth Blur Fade-out using Mask */
+      -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+      mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+
+      pointer-events: none;
+    }
+
+    .toggle-icon {
+      transition: transform 0.3s ease;
+      font-size: 12px;
+      color: #999;
+    }
+
+    /* Calendar Strip Sticky */
+    .calendar-strip {
+      position: sticky;
+      top: 85px;
+      /* Approximate header height */
+      z-index: 90;
+      background: transparent !important;
+      /* Completely transparent */
+      padding: 10px 0;
+      /* Remove border if it exists or keep it? User said "completely transparent" bar.
+  Usually strip has border-bottom. Let's inspect/assume no background. */
+      display: flex;
+      justify-content: space-around;
+      /* margin-bottom: 20px; -> Keep margin */
+    }
+
+    /* Sortable Feedback */
+    .sortable-ghost {
+      opacity: 0.4;
+      background: #f0f0f0;
+    }
+
+    .sortable-drag {
+      cursor: grabbing;
+      opacity: 0.9;
+      transform: scale(1.02);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+      z-index: 9999;
+    }
+
+    .view {
+      display: none;
+      padding: 0 16px;
+      padding-top: 0;
+    }
+
+    .fade-collapse {
+      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      opacity: 0 !important;
+      max-height: 0 !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      transform: scale(0.9);
+      overflow: hidden;
+    }
+
+
+    .view.active {
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- REMOVED GLOBAL HEADER -->
+  <!-- 
+  <div class="header">
+    <div class="header-title">Life OS</div>
+  </div>
+  -->
+
+  <div class="main-container">
+
+    <!-- TASKS VIEW -->
+    <div id="view-tasks" class="view active">
+      <div class="glass-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>タスク</div>
+        <div style="font-size:24px; color:var(--primary); cursor:pointer;">📂</div>
+      </div>
+
+      <!-- Main View -->
+      <div id="task-main-view">
+        <!-- High Prio -->
+        <div class="section-container">
+          <div class="section-header" onclick="toggleSection('high')">
+            <div style="color:#FF6B6B; font-weight:bold;">高 ▲ (<span id="count-high">0</span>)</div>
+            <div class="add-btn-small" onclick="event.stopPropagation(); openTaskModal(3)">＋</div>
+          </div>
+          <div id="list-high" class="list-content">
+            <div></div>
+          </div>
+        </div>
+
+        <!-- Med Prio -->
+        <div class="section-container">
+          <div class="section-header" onclick="toggleSection('med')">
+            <div style="color:#E17055; font-weight:bold;">中 ● (<span id="count-med">0</span>)</div>
+            <div class="add-btn-small" onclick="event.stopPropagation(); openTaskModal(2)">＋</div>
+          </div>
+          <div id="list-med" class="list-content">
+            <div></div>
+          </div>
+        </div>
+
+        <!-- Low Prio -->
+        <div class="section-container">
+          <div class="section-header" onclick="toggleSection('low')">
+            <div style="color:#54A0FF; font-weight:bold;">低 ▼ (<span id="count-low">0</span>)</div>
+            <div class="add-btn-small" onclick="event.stopPropagation(); openTaskModal(1)">＋</div>
+          </div>
+          <div id="list-low" class="list-content">
+            <div></div>
+          </div>
+        </div>
+
+        <!-- Inbox -->
+        <div class="section-container">
+          <div class="section-header" onclick="toggleSection('none')">
+            <div style="color:#888; font-weight:bold;">Inbox (<span id="count-none">0</span>)</div>
+            <div class="add-btn-small" onclick="event.stopPropagation(); openTaskModal(0)">＋</div>
+          </div>
+          <div id="list-none" class="list-content">
+            <div></div>
+          </div>
+        </div>
+
+        <!-- Completed -->
+        <div class="section-container completed">
+          <div class="section-header" onclick="toggleSection('done')">
+            <div style="color:#AAA; font-weight:bold;">完了 (<span id="count-done">0</span>)</div>
+            <div class="add-btn-small" style="opacity:0; pointer-events:none;"></div>
+          </div>
+          <div id="list-done" class="list-content">
+            <div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HABITS VIEW -->
+    <div id="view-habits" class="view">
+      <div class="glass-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>習慣</div>
+        <div id="habit-date-display" style="font-size:16px; font-weight:600; color:var(--text-sub);"></div>
+      </div>
+
+      <div class="calendar-strip" id="calendar-strip">
+        <!-- Loaded by JS -->
+      </div>
+
+      <div id="habit-sections-root">
+        <!-- Dynamic Sections -->
+      </div>
+
+      <!-- Checked (Always last) -->
+      <div class="section-habit" id="sec-wrapper-checked">
+        <div class="section-header" onclick="toggleHabitSection('checked')">
+          <div>完了 <span id="count-habit-checked" style="font-size:0.9em; opacity:0.8;"></span></div>
+          <div class="toggle-icon">∧</div>
+        </div>
+        <div id="list-habit-checked" class="habit-list-container">
+          <div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCHEDULE VIEW -->
+    <div id="view-schedule" class="view">
+      <div class="glass-header">スケジュール</div>
+      <div style="text-align:center; margin-top:50px; color:#aaa;">
+        Coming Soon...
+      </div>
+      <div id="schedule-list"></div>
+    </div>
+  </div> <!-- Main -->
+
+  <!-- NAV BAR -->
+  <div class="bottom-nav">
+    <div class="nav-item active" onclick="switchTab('tasks', this)">
+      <div class="nav-icon">✓</div>
+      Tasks
+    </div>
+    <div class="nav-item" onclick="switchTab('schedule', this)">
+      <div class="nav-icon">📅</div>
+      Schedule
+    </div>
+    <div class="nav-item" onclick="switchTab('habits', this)">
+      <div class="nav-icon">⭕</div>
+      Habits
+    </div>
+    <div class="nav-item" onclick="switchTab('secretary', this)">
+      <div class="nav-icon">🤖</div>
+      AI
+    </div>
+  </div>
+
+  <!-- TASK MODAL -->
+  <div class="modal-overlay" id="task-modal" onclick="if(event.target===this) closeTaskModal()">
+    <div class="modal-box">
+      <h3>タスク追加</h3>
+      <input id="t-name" class="input-std" placeholder="タスク名を入力">
+      <select id="t-prio" class="input-std">
+        <option value="3">優先度: 高</option>
+        <option value="2">優先度: 中</option>
+        <option value="1">優先度: 低</option>
+        <option value="0" selected>インボックス</option>
+      </select>
+      <button class="btn-save" onclick="saveTask()">追加</button>
+    </div>
+  </div>
+  <div class="modal-overlay" id="journal-modal" onclick="if(event.target===this) closeJournalModal(false)">
+    <div class="modal-box">
+      <h3 id="journal-title">習慣の記録</h3>
+      <p id="journal-prompt" style="font-size:12px; color:#666; margin-bottom:10px;">今日あった良いことや感謝したいことを書きましょう。</p>
+      <textarea id="journal-input" class="input-std"
+        style="height:120px; resize:none; font-family:sans-serif; line-height:1.5;"
+        placeholder="・天気が良かった&#10;・同僚に助けられた&#10;..."></textarea>
+      <div style="display:flex; justify-content:flex-end; gap:20px; margin-top:20px; align-items:center;">
+        <div style="color:#888; font-size:14px; cursor:pointer;" onclick="closeJournalModal(false)">キャンセル</div>
+        <button class="btn-save" onclick="submitJournal()">記録する</button>
+      </div>
+    </div>
+  </div>
+  <!-- HABIT DETAIL MODAL -->
+  <div id="habit-detail-modal" class="modal-fullscreen">
+    <div class="detail-header">
+      <div style="font-size:24px; cursor:pointer;" onclick="closeHabitDetail()">✕</div>
+      <div style="font-size:24px; cursor:pointer;" onclick="openHabitSettings()">⋯</div>
+    </div>
+
+    <div class="detail-hero">
+      <div class="detail-icon">💧</div>
+      <div class="detail-title" id="detail-name">Habit Name</div>
+      <div style="color:#999; font-size:12px; margin-top:5px;" id="detail-time">Time</div>
+      <div style="color:#777; margin-top:10px; font-size:13px;" id="detail-desc">Benefit...</div>
+    </div>
+
+    <div class="detail-stats-row">
+      <div class="stat-box">
+        <div class="stat-num" id="detail-streak">-</div>
+        <div class="stat-label">連続日数</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" id="detail-rate">-%</div>
+        <div class="stat-label">月間達成率</div>
+      </div>
+    </div>
+
+    <div class="calendar-card">
+      <div class="section-header">
+        <span>タスク</span>
+      </div>
+      <div class="cal-header">
+        <span id="btn-prev-month" class="cal-arrow" onclick="changeDetailMonth(-1)">‹</span>
+        <span id="cal-month-label">2025年 12月</span>
+        <span id="btn-next-month" class="cal-arrow next" onclick="changeDetailMonth(1)">›</span>
+      </div>
+      <div class="detail-cal-grid" id="detail-cal-grid">
+        <!-- JS -->
+      </div>
+    </div>
+
+    <div id="detail-journal-logs-container" style="margin:20px 20px 100px 20px;"></div>
+  </div>
+
+  <!-- HABIT SETTINGS MODAL -->
+  <div class="modal-overlay" id="habit-settings-modal" onclick="if(event.target===this) closeHabitSettings()">
+    <div class="modal-box">
+      <h3>習慣設定</h3>
+
+      <div style="display:flex; gap:10px; align-items:center; margin-bottom:15px;">
+        <div id="hs-icon-preview" onclick="openIconPicker()"
+          style="width:50px; height:50px; background:#f0f0f0; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:24px;">
+          <span class="material-symbols-rounded">add_reaction</span>
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:12px; color:#999;">習慣名</label>
+          <input id="hs-name" class="input-std" style="margin-top:2px;">
+        </div>
+      </div>
+
+      <label style="font-size:12px; color:#999;">セクション</label>
+      <select id="hs-section" class="input-std"></select>
+
+      <button class="btn-save" onclick="saveHabitDefinition()">保存</button>
+    </div>
+  </div>
+
+  <!-- ICON PICKER MODAL -->
+  <div class="modal-overlay" id="icon-picker-modal" onclick="if(event.target===this) closeIconPicker()">
+    <div class="modal-box" style="max-height:80vh; overflow-y:auto;">
+      <h3>アイコン選択</h3>
+      <input type="text" id="icon-search" placeholder="検索..." oninput="filterIcons(this.value)"
+        style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd; margin-bottom:15px;">
+      <div id="icon-grid" style="display:grid; grid-template-columns:repeat(5, 1fr); gap:10px;">
+        <!-- JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION MANAGER MODAL -->
+  <div class="modal-overlay" id="section-manager-modal" onclick="if(event.target===this) closeSectionManager()">
+    <div class="modal-box" style="max-height:80vh; overflow-y:auto;">
+      <h3>セクション管理</h3>
+      <div id="sm-list" style="margin-bottom:20px;"></div>
+
+      <button class="btn-save" style="background:#ddd; color:#333; margin-bottom:10px;" onclick="addSectionRow()">+
+        セクション追加</button>
+      <button class="btn-save" onclick="saveSections()">変更を保存</button>
+    </div>
+  </div>
+
+  <script>
+    // --- STATE ---
+    let currentHabitDate = new Date().toLocaleDateString('en-CA');
+    let habitCalendarCache = {};
+    let currentDetailHabit = null; // Object
+    let currentDetailYear = 0;
+    let currentDetailMonth = 0;
+    let todayYear = 0; // RESTORED
+    let todayMonth = 0; // RESTORED
+    let habitDataCache = null; // { habits: [], sections: [] } for re-rendering
+
+    // --- INIT ---
+    window.onload = function () {
+      // Check for Debug Errors
+      const ssrError = "<?= ssrError ?>";
+      if (ssrError && ssrError !== 'null' && ssrError !== '') {
+        const errDiv = document.createElement('div');
+        errDiv.style.background = '#ffebee';
+        errDiv.style.color = '#c62828';
+        errDiv.style.padding = '10px';
+        errDiv.style.borderBottom = '1px solid #ef5350';
+        errDiv.innerText = ssrError;
+        document.body.prepend(errDiv);
+      }
+
+      // Force Migration Button Visibility
+      const btn = document.getElementById('migration-btn');
+      if (btn) document.body.prepend(btn);
+
+
+      // 1. Render Injected Data (SSR)
+      try {
+        const rawTasks = <?!= initialTasksJson ?>;
+        const rawHabits = <?!= initialHabitsJson ?>;
+
+        if (rawTasks) renderTasks(rawTasks);
+
+        initDateStrip();
+
+        if (rawHabits) {
+          renderHabits(rawHabits);
+          renderCalendar(new Date(), rawHabits);
+        } else {
+          // Fallback
+          fetchHabits(new Date());
+        }
+      } catch (e) {
+        console.error("SSR Parse Error", e);
+        fetchTasks();
+        fetchHabits(new Date());
+      }
+
+      setupModal();
+      showTab('tasks');
+    };
+
+    function switchTab(id, el) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.getElementById('view-' + id).classList.add('active');
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      el.classList.add('active');
+
+      if (id === 'habits') {
+        // Maybe refresh habits to be sure
+      }
+    }
+
+    // --- TASKS ---
+    function fetchTasks() {
+      // Still useful for manual refresh
+      google.script.run.withSuccessHandler(renderTasks).getTasks();
+    }
+
+    function renderTasks(tasks) {
+      console.log('Rendering Tasks:', tasks.length);
+      try {
+        // Clear
+        const lists = ['high', 'med', 'low', 'none', 'done'];
+        lists.forEach(k => {
+          const el = document.querySelector('#list-' + k + ' > div');
+          if (el) el.innerHTML = '';
+        });
+        let counts = { 3: 0, 2: 0, 1: 0, 0: 0, done: 0 };
+
+        tasks.forEach(t => {
+          const p = Number(t.importance) || 0;
+          const status = (t.status || '').trim();
+
+          if (status === '完了') {
+            counts.done++;
+            createTaskEl(t, 'list-done');
+          } else {
+            counts[p]++;
+            const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+            createTaskEl(t, 'list-' + map[p]);
+          }
+        });
+
+        // Update counts
+        if (document.getElementById('count-high')) document.getElementById('count-high').innerText = counts[3];
+        if (document.getElementById('count-med')) document.getElementById('count-med').innerText = counts[2];
+        if (document.getElementById('count-low')) document.getElementById('count-low').innerText = counts[1];
+        if (document.getElementById('count-none')) document.getElementById('count-none').innerText = counts[0];
+        if (document.getElementById('count-done')) document.getElementById('count-done').innerText = counts.done;
+
+        const doneSec = document.getElementById('sec-done');
+        if (doneSec) doneSec.style.display = counts.done > 0 ? 'block' : 'none';
+
+        initTaskSortables(); // Init Drag & Drop
+
+      } catch (e) {
+        console.error('Error rendering tasks:', e);
+      }
+    }
+
+    let taskSortables = [];
+
+    function initTaskSortables() {
+      // Clean old
+      taskSortables.forEach(s => s.destroy());
+      taskSortables = [];
+
+      const lists = ['high', 'med', 'low', 'none'];
+      lists.forEach(k => {
+        const el = document.querySelector('#list-' + k + ' > div');
+        if (!el) return;
+
+        const s = Sortable.create(el, {
+          group: 'tasks',
+          delay: 200, // Long press 200ms
+          delayOnTouchOnly: true, // Only for touch? User said "Long press" generally. Let's keep general.
+          animation: 150,
+          ghostClass: 'sortable-ghost',
+          dragClass: 'sortable-drag',
+          onEnd: function (evt) {
+            const item = evt.item;
+            const toList = evt.to.closest('.list-content').id; // list-high
+            const fromList = evt.from.closest('.list-content').id;
+
+            if (toList === fromList) return; // Same list
+
+            const map = { 'list-high': 3, 'list-med': 2, 'list-low': 1, 'list-none': 0 };
+            const newPrio = map[toList] !== undefined ? map[toList] : 0;
+
+            // Update Data
+            item.dataset.prio = newPrio;
+
+            // Update Counts Logic
+            updateTaskCounts();
+
+            // Backend Update
+            const row = item.dataset.row;
+            google.script.run.updateTaskPriority(row, newPrio);
+          }
+        });
+        taskSortables.push(s);
+      });
+    }
+
+    function updateTaskCounts() {
+      const counts = { 3: 0, 2: 0, 1: 0, 0: 0 };
+      // Valid lists only
+      ['list-high', 'list-med', 'list-low', 'list-none'].forEach(id => {
+        const container = document.querySelector('#' + id + ' > div');
+        const count = container ? container.children.length : 0;
+        // Map id to prio
+        const pMap = { 'list-high': 3, 'list-med': 2, 'list-low': 1, 'list-none': 0 };
+        counts[pMap[id]] = count;
+      });
+
+      // Done count is static unless moved
+      const doneCount = document.querySelector('#list-done > div').children.length;
+
+      if (document.getElementById('count-high')) document.getElementById('count-high').innerText = counts[3];
+      if (document.getElementById('count-med')) document.getElementById('count-med').innerText = counts[2];
+      if (document.getElementById('count-low')) document.getElementById('count-low').innerText = counts[1];
+      if (document.getElementById('count-none')) document.getElementById('count-none').innerText = counts[0];
+      if (document.getElementById('count-done')) document.getElementById('count-done').innerText = doneCount;
+    }
+
+    function createTaskEl(t, listId) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'task-wrapper';
+      wrapper.dataset.id = t.id;
+
+      // Actions Layer (Behind)
+      const actions = document.createElement('div');
+      actions.className = 'task-actions';
+      actions.innerHTML = `
+        <div class="action-btn archive" onclick="doArchiveTask('${t.id}')">📥</div>
+        <div class="action-btn delete" onclick="doDeleteTask('${t.id}')">❌</div>
+      `;
+
+      // Content Layer (Foreground)
+      const el = document.createElement('div');
+      el.className = 'task-item' + (t.status === '完了' ? ' done' : '');
+      el.dataset.id = t.id; // UUID
+      el.dataset.prio = t.importance;
+
+      // Attach Touch Events
+      addSwipeLogic(el);
+
+      // Override flex for detail view
+      el.style.display = 'block';
+
+      // Safe Access
+      const desc = t.description || '詳細なし';
+      const due = t.dueDate || 'なし';
+
+      el.innerHTML = `
+           <div class="task-header" style="display:flex; align-items:center; gap:12px; padding-bottom:4px;" onclick="toggleDetails(this)">
+               <div class="task-check" onclick="toggleTask(event, this)">${t.status === '完了' ? '✓' : ''}</div>
+               <div class="task-content" style="flex:1">${t.name}</div>
+               <div class="task-icon" style="color:#CCC; font-size:0.8em;">⋁</div>
+           </div>
+           <div class="task-details" style="display:none; padding: 10px 0 0 36px; color:#666; font-size:0.85em; border-top:1px solid #f0f0f0; margin-top:8px;">
+               <div style="margin-bottom:4px;">📅 期限: ${due}</div>
+               <div>📝 ${desc}</div>
+           </div>
+        `;
+
+      wrapper.appendChild(actions);
+      wrapper.appendChild(el);
+
+      const container = document.querySelector('#' + listId + ' > div');
+      if (container) container.appendChild(wrapper);
+    }
+
+    // --- SWIPE LOGIC ---
+    let openSwipes = []; // Track open elements
+
+    function doUnarchiveTask(id) {
+      if (!confirm('タスクをリストに戻しますか？')) return;
+      removeEl(id);
+      google.script.run.unarchiveTask(id);
+    }
+
+    function addSwipeLogic(el) {
+      let startX = 0;
+      let currentTranslate = 0;
+      let isDragging = false;
+      const limit = -140; // Width of 2 buttons
+
+      el.addEventListener('touchstart', e => {
+        startX = e.touches[0].clientX;
+        el.style.transition = 'none';
+
+        // If other rows are open, close them?
+        // Optional: Multi-swipe vs Single focus. Single focus is safer.
+        closeAllSwipes(el);
+      }, { passive: true });
+
+      el.addEventListener('touchmove', e => {
+        const x = e.touches[0].clientX;
+        const diff = x - startX;
+
+        // Left Swipe (Open) or Right Swipe (Close if open)
+        // We assume if it's already open (transform set), we offset from there?
+        // Simplified: Always calculate from 0 state? NO, complex.
+        // Let's rely on CSS class 'open'? 
+
+        // Re-calc:
+        if (el.classList.contains('swiped-open')) {
+          // Already at limit (-140)
+          // Diff > 0 means closing
+          if (diff > 0) {
+            currentTranslate = limit + diff;
+            if (currentTranslate > 0) currentTranslate = 0;
+            el.style.transform = `translateX(${currentTranslate}px)`;
+            isDragging = true;
+          }
+        } else {
+          // Closed (0)
+          // Diff < 0 means opening
+          if (diff < 0) {
+            currentTranslate = diff;
+            if (currentTranslate < limit) currentTranslate = limit - 20; // Resistance
+            el.style.transform = `translateX(${currentTranslate}px)`;
+            isDragging = true;
+          }
+        }
+      }, { passive: true });
+
+      el.addEventListener('touchend', e => {
+        el.style.transition = 'transform 0.3s ease';
+        isDragging = false;
+
+        if (el.classList.contains('swiped-open')) {
+          // If moved right significantly, close
+          // limit is -140. current is e.g. -100. Diff +40.
+          if (currentTranslate > limit + 40) {
+            closeSwipe(el);
+          } else {
+            openSwipe(el, limit);
+          }
+        } else {
+          // If moved left significantly, open
+          if (currentTranslate < -50) {
+            openSwipe(el, limit);
+          } else {
+            closeSwipe(el);
+          }
+        }
+      });
+    }
+
+    function openSwipe(el, limit) {
+      el.style.transform = `translateX(${limit}px)`;
+      el.classList.add('swiped-open');
+    }
+
+    function closeSwipe(el) {
+      el.style.transform = `translateX(0)`;
+      el.classList.remove('swiped-open');
+    }
+
+    function closeAllSwipes(exceptEl) {
+      document.querySelectorAll('.task-item.swiped-open').forEach(el => {
+        if (el !== exceptEl) closeSwipe(el);
+      });
+    }
+
+    // Tap Outside Listener
+    document.addEventListener('touchstart', (e) => {
+      // If target is NOT a task-item or child of swiped-open, close all
+      if (!e.target.closest('.task-item.swiped-open') && !e.target.closest('.action-btn')) {
+        closeAllSwipes(null);
+      }
+    });
+
+    function doArchiveTask(id) {
+      if (!confirm('このタスクをアーカイブしますか？')) return;
+      removeEl(id);
+      google.script.run.archiveTask(id);
+    }
+
+    function doDeleteTask(id) {
+      if (!confirm('このタスクを完全に削除しますか？(復元できません)')) return;
+      removeEl(id);
+      google.script.run.deleteTaskHard(id); // Hard Delete
+    }
+
+    function removeEl(id) {
+      const wrapper = document.querySelector(`.task-wrapper[data-id="${id}"]`);
+      if (wrapper) {
+        wrapper.style.height = wrapper.offsetHeight + 'px';
+        wrapper.style.transition = 'height 0.3s, opacity 0.3s';
+        setTimeout(() => {
+          wrapper.style.height = '0';
+          wrapper.style.opacity = '0';
+          setTimeout(() => wrapper.remove(), 300);
+        }, 10);
+      }
+    }
+
+    // Legacy mapping (if used elsewhere)
+    function deleteTask(id) { doDeleteTask(id); }
+    function editTask(id) { alert('Edit disabled'); } // cleanup later
+
+    function toggleSection(id) {
+      const list = document.getElementById('list-' + id);
+      if (!list) return;
+
+      // header logic modified (no icon to rotate)
+      // just toggle display and container class for grouping
+      const container = list.parentElement;
+
+      if (list.style.display === 'none') {
+        list.style.display = 'block';
+        if (container) container.classList.add('expanded');
+      } else {
+        list.style.display = 'none';
+        if (container) container.classList.remove('expanded');
+      }
+    }
+
+    function toggleDetails(header) {
+      const item = header.closest('.task-item');
+      const details = item.querySelector('.task-details');
+      const icon = item.querySelector('.task-icon');
+
+      if (details.style.display === 'none') {
+        details.style.display = 'block';
+        icon.innerText = '∧';
+        icon.style.color = '#333';
+      } else {
+        details.style.display = 'none';
+        icon.innerText = '⋁';
+        icon.style.color = '#CCC';
+      }
+    }
+
+    function toggleTask(e, checkEl) {
+      e.stopPropagation(); // Prevent opening details
+
+      const item = checkEl.closest('.task-item');
+      // Toggle class first for immediate visual feedback (color, etc)
+      const isDone = item.classList.toggle('done');
+      const rowId = item.dataset.id; // UUID
+      const p = item.dataset.prio || 0;
+      const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+      const key = map[p];
+
+      checkEl.innerText = isDone ? '✓' : '';
+
+      // Sync Backend
+      google.script.run.withSuccessHandler(() => {
+        // synced
+      }).updateTaskStatus(rowId, isDone ? '完了' : '未完了');
+
+      // Start Animation
+      item.classList.add('fade-collapse');
+
+      setTimeout(() => {
+        // Update Counts
+        const countEl = document.getElementById('count-' + key);
+        const doneCountEl = document.getElementById('count-done');
+
+        let val = parseInt(countEl.innerText.match(/\d+/)[0]) || 0;
+        let doneVal = parseInt(doneCountEl.innerText.match(/\d+/)[0]) || 0;
+
+        // Identify Element to Move (Wrapper if exists, else Item)
+        const moveTarget = item.closest('.task-wrapper') || item;
+
+        if (isDone) {
+          // Move to Done
+          document.querySelector('#list-done > div').prepend(moveTarget);
+          countEl.innerText = val > 0 ? val - 1 : 0;
+          doneCountEl.innerText = doneVal + 1;
+        } else {
+          // Move back
+          document.querySelector('#list-' + key + ' > div').appendChild(moveTarget);
+          countEl.innerText = val + 1;
+          doneCountEl.innerText = doneVal > 0 ? doneVal - 1 : 0;
+        }
+
+        // Show/Hide Done Section
+        const doneList = document.querySelector('#list-done > div');
+        document.getElementById('sec-done').style.display = doneList.children.length > 0 ? 'block' : 'none';
+
+        // End Animation
+        item.classList.remove('fade-collapse');
+      }, 500);
+    }
+
+    function saveTask() {
+      const name = document.getElementById('t-name').value;
+      const prio = document.getElementById('t-prio').value;
+      if (!name) return;
+
+      // Optimistic Add
+      const t = { name: name, importance: prio, status: '未完了', row: 'temp-' + Date.now() };
+      const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+      createTaskEl(t, 'list-' + map[prio]);
+
+      closeTaskModal();
+      document.getElementById('t-name').value = '';
+
+      google.script.run.withSuccessHandler(fetchTasks).addTask(t);
+    }
+
+    function openTaskModal(p) {
+      document.getElementById('t-prio').value = p;
+      document.getElementById('task-modal').classList.add('open');
+      document.getElementById('t-name').focus();
+    }
+    function closeTaskModal() { document.getElementById('task-modal').classList.remove('open'); }
+
+    function toggleSection(id) {
+      const list = document.getElementById('list-' + id);
+      list.classList.toggle('collapsed');
+    }
+
+
+    /* --- HABITS --- */
+    function fetchHabits(dateStr) {
+      const root = document.getElementById('habit-sections-root');
+      if (root) root.style.opacity = '0.4';
+      google.script.run.withSuccessHandler((data) => {
+        if (root) root.style.opacity = '1.0';
+        renderHabits(data);
+      }).getHabitStatus(dateStr);
+    }
+
+    function initDateStrip() {
+      const strip = document.getElementById('calendar-strip');
+      strip.innerHTML = '';
+      const days = ['日', '月', '火', '水', '木', '金', '土'];
+      const today = new Date();
+
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(); d.setDate(today.getDate() - i);
+        const isToday = i === 0;
+        const ymd = d.toLocaleDateString('en-CA');
+
+        const el = document.createElement('div');
+        el.className = 'date-item' + (isToday ? ' active' : '');
+        el.onclick = () => {
+          document.querySelectorAll('.date-item').forEach(e => e.classList.remove('active'));
+          el.classList.add('active');
+          currentHabitDate = ymd;
+          fetchHabits(ymd);
+        };
+        el.innerHTML = `<div class="date-label">${days[d.getDay()]}</div><div class="date-num">${d.getDate()}</div>`;
+        strip.appendChild(el);
+      }
+    }
+
+    function renderHabits(data) {
+      // Cache Logic
+      habitDataCache = data;
+      if (data.serverDate) { todayYear = data.serverDate.year; todayMonth = data.serverDate.month; }
+      if (data.monthlyLogs) {
+        const key = `${todayYear}-${todayMonth}`;
+        Object.keys(data.monthlyLogs).forEach(hName => {
+          if (!habitCalendarCache[hName]) habitCalendarCache[hName] = {};
+          habitCalendarCache[hName][key] = data.monthlyLogs[hName];
+        });
+      }
+
+      const root = document.getElementById('habit-sections-root');
+      if (!root) return;
+      root.innerHTML = '';
+
+      // Ensure sections exist (SSR fallback)
+      const sections = (data.sections && data.sections.length > 0) ? data.sections : [
+        { id: 'sec_morning', name: '朝', order: 1 },
+        { id: 'sec_afternoon', name: '昼', order: 2 },
+        { id: 'sec_evening', name: '夜', order: 3 },
+        { id: 'sec_other', name: 'その他', order: 4 }
+      ];
+
+      // Render Sections
+      sections.forEach(sec => {
+        const div = document.createElement('div');
+        div.className = 'section-habit';
+        div.id = 'sec-wrapper-' + sec.id;
+        div.innerHTML = `
+            <div class="section-header" onclick="toggleHabitSection('${sec.id}')">
+               <div>${sec.name} <span id="count-${sec.id}" style="font-size:0.9em; opacity:0.8;"></span></div>
+               <div class="toggle-icon">∧</div>
+            </div>
+            <div id="list-habit-${sec.id}" class="habit-list-container">
+               <div><!-- Inner --></div>
+            </div>
+          `;
+        root.appendChild(div);
+      });
+
+      // Clear Checked
+      document.querySelector('#list-habit-checked > div').innerHTML = '';
+      document.getElementById('count-habit-checked').innerText = '0';
+      let checkedCount = 0;
+
+      if (!data.habits) { updateHabitSectionCounts(); return; }
+
+      data.habits.forEach(h => {
+        const isDone = (h.status === 1);
+
+        if (isDone) {
+          const div = createHabitCard(h, true);
+          document.querySelector('#list-habit-checked > div').appendChild(div);
+          checkedCount++;
+        } else {
+          // Find section
+          let targetSecId = h.sectionId || 'sec_other';
+          // Verify section exists in DOM
+          if (!document.getElementById('list-habit-' + targetSecId)) targetSecId = 'sec_other';
+
+          const div = createHabitCard(h, false);
+          // Append to section
+          const container = document.querySelector(`#list-habit-${targetSecId} > div`);
+          if (container) container.appendChild(div);
+        }
+      });
+
+      updateHabitSectionCounts(); // Initial calculations
+
+      const checkedSec = document.getElementById('sec-wrapper-checked');
+      if (checkedCount > 0) {
+        checkedSec.style.display = 'block';
+        document.getElementById('count-habit-checked').innerText = '(' + checkedCount + ')';
+      } else {
+        checkedSec.style.display = 'none';
+      }
+    }
+
+    function createHabitCard(h, isDone) {
+      const div = document.createElement('div');
+      div.className = 'habit-item' + (isDone ? ' done' : '');
+      div.onclick = () => openHabitDetail(h);
+
+      let iconContent = '💧';
+      if (h.icon) {
+        iconContent = `<span class="material-symbols-rounded" style="font-size:24px;">${h.icon}</span>`;
+      }
+
+      div.innerHTML = `
+           <div class="habit-icon">${iconContent}</div>
+           <div class="habit-info">
+              <div class="habit-name">${h.name}</div>
+           </div>
+           <div class="habit-stats-right">
+              <div style="font-size:16px; font-weight:bold; color:var(--primary)">${h.streak || 0}日</div>
+              <div style="font-size:10px; color:#999">現在の連続</div>
+           </div>
+           <div class="habit-check-area" onclick="event.stopPropagation(); toggleHabit(this, '${h.name}')">
+              <div class="check-circle"></div>
+           </div>
+        `;
+      // Store Section ID for return
+      div.dataset.sectionId = h.sectionId || 'sec_other';
+      return div;
+    }
+
+    let pendingJournalItem = null;
+    let pendingJournalName = '';
+
+    function toggleHabit(el, name) {
+      const item = el.closest('.habit-item');
+      const isDone = item.classList.toggle('done');
+
+      // Special Logic: Any "Journal" (XX日記) (Only on Check)
+      if (isDone && name.endsWith('日記')) {
+        pendingJournalItem = item;
+        pendingJournalName = name;
+
+        const pEl = document.getElementById('journal-prompt');
+        if (name === '感謝日記') {
+          pEl.innerText = '今日あった良いことや感謝したいことを書きましょう。';
+        } else {
+          pEl.innerText = name + ' の記録を入力してください。';
+        }
+
+        document.getElementById('journal-modal').classList.add('open');
+        document.getElementById('journal-input').value = '';
+        setTimeout(() => document.getElementById('journal-input').focus(), 100);
+        return;
+      }
+
+      processHabitToggle(item, name, isDone);
+    }
+
+    function processHabitToggle(item, name, isDone) {
+      // Sync Backend
+      google.script.run.logHabit(currentHabitDate, name, isDone);
+
+      if (isDone) {
+        // --- CHECKING ---
+        item.classList.add('fade-collapse');
+        setTimeout(() => {
+          document.querySelector('#list-habit-checked > div').prepend(item);
+          document.getElementById('sec-wrapper-checked').style.display = 'block';
+
+          // Update counts
+          const countEl = document.getElementById('count-habit-checked');
+          const currentVal = parseInt(countEl.innerText.replace(/\D/g, '')) || 0;
+          countEl.innerText = '(' + (currentVal + 1) + ')';
+
+          item.classList.remove('fade-collapse');
+          updateHabitSectionCounts();
+        }, 500);
+
+      } else {
+        // --- UNCHECKING ---
+        item.classList.add('fade-collapse');
+        setTimeout(() => {
+          const secId = item.dataset.sectionId || 'sec_other';
+          let container = document.querySelector('#list-habit-' + secId + ' > div');
+          if (!container) container = document.querySelector('#list-habit-sec_other > div');
+
+          container.appendChild(item);
+
+          // Update counts
+          const countEl = document.getElementById('count-habit-checked');
+          const currentVal = parseInt(countEl.innerText.replace(/\D/g, '')) || 0;
+          let c = currentVal - 1;
+          c = c > 0 ? c : 0;
+          countEl.innerText = '(' + c + ')';
+
+          if (c <= 0) document.getElementById('sec-wrapper-checked').style.display = 'none';
+
+          item.classList.remove('fade-collapse');
+          updateHabitSectionCounts();
+        }, 500);
+      }
+    }
+
+    function closeJournalModal(saved) {
+      document.getElementById('journal-modal').classList.remove('open');
+      if (!saved && pendingJournalItem) {
+        // Cancelled: Revert the checkbox visually
+        pendingJournalItem.classList.toggle('done');
+        pendingJournalItem = null;
+      }
+    }
+
+    function submitJournal() {
+      const text = document.getElementById('journal-input').value;
+      if (!text.trim()) {
+        alert('内容を入力してください');
+        return;
+      }
+      // Log Text
+      google.script.run.logHabitText(currentHabitDate, pendingJournalName, text);
+
+      // Proceed with completions
+      processHabitToggle(pendingJournalItem, pendingJournalName, true);
+
+      // Cleanup
+      pendingJournalItem = null;
+      document.getElementById('journal-modal').classList.remove('open');
+    }
+
+    function toggleHabitSection(id) {
+      const list = document.getElementById('list-habit-' + id);
+      if (!list) return;
+      // Toggle display via class or inline?
+      // CSS usually handles max-height transition if we use class.
+      // The previous code had .collapsed?
+      // Let's use simple display toggle for now to match renderHabits structure.
+      // Actually renderHabits sets innerHTML but doesn't set display.
+      // CSS for .habit-list-container?
+
+      const header = list.previousElementSibling;
+      const icon = header.querySelector('.toggle-icon');
+
+      // Using style.display for simplicity as transitions can be tricky with dynamic height
+      if (list.style.display === 'none') {
+        list.style.display = 'block';
+        icon.innerText = '∧';
+      } else {
+        list.style.display = 'none';
+        icon.innerText = '⋁';
+      }
+    }
+
+    function markSectionDirty(input) {
+      // Can use valid visual cue
+      input.style.backgroundColor = '#FFF8E1';
+    }
+
+    function updateHabitSectionCounts() {
+      const sections = habitDataCache ? habitDataCache.sections : [];
+      sections.forEach(sec => {
+        const listId = 'list-habit-' + sec.id;
+        const wrapperId = 'sec-wrapper-' + sec.id;
+        const countId = 'count-' + sec.id;
+
+        const listContainer = document.querySelector('#' + listId + ' > div');
+        if (!listContainer) return;
+
+        const count = listContainer.children.length;
+        const countEl = document.getElementById(countId);
+        const wrapperEl = document.getElementById(wrapperId);
+
+        if (countEl) countEl.innerText = '(' + count + ')';
+
+        // Auto Hide Logic (keep wrapper in DOM but hide)
+        if (wrapperEl) {
+          if (count === 0) {
+            wrapperEl.style.display = 'none';
+          } else {
+            wrapperEl.style.display = 'block';
+          }
+        }
+      });
+    }
+
+    // --- HABIT DETAIL & CALENDAR ---
+    function openHabitDetail(habit) {
+      currentDetailHabit = habit;
+      if (!todayYear) {
+        const d = new Date();
+        todayYear = d.getFullYear();
+        todayMonth = d.getMonth() + 1;
+      }
+      currentDetailYear = todayYear;
+      currentDetailMonth = todayMonth;
+
+      const titleEl = document.getElementById('detail-name');
+      if (titleEl) titleEl.innerText = habit.name;
+
+      const timeEl = document.getElementById('detail-time');
+      if (timeEl) timeEl.innerText = '所要時間: ' + (habit.time || '未設定');
+
+      const descEl = document.getElementById('detail-desc');
+      if (descEl) descEl.innerText = habit.benefit || '習慣を続けて目標を達成しましょう';
+
+      const streakEl = document.getElementById('detail-streak');
+      if (streakEl) streakEl.innerText = `${habit.streak || 0}日`;
+
+      const rateEl = document.getElementById('detail-rate');
+      if (rateEl) rateEl.innerText = `${habit.rate30 || 0}%`;
+
+      // Journal Logs Logic
+      const logContainer = document.getElementById('detail-journal-logs-container');
+      if (logContainer) {
+        logContainer.innerHTML = ''; // Clear previous
+
+        if (habit.name.endsWith('日記')) {
+          logContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">読み込み中...</div>';
+          google.script.run.withSuccessHandler(renderJournalLogs).getHabitTextLogs(habit.name);
+        }
+      }
+
+      document.getElementById('habit-detail-modal').classList.add('open');
+
+      renderDetailCalendar();
+      preloadPastMonths(habit.name, currentDetailYear, currentDetailMonth);
+    }
+
+    function renderJournalLogs(logs) {
+      const container = document.getElementById('detail-journal-logs-container');
+      if (!container) return;
+
+      if (!logs || logs.length === 0) {
+        container.innerHTML = '<div style="color:#999; text-align:center; font-size:12px;">記録はまだありません</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      logs.forEach(log => {
+        const card = document.createElement('div');
+        card.style.cssText = 'background:rgba(255,255,255,0.8); border-radius:12px; padding:15px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);';
+        card.innerHTML = `
+             <div style="font-size:12px; color:#888; margin-bottom:5px;">${log.date}</div>
+             <div style="font-size:14px; color:#333; white-space:pre-wrap;">${log.text}</div>
+          `;
+        container.appendChild(card);
+      });
+    }
+
+    function closeHabitDetail() {
+      document.getElementById('habit-detail-modal').classList.remove('open');
+    }
+
+    function preloadPastMonths(habitName, year, month) {
+      loadMonthInBackground(habitName, year, month - 1, 3);
+    }
+
+    function loadMonthInBackground(habitName, year, month, depth) {
+      if (depth <= 0) return;
+      let y = year, m = month;
+      if (m < 1) { m = 12; y--; }
+      const key = `${y}-${m}`;
+
+      if (habitCalendarCache[habitName] && habitCalendarCache[habitName][key]) {
+        loadMonthInBackground(habitName, y, m - 1, depth - 1);
+        return;
+      }
+
+      google.script.run.withSuccessHandler(data => {
+        if (!habitCalendarCache[habitName]) habitCalendarCache[habitName] = {};
+        habitCalendarCache[habitName][key] = data;
+        loadMonthInBackground(habitName, y, m - 1, depth - 1);
+      }).getHabitCalendar(habitName, y, m);
+    }
+
+    function changeDetailMonth(delta) {
+      let newM = currentDetailMonth + delta;
+      let newY = currentDetailYear;
+
+      // Fix Overflow
+      if (newM > 12) { newM = 1; newY++; }
+      else if (newM < 1) { newM = 12; newY--; }
+
+      // Restrict Future
+      // todayMonth is 1-12. newM is 1-12.
+      if (newY > todayYear || (newY === todayYear && newM > todayMonth)) {
+        return;
+      }
+
+      currentDetailYear = newY;
+      currentDetailMonth = newM;
+      renderDetailCalendar();
+    }
+
+    function renderDetailCalendar() {
+      if (!currentDetailHabit) return;
+      const year = currentDetailYear;
+      const month = currentDetailMonth;
+      document.getElementById('cal-month-label').innerText = `${year}年 ${month}月`;
+
+      // Arrow Style
+      const btnNext = document.getElementById('btn-next-month');
+      if (btnNext) {
+        let isAtLimit = (year > todayYear) || (year === todayYear && month >= todayMonth);
+        btnNext.style.opacity = isAtLimit ? '0.2' : '1';
+        btnNext.classList.toggle('disabled', isAtLimit); // pointer-events:none via css
+        // but keeping inline style logic for sureness
+        btnNext.style.pointerEvents = isAtLimit ? 'none' : 'auto';
+      }
+
+      const container = document.getElementById('detail-cal-grid');
+      container.innerHTML = 'Loading...';
+
+      const key = `${year}-${month}`;
+      const cache = habitCalendarCache[currentDetailHabit.name];
+
+      const renderGrid = (map) => {
+        container.innerHTML = '';
+        // Headers
+        ['日', '月', '火', '水', '木', '金', '土'].forEach(d => {
+          const c = document.createElement('div');
+          c.className = 'cal-header-cell'; c.innerText = d;
+          container.appendChild(c);
+        });
+
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const firstDay = new Date(year, month - 1, 1).getDay();
+
+        for (let i = 0; i < firstDay; i++) container.appendChild(document.createElement('div'));
+
+        const today = new Date();
+        // Reset time for accurate comparison
+        today.setHours(0, 0, 0, 0);
+
+        const start = currentDetailHabit.startDate ? new Date(currentDetailHabit.startDate) : new Date('2024-01-01');
+        start.setHours(0, 0, 0, 0);
+
+        for (let d = 1; d <= daysInMonth; d++) {
+          const cell = document.createElement('div');
+          cell.className = 'cal-cell';
+          cell.innerText = d;
+
+          const current = new Date(year, month - 1, d);
+
+          if (current > today) {
+            // Futur: Faint text
+            cell.style.opacity = '0.3';
+          } else if (current < start) {
+            // Before Start: No mark, faint? User said "Before start day, no mark".
+            // Assuming standard text but no status class.
+            // Maybe simple opacity too? Or clean.
+            // User said "Mark None". So just number.
+          } else { // Active Range
+            const status = map[d];
+            if (status === 1) {
+              cell.classList.add('status-done');
+            } else if (current.getTime() === today.getTime()) {
+              // Today & Not Done
+              cell.classList.add('status-today-incomplete');
+            } else {
+              // Failed (0 or undefined) -> Gray Ring
+              cell.classList.add('status-failed');
+            }
+          }
+          container.appendChild(cell);
+        }
+      };
+
+      if (cache && cache[key]) {
+        renderGrid(cache[key]);
+      } else {
+        google.script.run.withSuccessHandler(data => {
+          if (!habitCalendarCache[currentDetailHabit.name]) habitCalendarCache[currentDetailHabit.name] = {};
+          habitCalendarCache[currentDetailHabit.name][key] = data;
+          if (currentDetailYear === year && currentDetailMonth === month) {
+            renderGrid(data);
+          }
+        }).getHabitCalendar(currentDetailHabit.name, year, month);
+      }
+    }
+
+    // --- SETTINGS LOGIC ---
+    let hsCurrentIcon = '';
+    const popularIcons = []; // Deprecated, using materialIconsList from icons.html
+
+    function openHabitSettings() {
+      if (!currentDetailHabit) return;
+      document.getElementById('habit-settings-modal').style.display = 'flex';
+      document.getElementById('hs-name').value = currentDetailHabit.name;
+
+      // Icon Init
+      hsCurrentIcon = currentDetailHabit.icon || '';
+      updateIconPreview();
+
+      // Populate Sections
+      const sel = document.getElementById('hs-section');
+      sel.innerHTML = '';
+      const sections = habitDataCache ? habitDataCache.sections : [];
+      sections.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.innerText = s.name;
+        if (s.id === currentDetailHabit.sectionId) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+
+    function updateIconPreview() {
+      const preview = document.getElementById('hs-icon-preview');
+      preview.innerHTML = hsCurrentIcon
+        ? `<span class="material-symbols-rounded" style="color:var(--primary);">${hsCurrentIcon}</span>`
+        : `<span class="material-symbols-rounded" style="color:#ccc;">add_reaction</span>`;
+    }
+
+    function closeHabitSettings() {
+      document.getElementById('habit-settings-modal').style.display = 'none';
+    }
+
+    function saveHabitDefinition() {
+      const newName = document.getElementById('hs-name').value;
+      const newSec = document.getElementById('hs-section').value;
+
+      if (!newName) return;
+
+      google.script.run.withSuccessHandler(() => {
+        closeHabitSettings();
+        closeHabitDetail(); // Close detail too to refresh
+        fetchHabits();
+      }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon);
+    }
+
+    // --- ICON PICKER ---
+    // --- ICON PICKER ---
+    function openIconPicker() {
+      document.getElementById('icon-picker-modal').style.display = 'flex';
+      renderIconGrid(materialIconsList.slice(0, 100));
+    }
+
+    function closeIconPicker() {
+      document.getElementById('icon-picker-modal').style.display = 'none';
+    }
+
+    function renderIconGrid(icons) {
+      const grid = document.getElementById('icon-grid');
+      grid.innerHTML = '';
+      icons.forEach(icon => {
+        const div = document.createElement('div');
+        div.style.cssText = 'height:50px; background:#f9f9f9; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer;';
+        div.onclick = () => selectIcon(icon);
+        div.innerHTML = `<span class="material-symbols-rounded" style="font-size:24px; color:#555;">${icon}</span>`;
+        grid.appendChild(div);
+      });
+    }
+
+    function selectIcon(icon) {
+      hsCurrentIcon = icon;
+      updateIconPreview();
+      closeIconPicker();
+    }
+
+    function filterIcons(query) {
+      if (!query) { document.getElementById('icon-grid').innerHTML = ''; renderIconGrid(materialIconsList.slice(0, 100)); return; }
+      const filtered = materialIconsList.filter(i => i.includes(query.toLowerCase())).slice(0, 100);
+      renderIconGrid(filtered);
+    }
+
+    let sectionSortable = null;
+
+    // --- SECTIONS ---
+    function openSectionManager() {
+      document.getElementById('section-manager-modal').style.display = 'flex';
+      renderSectionManagerList();
+
+      // Init Sortable
+      const el = document.getElementById('sm-list');
+      if (sectionSortable) sectionSortable.destroy();
+      sectionSortable = Sortable.create(el, {
+        handle: '.section-handle', // Drag handle class
+        animation: 150
+      });
+    }
+
+    function closeSectionManager() {
+      document.getElementById('section-manager-modal').style.display = 'none';
+      if (sectionSortable) {
+        sectionSortable.destroy();
+        sectionSortable = null;
+      }
+    }
+
+    function renderSectionManagerList() {
+      const root = document.getElementById('sm-list');
+      root.innerHTML = '';
+
+      const sections = habitDataCache ? habitDataCache.sections : [];
+
+      sections.forEach((s, idx) => {
+        const row = document.createElement('div');
+        row.className = 'section-row';
+        row.style.display = 'flex';
+        row.style.gap = '10px';
+        row.style.marginBottom = '10px';
+        row.dataset.id = s.id;
+
+        row.innerHTML = `
+    <div class="section-handle" style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
+    <input value="${s.name}" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
+      <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
+      `;
+        root.appendChild(row);
+      });
+    }
+
+    function toggleHabitSection(secId) {
+      const list = document.getElementById('list-habit-' + secId);
+      const wrapper = document.getElementById('sec-wrapper-' + secId);
+      const icon = wrapper.querySelector('.toggle-icon');
+
+      if (list.classList.contains('collapsed')) {
+        list.classList.remove('collapsed');
+        icon.style.transform = 'rotate(0deg)';
+      } else {
+        list.classList.add('collapsed');
+        icon.style.transform = 'rotate(180deg)';
+      }
+    }
+
+    function addSectionRow() {
+      const root = document.getElementById('sm-list');
+      const row = document.createElement('div');
+      row.className = 'section-row';
+      row.style.display = 'flex';
+      row.style.gap = '10px';
+      row.style.marginBottom = '10px';
+      row.dataset.id = ''; // New
+
+      row.innerHTML = `
+      <div class="section-handle" style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
+      <input value="新しいセクション" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
+        <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
+        `;
+      root.appendChild(row);
+    }
+
+    function deleteSectionRow(btn) {
+      btn.parentElement.remove();
+    }
+
+    function saveSections() {
+      const rows = Array.from(document.querySelectorAll('#sm-list > div'));
+      const newSections = rows.map((r, i) => {
+        const name = r.querySelector('input').value;
+        const id = r.dataset.id; // Empty if new
+        return { id, name, order: i + 1 };
+      });
+
+      const promises = newSections.map(s => {
+        return new Promise((resolve) => {
+          google.script.run.withSuccessHandler(resolve).saveHabitSection(s.id, s.name, s.order);
+        });
+      });
+
+      // Handle deletions? Logic above only saves current list.
+      // Deletions need separate handling or backend full sync.
+      // Current backend `saveHabitSection` is update/add. `delete` is separate API.
+      // Frontend doesn't track deleted IDs.
+      // Hack: Just save what's there. Deleted ones remain in DB as orphans (not in list if I replace logic? No).
+      // Real solution: Track text deletions?
+      // For now, user just asked to "Manage Sections". 
+      // If I remove them from UI, they disappear from UI next reload?
+      // No, Backend `getHabitSections` returns DB rows.
+      // If I don't delete them in DB, they return.
+      // I need `deleteHabitSection`.
+      // I should track IDs present at start vs end.
+
+      const originalIds = (habitDataCache ? habitDataCache.sections : []).map(s => s.id);
+      const currentIds = newSections.map(s => s.id).filter(id => id);
+
+      const toDelete = originalIds.filter(id => !currentIds.includes(id));
+
+      const delPromises = toDelete.map(id => {
+        return new Promise((resolve) => {
+          google.script.run.withSuccessHandler(resolve).deleteHabitSection(id);
+        });
+      });
+
+      Promise.all([...promises, ...delPromises]).then(() => {
+        closeSectionManager();
+        fetchHabits();
+      });
+    }
+    function runMigration() {
+      if (!confirm('Migrate Data?')) return;
+      const btn = document.getElementById('migration-btn');
+      btn.innerText = 'Migrating...';
+      google.script.run.withSuccessHandler((r) => {
+        alert('Result: ' + r);
+        console.warn("MIGRATION_RESULT:::" + r);
+        btn.innerText = 'Done';
+      }).migrateHabitDefinitions();
+    }
+  </script>
+  <?!= include('icons'); ?>
+</body>
+
+<style>
+  .cal-cell.status-failed {
+    background: #F4F4F4;
+    /* Light Gray Solid */
+    color: #555;
+    border: none;
+    /* No Ring */
+  }
+
+  /* Today Unfinished */
+  .cal-cell.status-today-incomplete {
+    background: #F4F4F4;
+    /* Matched Light Gray */
+    color: var(--warm-orange);
+    /* Orange Text */
+    border: none;
+    font-weight: 800;
+  }
+
+  .task-wrapper {
+    position: relative;
+    margin-bottom: 15px;
+    overflow: hidden;
+    /* Hide actions until swipe */
+    border-radius: 12px;
+    background: transparent;
+    /* Wrapper bg */
+  }
+
+  .task-item {
+    /* Ensure it sits on top */
+    position: relative;
+    z-index: 2;
+    background: #FFF;
+    /* solid bg to cover actions */
+    transition: transform 0.3s ease;
+    margin-bottom: 0 !important;
+    /* Wrapper creates spacing */
+  }
+
+  .task-actions {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 140px;
+    display: flex;
+    z-index: 1;
+  }
+
+  .action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: white;
+  }
+
+  .action-btn.archive {
+    background-color: #64B5F6;
+    /* Blue for Archive */
+  }
+
+  .action-btn.unarchive {
+    background-color: #8D6E63;
+    /* Brown/Gray for Restore */
+  }
+
+  .action-btn.delete {
+    background-color: #EF5350;
+    /* Red for Delete */
+  }
+
+  /* Small Add Button in Header */
+  .add-btn-small {
+    font-size: 20px;
+    color: #777;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.2s;
+  }
+
+  .add-btn-small:active {
+    background: #eee;
+  }
+</style>
+
+</html>
