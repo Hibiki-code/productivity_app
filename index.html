@@ -316,13 +316,10 @@
     }
 
     .section-container.expanded {
-      background: #FFFFFF;
-      /* White card bg when expanded */
-      /* box-shadow: 0 2px 8px rgba(0,0,0,0.05); Optional: Slight shadow for lift */
+      background: transparent;
+      /* Transparent to show gaps */
       padding-bottom: 5px;
-      /* Space at bottom */
       margin-bottom: 12px;
-      /* Extra space between cards */
     }
 
     .section-header {
@@ -332,17 +329,22 @@
       padding: 12px 14px;
       /* Slightly more padding */
       background: #FFFFFF;
-      border-radius: 12px;
+      border-radius: 12px !important;
       /* Full radius by default */
       cursor: pointer;
       font-size: 0.95em;
+      margin-bottom: 10px;
+      /* Gap between header and first task */
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      /* Restore shadow for card look */
     }
 
     .section-container.expanded .section-header {
-      border-bottom-left-radius: 0;
-      border-bottom-right-radius: 0;
-      /* Separator line between header and content? */
-      border-bottom: 1px solid #f5f5f5;
+      /* Keep rounded corners */
+      border-bottom-left-radius: 12px;
+      border-bottom-right-radius: 12px;
+      /* No Separator line */
+      border-bottom: none;
     }
 
     .list-content {
@@ -1220,12 +1222,17 @@
       let isDragging = false;
       const limit = -140; // Width of 2 buttons
 
+      // Helper to find actions
+      const wrapper = el.parentElement;
+      const actionEl = wrapper ? wrapper.querySelector('.task-actions') : null;
+
       el.addEventListener('touchstart', e => {
         startX = e.touches[0].clientX;
         el.style.transition = 'none';
 
-        // If other rows are open, close them?
-        // Optional: Multi-swipe vs Single focus. Single focus is safer.
+        // Reveal actions on touch start
+        if (actionEl) actionEl.style.opacity = '1';
+
         closeAllSwipes(el);
       }, { passive: true });
 
@@ -1233,27 +1240,24 @@
         const x = e.touches[0].clientX;
         const diff = x - startX;
 
-        // Dead Zone (15px) to prevent accidental jitters
+        // Dead Zone
         if (Math.abs(diff) < 15) return;
 
         // Re-calc:
         if (el.classList.contains('swiped-open')) {
-          // Already at limit (-140)
-          // Diff > 0 means closing
-          if (diff > 0) {
+          if (diff > 0) { // closing
             currentTranslate = limit + diff;
             if (currentTranslate > 0) currentTranslate = 0;
             el.style.transform = `translateX(${currentTranslate}px)`;
             isDragging = true;
           }
         } else {
-          // Closed (0)
-          // Diff < 0 means opening
-          if (diff < 0) {
+          if (diff < 0) { // opening
             currentTranslate = diff;
-            // Resistance logic
             if (currentTranslate < limit) currentTranslate = limit - 10;
             el.style.transform = `translateX(${currentTranslate}px)`;
+            // Ensure visible if opened from closed state
+            if (actionEl) actionEl.style.opacity = '1';
             isDragging = true;
           }
         }
@@ -1263,27 +1267,22 @@
         el.style.transition = 'transform 0.3s ease';
         isDragging = false;
 
-        // Thresholds
-        const openThreshold = -60; // Must drag at least 60px left to open
-        const closeThreshold = limit + 40; // closing...
+        const openThreshold = -60;
+        const closeThreshold = limit + 40;
 
         if (el.classList.contains('swiped-open')) {
-          // Closing Logic
           if (currentTranslate > closeThreshold) {
             closeSwipe(el);
           } else {
             openSwipe(el, limit);
           }
         } else {
-          // Opening Logic
           if (currentTranslate < openThreshold) {
             openSwipe(el, limit);
           } else {
             closeSwipe(el);
           }
         }
-
-        // Reset
         currentTranslate = 0;
       });
     }
@@ -1291,11 +1290,29 @@
     function openSwipe(el, limit) {
       el.style.transform = `translateX(${limit}px)`;
       el.classList.add('swiped-open');
+      const wrapper = el.parentElement;
+      if (wrapper) {
+        const act = wrapper.querySelector('.task-actions');
+        if (act) act.style.opacity = '1';
+      }
     }
 
     function closeSwipe(el) {
       el.style.transform = `translateX(0)`;
       el.classList.remove('swiped-open');
+
+      // Hide actions after transition to prevent bleed
+      const wrapper = el.parentElement;
+      if (wrapper) {
+        const act = wrapper.querySelector('.task-actions');
+        if (act) {
+          setTimeout(() => {
+            if (!el.classList.contains('swiped-open')) {
+              act.style.opacity = '0';
+            }
+          }, 300);
+        }
+      }
     }
 
     function closeAllSwipes(exceptEl) {
@@ -1425,6 +1442,82 @@
         // End Animation
         item.classList.remove('fade-collapse');
       }, 500);
+    }
+
+    function addSwipeLogic(el) {
+      let startX = 0;
+      let currentX = 0;
+      let isSwiping = false;
+      let startTranslate = 0; // Capture state at touchstart
+
+      // Actions are sibling. We need to find them relative to the wrapper.
+      // Since 'el' is created before append, parent might be null initially.
+      // We resolve 'actions' lazily on touchstart.
+      let actions = null;
+
+      el.addEventListener('touchstart', e => {
+        if (!actions && el.parentElement) {
+          actions = el.parentElement.querySelector('.task-actions');
+        }
+
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        isSwiping = true;
+
+        startTranslate = currentX;
+
+        el.style.transition = 'none';
+        if (actions) actions.style.opacity = '1'; // Reveal
+      }, { passive: true });
+
+      el.addEventListener('touchmove', e => {
+        if (!isSwiping) return;
+        const touch = e.touches[0];
+        const diff = touch.clientX - startX;
+
+        // Dead zone 10px (smaller)
+        if (Math.abs(diff) < 10 && startTranslate === 0) return;
+
+        // Calculate potential position
+        let newX = startTranslate + diff;
+
+        // Clamp
+        if (newX > 0) newX = 0;
+        if (newX < -150) newX = -150;
+
+        // Apply
+        currentX = newX;
+        el.style.transform = `translateX(${currentX}px)`;
+
+      }, { passive: true });
+
+      const closeSwipe = () => {
+        el.style.transition = 'transform 0.3s ease';
+        el.style.transform = 'translateX(0)';
+        currentX = 0;
+        isSwiping = false;
+        setTimeout(() => { if (actions && currentX === 0) actions.style.opacity = '0'; }, 300);
+      };
+
+      const openSwipe = () => {
+        el.style.transition = 'transform 0.3s ease';
+        el.style.transform = 'translateX(-140px)';
+        currentX = -140;
+        isSwiping = false;
+        if (actions) actions.style.opacity = '1';
+      };
+
+      el.addEventListener('touchend', e => {
+        if (!isSwiping) return;
+
+        // Threshold logic
+        // If we are mostly open, snap open
+        if (currentX < -60) {
+          openSwipe();
+        } else {
+          closeSwipe();
+        }
+      });
     }
 
     function saveTask() {
@@ -2192,23 +2285,34 @@
 
   .task-wrapper {
     position: relative;
-    margin-bottom: 15px;
+    margin-bottom: 12px;
+    /* Restore vertical gap */
+    overflow: visible;
+    /* Allow actions to be seen when swiped (controlled by opacity) */
+    /* Wait, if visible, bleed happens? No, opacity 0 handles bleed. */
+    /* Actually overflow: hidden clips 12px corners? Yes. */
+    /* Let's keep overflow hidden to clip the actions to the card shape if opacity fails? */
+    /* No, if we want actions to slide out? */
+    /* Actions are inside wrapper. */
     overflow: hidden;
-    /* Hide actions until swipe */
     border-radius: 12px;
+    /* Restore rounded corners */
     background: transparent;
-    /* Wrapper bg */
+    border-bottom: none;
+    /* No separator */
   }
 
   .task-item {
     /* Ensure it sits on top */
     position: relative;
     z-index: 2;
-    background: #FFF;
+    background: #FFF !important;
     /* solid bg to cover actions */
     transition: transform 0.3s ease;
     margin-bottom: 0 !important;
     /* Wrapper creates spacing */
+    padding: 12px 14px;
+    /* Match header */
   }
 
   .task-actions {
@@ -2219,6 +2323,9 @@
     width: 140px;
     display: flex;
     z-index: 1;
+    opacity: 0;
+    /* HIDDEN BY DEFAULT TO PREVENT BLEED */
+    transition: opacity 0.1s ease;
   }
 
   .action-btn {
