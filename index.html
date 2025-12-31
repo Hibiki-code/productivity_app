@@ -411,10 +411,70 @@
       background: #FFF !important;
     }
 
-    /* Swipe actions might need bg */
-    .task-actions {
-      z-index: 0;
+    /* Swipe actions */
+    /* Swipe actions */
+    .task-wrapper {
+      position: relative;
+      overflow: visible;
+      /* Ensure nothing is clipped */
     }
+
+    .task-actions {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      z-index: 1;
+      /* Above base, below item */
+      padding: 0 15px;
+      /* Spacing from edge */
+      box-sizing: border-box;
+    }
+
+    .task-actions.left {
+      justify-content: flex-start;
+    }
+
+    .task-actions.right {
+      justify-content: flex-end;
+    }
+
+    .task-item {
+      position: relative;
+      z-index: 10;
+      /* Definitely above actions */
+    }
+
+    .task-actions .action-btn {
+      pointer-events: auto;
+      padding: 0 15px;
+      height: 100%;
+      border-radius: 8px;
+      /* Slightly rounded */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 20px;
+      box-shadow: none;
+      margin-left: 5px;
+    }
+
+    .delete-btn {
+      background: #FF5252;
+    }
+
+    .archive-btn {
+      background: #5E6CD8;
+    }
+
+    .unarchive {
+      background: #8D6E63;
+    }
+
+    /* For Archive List */
 
     border-radius: 50%;
     }
@@ -1291,13 +1351,10 @@
         const d = document.createElement('div');
         d.className = 'highlight-diamond';
         d.innerText = '💎';
-        d.style.cssText = 'font-size:18px; margin-right:5px;';
-        item.prepend(d);
+        google.script.run.withSuccessHandler(() => {
+          fetchTasks();
+        }).setDailyHighlight(id);
       }
-
-      google.script.run.withSuccessHandler(() => {
-        fetchTasks();
-      }).setDailyHighlight(id);
     }
 
     /* --- TASK CREATION --- */
@@ -1305,39 +1362,48 @@
       const list = document.getElementById(listId);
       if (!list) return;
 
+      const doneClass = t.status === '完了' ? 'done' : '';
+      const checkMark = t.status === '完了' ? '✓' : '';
+      const highlightIcon = t.isHighlight ? `<div class="highlight-diamond" style="font-size:18px; margin-right:5px;">💎</div>` : '';
+      const isCompleted = (t.status === '完了');
+
       const div = document.createElement('div');
       div.className = 'task-wrapper';
-
-      const isCompleted = (t.status === '完了');
-      const diamondHTML = t.isHighlight ? `<div class="highlight-diamond" style="font-size:18px; margin-right:5px;">💎</div>` : '';
+      div.dataset.id = t.id;
 
       div.innerHTML = `
-        <div class="task-actions">
-           <div class="action-btn archive" onclick="doArchiveTask('${t.id}')">📥</div>
-           <div class="action-btn delete" onclick="doDeleteTask('${t.id}')">❌</div>
+        <div class="task-actions right">
+           <div class="action-btn archive-btn" onclick="doArchiveTask('${t.id}')">
+             <span class="material-symbols-rounded">archive</span>
+           </div>
+           <div class="action-btn delete-btn" style="margin-left: 10px;" onclick="doDeleteTask('${t.id}')">
+             <span class="material-symbols-rounded">delete</span>
+           </div>
         </div>
-        
-        <div class="task-item${isCompleted ? ' done' : ''}" data-id="${t.id}" data-prio="${t.importance}" onclick="handleTaskTap(event, {id:'${t.id}'})">
-           <div class="task-content" style="flex:1; display:flex; align-items:center;">
-             ${diamondHTML}
-             <div style="flex:1;">
-               <div class="task-header" style="display:flex; align-items:center; gap:12px; padding-bottom:4px;" >
-                   <div class="task-name" style="flex:1">${t.name}</div>
-                   <div class="task-icon" style="color:#CCC; font-size:0.8em; padding:10px;" onclick="event.stopPropagation(); toggleDetails(this.parentElement.parentElement.parentElement.parentElement)">⋁</div>
-               </div>
-               <div class="task-meta">
-                 ${t.dueDate ? `<span style="margin-right:8px;">📅 ${t.dueDate}</span>` : ''}
-                 ${t.estTime ? `<span>⏱ ${t.estTime}</span>` : ''}
-               </div>
-               <div class="task-details" style="display:none; padding: 10px 0 0 10px; color:#666; font-size:0.85em; border-top:1px solid #f0f0f0; margin-top:8px;">
-                   <div style="margin-bottom:4px;">📅 期限: ${t.dueDate || 'なし'}</div>
-                   <div>📝 ${t.description || '詳細なし'}</div>
-               </div>
+
+        <div class="task-item ${doneClass}" data-id="${t.id}" data-prio="${t.importance}" onclick="handleTaskTap(event, this)">
+           <div class="task-check" 
+                ontouchstart="toggleTask(event, this); event.preventDefault();" 
+                onclick="if(!event.defaultPrevented) toggleTask(event, this);">
+             ${checkMark}
+           </div>
+           
+           <div class="task-content">
+             <div class="test-tag"></div>
+             ${highlightIcon}
+             <div class="task-name">${t.name}</div>
+             <div class="task-meta">
+                ${t.dueDate ? `<span class="due-date">📅 ${t.dueDate.slice(5)}</span>` : ''}
+                ${t.estTime ? `<span class="est-time">⏱ ${t.estTime}</span>` : ''}
              </div>
            </div>
            
-           <div class="check-area" onclick="event.stopPropagation(); toggleTask(event, this.querySelector('.check-circle'))">
-             <div class="check-circle">${isCompleted ? '✓' : ''}</div>
+           <!-- Details -->
+           <div class="task-details">
+             <div class="detail-row">
+               <span class="material-symbols-rounded">sticky_note_2</span>
+               <p>${t.description || '詳細なし'}</p>
+             </div>
            </div>
         </div>
       `;
@@ -1373,99 +1439,47 @@
       let startX = 0;
       let currentTranslate = 0;
       let isDragging = false;
-      const limit = -140; // Width of 2 buttons
-
-      // Helper to find actions
-      const wrapper = el.parentElement;
-      const actionEl = wrapper ? wrapper.querySelector('.task-actions') : null;
 
       el.addEventListener('touchstart', e => {
         startX = e.touches[0].clientX;
         el.style.transition = 'none';
-
-        // Reveal actions on touch start
-        if (actionEl) actionEl.style.opacity = '1';
-
-        closeAllSwipes(el);
+        closeAllSwipes(el); // Standard behavior
       }, { passive: true });
 
       el.addEventListener('touchmove', e => {
-        const x = e.touches[0].clientX;
-        const diff = x - startX;
+        const currentX = e.touches[0].clientX;
+        const diff = currentX - startX;
 
-        // Dead Zone
-        if (Math.abs(diff) < 15) return;
+        // Dead Zone & Direction Lock (Only allow left swipe)
+        if (diff > 0 && !el.classList.contains('swiped-open')) return;
+        if (Math.abs(diff) < 10) return;
 
-        // Re-calc:
-        if (el.classList.contains('swiped-open')) {
-          if (diff > 0) { // closing
-            currentTranslate = limit + diff;
-            if (currentTranslate > 0) currentTranslate = 0;
-            el.style.transform = `translateX(${currentTranslate}px)`;
-            isDragging = true;
-          }
-        } else {
-          if (diff < 0) { // opening
-            currentTranslate = diff;
-            if (currentTranslate < limit) currentTranslate = limit - 10;
-            el.style.transform = `translateX(${currentTranslate}px)`;
-            // Ensure visible if opened from closed state
-            if (actionEl) actionEl.style.opacity = '1';
-            isDragging = true;
-          }
-        }
+        // Simple Translation (Limit to negative or zero)
+        const trans = Math.min(0, diff);
+        el.style.transform = `translateX(${trans}px)`;
+        currentTranslate = trans;
+        isDragging = true;
       }, { passive: true });
 
       el.addEventListener('touchend', e => {
-        el.style.transition = 'transform 0.3s ease';
+        el.style.transition = 'transform 0.2s ease-out';
         isDragging = false;
 
-        const openThreshold = -60;
-        const closeThreshold = limit + 40;
-
-        if (el.classList.contains('swiped-open')) {
-          if (currentTranslate > closeThreshold) {
-            closeSwipe(el);
-          } else {
-            openSwipe(el, limit);
-          }
+        // Snap Logic - Right Side Only
+        if (currentTranslate < -60) {
+          // Open Right (reveals buttons)
+          el.style.transform = 'translateX(-120px)'; // Enough for 2 buttons
+          el.classList.add('swiped-open');
         } else {
-          if (currentTranslate < openThreshold) {
-            openSwipe(el, limit);
-          } else {
-            closeSwipe(el);
-          }
+          closeSwipe(el);
         }
         currentTranslate = 0;
       });
     }
 
-    function openSwipe(el, limit) {
-      el.style.transform = `translateX(${limit}px)`;
-      el.classList.add('swiped-open');
-      const wrapper = el.parentElement;
-      if (wrapper) {
-        const act = wrapper.querySelector('.task-actions');
-        if (act) act.style.opacity = '1';
-      }
-    }
-
     function closeSwipe(el) {
       el.style.transform = `translateX(0)`;
       el.classList.remove('swiped-open');
-
-      // Hide actions after transition to prevent bleed
-      const wrapper = el.parentElement;
-      if (wrapper) {
-        const act = wrapper.querySelector('.task-actions');
-        if (act) {
-          setTimeout(() => {
-            if (!el.classList.contains('swiped-open')) {
-              act.style.opacity = '0';
-            }
-          }, 300);
-        }
-      }
     }
 
     function closeAllSwipes(exceptEl) {
@@ -1495,7 +1509,7 @@
     }
 
     function removeEl(id) {
-      const wrapper = document.querySelector(`.task-wrapper[data-id="${id}"]`);
+      const wrapper = document.querySelector(`.task - wrapper[data - id="${id}"]`);
       if (wrapper) {
         wrapper.style.height = wrapper.offsetHeight + 'px';
         wrapper.style.transition = 'height 0.3s, opacity 0.3s';
@@ -1545,56 +1559,76 @@
     }
 
     function toggleTask(e, checkEl) {
-      e.stopPropagation(); // Prevent opening details
+      e.stopPropagation();
 
       const item = checkEl.closest('.task-item');
-      // Toggle class first for immediate visual feedback (color, etc)
-      const isDone = item.classList.toggle('done');
-      const rowId = item.dataset.id; // UUID
+      if (!item) return;
+
+      const wrapper = item.closest('.task-wrapper') || item;
+      const id = item.dataset.id;
+      // Determine new status (if currently done, make undone)
+      const isDoneCurrently = item.classList.contains('done');
+      const isDoneNew = !isDoneCurrently;
+
+      // 1. Immediate Visual Update
+      if (isDoneNew) {
+        item.classList.add('done');
+        checkEl.innerText = '✓';
+      } else {
+        item.classList.remove('done');
+        checkEl.innerText = '';
+      }
+
+      // 2. Immediate List Move (No Animation Delay)
       const p = item.dataset.prio || 0;
       const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
       const key = map[p];
 
-      checkEl.innerText = isDone ? '✓' : '';
+      // Update Counts
+      const countEl = document.getElementById('count-' + key);
+      const doneCountEl = document.getElementById('count-done');
+      let val = parseInt(countEl.innerText.match(/\d+/)[0]) || 0;
+      let doneVal = parseInt(doneCountEl.innerText.match(/\d+/)[0]) || 0;
 
-      // Sync Backend
-      google.script.run.withSuccessHandler(() => {
-        // synced
-      }).updateTaskStatus(rowId, isDone ? '完了' : '未完了');
-
-      // Start Animation
-      item.classList.add('fade-collapse');
-
-      setTimeout(() => {
-        // Update Counts
-        const countEl = document.getElementById('count-' + key);
-        const doneCountEl = document.getElementById('count-done');
-
-        let val = parseInt(countEl.innerText.match(/\d+/)[0]) || 0;
-        let doneVal = parseInt(doneCountEl.innerText.match(/\d+/)[0]) || 0;
-
-        // Identify Element to Move (Wrapper if exists, else Item)
-        const moveTarget = item.closest('.task-wrapper') || item;
-
-        if (isDone) {
-          // Move to Done
-          document.querySelector('#list-done > div').prepend(moveTarget);
-          countEl.innerText = val > 0 ? val - 1 : 0;
+      if (isDoneNew) {
+        // Move to Done Top
+        const doneContainer = document.querySelector('#list-done > div');
+        if (doneContainer) {
+          doneContainer.prepend(wrapper);
+          countEl.innerText = Math.max(0, val - 1);
           doneCountEl.innerText = doneVal + 1;
-        } else {
-          // Move back
-          document.querySelector('#list-' + key + ' > div').appendChild(moveTarget);
-          countEl.innerText = val + 1;
-          doneCountEl.innerText = doneVal > 0 ? doneVal - 1 : 0;
+          const secDone = document.getElementById('sec-done');
+          if (secDone) secDone.style.display = 'block';
         }
+      } else {
+        // Move back to List
+        const sourceContainer = document.querySelector('#list-' + key + ' > div');
+        if (sourceContainer) {
+          sourceContainer.appendChild(wrapper);
+          countEl.innerText = val + 1;
+          doneCountEl.innerText = Math.max(0, doneVal - 1);
 
-        // Show/Hide Done Section
-        const doneList = document.querySelector('#list-done > div');
-        document.getElementById('sec-done').style.display = doneList.children.length > 0 ? 'block' : 'none';
+          // Hide done sec if empty?
+          const doneContainer = document.querySelector('#list-done > div');
+          if (doneContainer && doneContainer.children.length === 0) {
+            const secDone = document.getElementById('sec-done');
+            if (secDone) secDone.style.display = 'none';
+          }
+        }
+      }
 
-        // End Animation
-        item.classList.remove('fade-collapse');
-      }, 500);
+      // 3. Background Sync
+      google.script.run
+        .withSuccessHandler((res) => {
+          console.log('Sync Success', res);
+        })
+        .withFailureHandler((err) => {
+          console.error('Sync Failed', err);
+          alert('変更を保存できませんでした。再読み込みしてください。');
+          // Revert logic is complex due to moves, simple reload might be safer or just alert.
+          // For now, let's just alert.
+        })
+        .updateTaskStatus(id, isDoneNew ? '完了' : '未完了');
     }
 
     function addSwipeLogic(el) {
@@ -1743,12 +1777,12 @@
 
         const count = items.length;
         sec.innerHTML = `
-           <div class="section-header" onclick="toggleSection('${listId}')">
+          <div class="section-header" onclick="toggleSection('${listId}')">
              <div style="color:${isDone ? '#AAA' : '#555'}; font-weight:bold;">${title} (${count})</div>
              <div class="toggle-icon">∧</div>
-           </div>
-           <div id="list-${listId}" class="list-content"></div>
-         `;
+          </div>
+          <div id="list-${listId}" class="list-content"></div>
+        `;
         container.appendChild(sec);
 
         const listDiv = sec.querySelector(`#list-${listId}`);
@@ -1759,17 +1793,17 @@
           const wrapper = document.createElement('div');
           wrapper.className = 'task-wrapper';
           wrapper.innerHTML = `
-             <div class="task-actions">
+          <div class="task-actions">
                <div class="action-btn unarchive" onclick="doUnarchiveTask('${t.id}')" style="background:#8D6E63;">↩</div>
                <div class="action-btn delete" onclick="doDeleteTask('${t.id}')">❌</div>
-             </div>
-           <div class="task-item" style="background:#F9F9F9; opacity:0.9;">
-              <div style="flex:1;">
-                 <div style="font-weight:bold; color:#555; text-decoration:${isDone ? 'line-through' : 'none'};">${t.name}</div>
-                 <div style="font-size:0.8em; color:#999;">${t.dueDate || ''}</div>
-              </div>
-           </div>
-         `;
+          </div>
+          <div class="task-item" style="background:#F9F9F9; opacity:0.9;">
+            <div style="flex:1;">
+              <div style="font-weight:bold; color:#555; text-decoration:${isDone ? 'line-through' : 'none'};">${t.name}</div>
+              <div style="font-size:0.8em; color:#999;">${t.dueDate || ''}</div>
+            </div>
+          </div>
+        `;
           const item = wrapper.querySelector('.task-item');
           addSwipeLogic(item);
           innerDiv.appendChild(wrapper);
@@ -1819,7 +1853,7 @@
       habitDataCache = data;
       if (data.serverDate) { todayYear = data.serverDate.year; todayMonth = data.serverDate.month; }
       if (data.monthlyLogs) {
-        const key = `${todayYear}-${todayMonth}`;
+        const key = `${todayYear} -${todayMonth} `;
         Object.keys(data.monthlyLogs).forEach(hName => {
           if (!habitCalendarCache[hName]) habitCalendarCache[hName] = {};
           habitCalendarCache[hName][key] = data.monthlyLogs[hName];
@@ -1844,14 +1878,14 @@
         div.className = 'section-habit';
         div.id = 'sec-wrapper-' + sec.id;
         div.innerHTML = `
-            <div class="section-header" onclick="toggleHabitSection('${sec.id}')">
+          <div class="section-header" onclick="toggleHabitSection('${sec.id}')">
                <div>${sec.name} <span id="count-${sec.id}" style="font-size:0.9em; opacity:0.8;"></span></div>
                <div class="toggle-icon">∧</div>
-            </div>
-            <div id="list-habit-${sec.id}" class="habit-list-container">
-               <div><!-- Inner --></div>
-            </div>
-          `;
+          </div>
+          <div id="list-habit-${sec.id}" class="habit-list-container">
+            <div><!-- Inner --></div>
+          </div>
+        `;
         root.appendChild(div);
       });
 
@@ -1904,7 +1938,7 @@
       }
 
       div.innerHTML = `
-           <div class="habit-icon">${iconContent}</div>
+          <div class="habit-icon">${iconContent}</div>
            <div class="habit-info">
               <div class="habit-name">${h.name}</div>
            </div>
@@ -2096,10 +2130,10 @@
       if (descEl) descEl.innerText = habit.benefit || '習慣を続けて目標を達成しましょう';
 
       const streakEl = document.getElementById('detail-streak');
-      if (streakEl) streakEl.innerText = `${habit.streak || 0}日`;
+      if (streakEl) streakEl.innerText = `${habit.streak || 0} 日`;
 
       const rateEl = document.getElementById('detail-rate');
-      if (rateEl) rateEl.innerText = `${habit.rate30 || 0}%`;
+      if (rateEl) rateEl.innerText = `${habit.rate30 || 0}% `;
 
       // Journal Logs Logic
       const logContainer = document.getElementById('detail-journal-logs-container');
@@ -2134,9 +2168,9 @@
         const card = document.createElement('div');
         card.style.cssText = 'background:rgba(255,255,255,0.8); border-radius:12px; padding:15px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);';
         card.innerHTML = `
-             <div style="font-size:12px; color:#888; margin-bottom:5px;">${log.date}</div>
-             <div style="font-size:14px; color:#333; white-space:pre-wrap;">${log.text}</div>
-          `;
+          < div style = "font-size:12px; color:#888; margin-bottom:5px;" > ${log.date}</div >
+            <div style="font-size:14px; color:#333; white-space:pre-wrap;">${log.text}</div>
+        `;
         container.appendChild(card);
       });
     }
@@ -2153,7 +2187,7 @@
       if (depth <= 0) return;
       let y = year, m = month;
       if (m < 1) { m = 12; y--; }
-      const key = `${y}-${m}`;
+      const key = `${y} -${m} `;
 
       if (habitCalendarCache[habitName] && habitCalendarCache[habitName][key]) {
         loadMonthInBackground(habitName, y, m - 1, depth - 1);
@@ -2190,7 +2224,7 @@
       if (!currentDetailHabit) return;
       const year = currentDetailYear;
       const month = currentDetailMonth;
-      document.getElementById('cal-month-label').innerText = `${year}年 ${month}月`;
+      document.getElementById('cal-month-label').innerText = `${year}年 ${month} 月`;
 
       // Arrow Style
       const btnNext = document.getElementById('btn-next-month');
@@ -2205,7 +2239,7 @@
       const container = document.getElementById('detail-cal-grid');
       container.innerHTML = 'Loading...';
 
-      const key = `${year}-${month}`;
+      const key = `${year} -${month} `;
       const cache = habitCalendarCache[currentDetailHabit.name];
 
       const renderGrid = (map) => {
@@ -2302,8 +2336,8 @@
     function updateIconPreview() {
       const preview = document.getElementById('hs-icon-preview');
       preview.innerHTML = hsCurrentIcon
-        ? `<span class="material-symbols-rounded" style="color:var(--primary);">${hsCurrentIcon}</span>`
-        : `<span class="material-symbols-rounded" style="color:#ccc;">add_reaction</span>`;
+        ? `< span class="material-symbols-rounded" style = "color:var(--primary);" > ${hsCurrentIcon}</span > `
+        : `< span class="material-symbols-rounded" style = "color:#ccc;" > add_reaction</span > `;
     }
 
     function closeHabitSettings() {
@@ -2341,7 +2375,7 @@
         const div = document.createElement('div');
         div.style.cssText = 'height:50px; background:#f9f9f9; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer;';
         div.onclick = () => selectIcon(icon);
-        div.innerHTML = `<span class="material-symbols-rounded" style="font-size:24px; color:#555;">${icon}</span>`;
+        div.innerHTML = `< span class="material-symbols-rounded" style = "font-size:24px; color:#555;" > ${icon}</span > `;
         grid.appendChild(div);
       });
     }
@@ -2397,10 +2431,10 @@
         row.dataset.id = s.id;
 
         row.innerHTML = `
-    <div class="section-handle" style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
-    <input value="${s.name}" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
-      <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
-      `;
+          < div class="section-handle" style = "cursor:move; padding-top:5px; padding-right:5px; color:#aaa;" >☰</div >
+            <input value="${s.name}" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
+              <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
+              `;
         root.appendChild(row);
       });
     }
@@ -2429,10 +2463,10 @@
       row.dataset.id = ''; // New
 
       row.innerHTML = `
-      <div class="section-handle" style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
-      <input value="新しいセクション" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
-        <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
-        `;
+              <div class="section-handle" style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
+              <input value="新しいセクション" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
+                <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
+                `;
       root.appendChild(row);
     }
 
