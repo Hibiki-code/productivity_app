@@ -2,10 +2,10 @@
  * Config
  */
 const CONFIG = {
-  SPREADSHEET_ID: '1-5unPqh1vhRY1thP7iWIasBy-OVh6iAB2yHaljzxL0Q', // Habit DB
-  TASK_DB_ID: '1CSw4AOw9CbyhcKNHZKAyW95sQi0knS43aH9u_bYrjSc', // New Task DB
+  SPREADSHEET_ID: '1-5unPqh1vhRY1thP7iWIasBy-OVh6iAB2yHaljzxL0Q', // Main DB (Habits + Tasks)
+  TASK_DB_ID: '1-5unPqh1vhRY1thP7iWIasBy-OVh6iAB2yHaljzxL0Q', // Unified
   SHEET_NAMES: {
-    TASKS: 'タスク',
+    TASKS: 'タスクマスタ', // Updated from 'タスク' to match actual sheet
     HABIT_LOG: '習慣記録１',
     HABIT_DETAILS: '習慣の内容説明',
     HABIT_STATS: '習慣の統計データ',
@@ -52,10 +52,45 @@ function include(filename) {
 /**
  * TASKS API
  */
+/**
+ * Helper to get sheet with fuzzy name matching (ignoring whitespace)
+ */
+function getSheetByNameFuzzy(db, name) {
+  let sheet = db.getSheetByName(name);
+  if (sheet) return sheet;
+  
+  // Fallback: Fuzzy Search
+  const sheets = db.getSheets();
+  const targetClean = name.trim();
+  for (const s of sheets) {
+     if (s.getName().trim() === targetClean) {
+        return s;
+     }
+  }
+  return null;
+}
+
 function getTasks() {
   const db = SpreadsheetApp.openById(CONFIG.TASK_DB_ID);
-  const sheet = db.getSheetByName('タスクマスタ');
-  if (!sheet) return [];
+  const sheetName = CONFIG.SHEET_NAMES.TASKS;
+  const sheet = getSheetByNameFuzzy(db, sheetName);
+  
+  if (!sheet) {
+    
+    if (!sheet) {
+        const allSheets = sheets.map(s => s.getName());
+        console.error(`Sheet '${sheetName}' not found. Available: ${allSheets.join(', ')}`);
+        
+        // Return debug task
+        return [{
+          id: 'debug-error',
+          name: `エラー: シート「${sheetName}」が見つかりません`, 
+          description: `【現在存在するシート一覧】\n${allSheets.join('\n')}\n\nシート名に余分なスペースが含まれている可能性があります。確認してください。`,
+          status: '未完了',
+          importance: 3
+        }];
+    }
+  }
   
   const data = sheet.getDataRange().getValues();
   if (data.length < 2) return [];
@@ -90,7 +125,6 @@ function getTasks() {
       status: isDone ? '完了' : '未完了',
       // Highlight Logic
       // Col 8 = DailyHighlight, Col 9 = HighlightDay
-      // Simplified: If DailyHighlight is true, trust it (Backend sets it for Today)
       isHighlight: (row[8] === true || row[8] === 'TRUE')
     };
   }).filter(t => t && t.name);
@@ -241,7 +275,7 @@ function getArchivedTasks() {
 
 function archiveTask(taskId) {
   const db = SpreadsheetApp.openById(CONFIG.TASK_DB_ID);
-  const masterSheet = db.getSheetByName('タスクマスタ');
+  const masterSheet = getSheetByNameFuzzy(db, CONFIG.SHEET_NAMES.TASKS);
   if (!masterSheet) return 'No Master Sheet';
 
   const finder = masterSheet.getRange("A:A").createTextFinder(taskId).matchEntireCell(true);
@@ -329,7 +363,7 @@ function ensureTodayHighlightLog(db) {
 function setDailyHighlight(taskId) {
   try {
     const db = SpreadsheetApp.openById(CONFIG.TASK_DB_ID);
-    const masterSheet = db.getSheetByName('タスクマスタ');
+    const masterSheet = getSheetByNameFuzzy(db, CONFIG.SHEET_NAMES.TASKS);
     if (!masterSheet) return 'No Master Sheet';
 
     // 1. Ensure Log Row
