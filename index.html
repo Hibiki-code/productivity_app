@@ -377,11 +377,33 @@
     }
 
     /* Enforce White Background on Task Item always */
+    /* Enforce White Background on Task Item always */
     .task-item {
       background: #FFF !important;
       /* Always opaque */
       padding: 12px 14px;
-      /* Match Header Padding */
+      position: relative;
+      z-index: 1;
+      /* Ensure above actions */
+    }
+
+    .task-item.done {
+      opacity: 1 !important;
+      /* No container transparency */
+      background: #F8F8F8 !important;
+      /* Light gray solid background */
+    }
+
+    .task-item.done .task-content,
+    .task-item.done .check-area {
+      opacity: 0.5;
+      /* Dim content only */
+      /* filter: grayscale(100%); Optional */
+    }
+
+    .task-item.done .task-name {
+      text-decoration: line-through;
+      color: #888;
     }
 
     /* Clean up the expanded rule too just in case */
@@ -744,7 +766,14 @@
     <div id="view-tasks" class="view active">
       <div class="glass-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>タスク</div>
-        <div style="font-size:24px; color:var(--primary); cursor:pointer;" onclick="toggleArchiveView()">📂</div>
+        <div style="display:flex; gap:15px; align-items:center;">
+          <div id="highlight-mode-btn"
+            style="font-size:24px; color:#29B6F6; cursor:pointer; opacity:0.4; transition:all 0.2s;"
+            onclick="toggleHighlightMode()">
+            <span class="material-symbols-rounded">diamond</span>
+          </div>
+          <div style="font-size:24px; color:var(--primary); cursor:pointer;" onclick="toggleArchiveView()">📂</div>
+        </div>
       </div>
 
       <!-- Main View -->
@@ -1030,20 +1059,74 @@
 
         if (rawHabits) {
           renderHabits(rawHabits);
-          renderCalendar(new Date(), rawHabits);
+          // renderCalendar(new Date(), rawHabits); // Disabled: Function missing
         } else {
           // Fallback
-          fetchHabits(new Date());
+          fetchHabits(new Date().toLocaleDateString('en-CA'));
         }
       } catch (e) {
         console.error("SSR Parse Error", e);
         fetchTasks();
-        fetchHabits(new Date());
+        fetchHabits(new Date().toLocaleDateString('en-CA'));
       }
 
       setupModal();
       showTab('tasks');
     };
+
+    // Programmatic Tab Switch
+    function showTab(id) {
+      // Find Nav Item
+      const navs = document.querySelectorAll('.bottom-nav .nav-item');
+      let targetEl = null;
+
+      // Heuristic: Nav item onclick contains the ID? 
+      // Or index? 
+      // If standard order: 0=tasks, 1=habits, 2=schedule?
+      // Let's rely on mapping if possible or just use switchTab logic manually.
+
+      // Manual Switch without 'el' dependency if el not found
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      const view = document.getElementById('view-' + id);
+      if (view) view.classList.add('active');
+
+      document.querySelectorAll('.nav-item').forEach(n => {
+        n.classList.remove('active');
+        // Try to match
+        if (n.innerHTML.includes(id) || (id === 'tasks' && n.innerHTML.includes('done_all')) || (id === 'habits' && n.innerHTML.includes('water_drop'))) {
+          n.classList.add('active');
+        }
+      });
+
+      if (id === 'habits') {
+        // Refresh habits
+        // fetchHabits(new Date().toLocaleDateString('en-CA')); // Optional
+      }
+    }
+
+    function setupModal() {
+      // Close Modals on Overlay Click
+      document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) {
+            overlay.classList.remove('open');
+            overlay.style.display = 'none'; // Fallback
+          }
+        });
+      });
+
+      // Archive Modal Close
+      const arcView = document.getElementById('view-archive');
+      // Archive is a view, not modal.
+
+      // Task Modal
+      const taskModal = document.getElementById('task-modal');
+      if (taskModal) {
+        taskModal.addEventListener('click', e => {
+          if (e.target === taskModal) closeTaskModal();
+        });
+      }
+    }
 
     function switchTab(id, el) {
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -1171,61 +1254,110 @@
 
 
 
-    function createTaskEl(t, listId) {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'task-wrapper';
-      wrapper.dataset.id = t.id;
+    /* --- HIGHLIGHT LOGIC --- */
+    let isHighlightMode = false;
 
-      // Actions Layer (Behind)
-      const actions = document.createElement('div');
-      actions.className = 'task-actions';
+    function toggleHighlightMode() {
+      isHighlightMode = !isHighlightMode;
+      const btn = document.getElementById('highlight-mode-btn');
+      if (btn) {
+        btn.style.opacity = isHighlightMode ? '1' : '0.4';
+        btn.style.transform = isHighlightMode ? 'scale(1.2)' : 'scale(1.0)';
+      }
+      document.body.classList.toggle('highlight-mode-active', isHighlightMode);
+    }
 
-      let actionHTML = '';
-      if (t.status === '完了') {
-        // Completed tasks: Unarchive/Delete? 
-        // Logic: Completed tasks in 'Done' list usually just have Delete?
-        // Or Archive if not archived?
-        // Existing logic: Archive, Delete
+    function handleTaskTap(e, taskObj) {
+      if (isHighlightMode) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (confirm('このタスクを「今日のハイライト」に設定しますか？')) {
+          doSetHighlight(taskObj.id);
+          toggleHighlightMode();
+        }
+        return;
+      }
+      // Only toggle details if not tapping actions or checkbox
+      // Task header tap handles detail toggle usually.
+      // Here we intercept the row click.
+    }
+
+    function doSetHighlight(id) {
+      // Optimistic UI updates
+      document.querySelectorAll('.highlight-diamond').forEach(el => el.remove());
+
+      const item = document.querySelector(`.task-item[data-id="${id}"] .task-content`);
+      if (item) {
+        const d = document.createElement('div');
+        d.className = 'highlight-diamond';
+        d.innerText = '💎';
+        d.style.cssText = 'font-size:18px; margin-right:5px;';
+        item.prepend(d);
       }
 
-      // Standard Actions: Archive, Delete
-      actionHTML += `<div class="action-btn archive" onclick="doArchiveTask('${t.id}')">📥</div>`;
-      actionHTML += `<div class="action-btn delete" onclick="doDeleteTask('${t.id}')">❌</div>`;
+      google.script.run.withSuccessHandler(() => {
+        fetchTasks();
+      }).setDailyHighlight(id);
+    }
 
-      actions.innerHTML = actionHTML;
+    /* --- TASK CREATION --- */
+    function createTaskEl(t, listId) {
+      const list = document.getElementById(listId);
+      if (!list) return;
 
-      // Content Layer (Foreground)
-      const el = document.createElement('div');
-      el.className = 'task-item' + (t.status === '完了' ? ' done' : '');
-      el.dataset.id = t.id; // UUID
-      el.dataset.prio = t.importance;
+      const div = document.createElement('div');
+      div.className = 'task-wrapper';
 
-      // Attach Touch Events
-      addSwipeLogic(el);
+      const isCompleted = (t.status === '完了');
+      const diamondHTML = t.isHighlight ? `<div class="highlight-diamond" style="font-size:18px; margin-right:5px;">💎</div>` : '';
 
-      // Override flex for detail view
-      el.style.display = 'block';
-
-      const desc = t.description || '詳細なし';
-      const due = t.dueDate || 'なし';
-
-      el.innerHTML = `
-           <div class="task-header" style="display:flex; align-items:center; gap:12px; padding-bottom:4px;" onclick="toggleDetails(this)">
-               <div class="task-check" onclick="toggleTask(event, this)">${t.status === '完了' ? '✓' : ''}</div>
-               <div class="task-content" style="flex:1">${t.name}</div>
-               <div class="task-icon" style="color:#CCC; font-size:0.8em;">⋁</div>
+      div.innerHTML = `
+        <div class="task-actions">
+           <div class="action-btn archive" onclick="doArchiveTask('${t.id}')">📥</div>
+           <div class="action-btn delete" onclick="doDeleteTask('${t.id}')">❌</div>
+        </div>
+        
+        <div class="task-item${isCompleted ? ' done' : ''}" data-id="${t.id}" data-prio="${t.importance}" onclick="handleTaskTap(event, {id:'${t.id}'})">
+           <div class="task-content" style="flex:1; display:flex; align-items:center;">
+             ${diamondHTML}
+             <div style="flex:1;">
+               <div class="task-header" style="display:flex; align-items:center; gap:12px; padding-bottom:4px;" >
+                   <div class="task-name" style="flex:1">${t.name}</div>
+                   <div class="task-icon" style="color:#CCC; font-size:0.8em; padding:10px;" onclick="event.stopPropagation(); toggleDetails(this.parentElement.parentElement.parentElement.parentElement)">⋁</div>
+               </div>
+               <div class="task-meta">
+                 ${t.dueDate ? `<span style="margin-right:8px;">📅 ${t.dueDate}</span>` : ''}
+                 ${t.estTime ? `<span>⏱ ${t.estTime}</span>` : ''}
+               </div>
+               <div class="task-details" style="display:none; padding: 10px 0 0 10px; color:#666; font-size:0.85em; border-top:1px solid #f0f0f0; margin-top:8px;">
+                   <div style="margin-bottom:4px;">📅 期限: ${t.dueDate || 'なし'}</div>
+                   <div>📝 ${t.description || '詳細なし'}</div>
+               </div>
+             </div>
            </div>
-           <div class="task-details" style="display:none; padding: 10px 0 0 36px; color:#666; font-size:0.85em; border-top:1px solid #f0f0f0; margin-top:8px;">
-               <div style="margin-bottom:4px;">📅 期限: ${due}</div>
-               <div>📝 ${desc}</div>
+           
+           <div class="check-area" onclick="event.stopPropagation(); toggleTask(event, this.querySelector('.check-circle'))">
+             <div class="check-circle">${isCompleted ? '✓' : ''}</div>
            </div>
-        `;
+        </div>
+      `;
 
-      wrapper.appendChild(actions);
-      wrapper.appendChild(el);
+      const item = div.querySelector('.task-item');
+      addSwipeLogic(item);
 
-      const container = document.querySelector('#' + listId + ' > div');
-      if (container) container.appendChild(wrapper);
+      div.style.opacity = '0';
+      div.style.transform = 'translateY(10px)';
+      if (isCompleted) {
+        list.querySelector('div').prepend(div);
+      } else {
+        list.querySelector('div').appendChild(div);
+      }
+
+      requestAnimationFrame(() => {
+        div.style.transition = 'all 0.3s ease';
+        div.style.opacity = '1';
+        div.style.transform = 'translateY(0)';
+      });
     }
 
     // --- SWIPE LOGIC ---
@@ -1985,6 +2117,8 @@
       renderDetailCalendar();
       preloadPastMonths(habit.name, currentDetailYear, currentDetailMonth);
     }
+
+    function renderCalendar() { console.log('Calendar view not implemented'); }
 
     function renderJournalLogs(logs) {
       const container = document.getElementById('detail-journal-logs-container');

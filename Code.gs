@@ -87,7 +87,11 @@ function getTasks() {
       dueDate: d || '',
       estTime: row[3],
       description: row[5] || '',
-      status: isDone ? '完了' : '未完了'
+      status: isDone ? '完了' : '未完了',
+      // Highlight Logic
+      // Col 8 = DailyHighlight, Col 9 = HighlightDay
+      // Simplified: If DailyHighlight is true, trust it (Backend sets it for Today)
+      isHighlight: (row[8] === true || row[8] === 'TRUE')
     };
   }).filter(t => t && t.name);
 }
@@ -134,11 +138,38 @@ function updateTaskStatus(taskId, statusStr) {
   // Update Status (Column G = 7)
   masterSheet.getRange(row, 7).setValue(isDone);
   
-  // Log Entry
-  const logSheet = db.getSheetByName('タスクログ');
-  if (logSheet) {
-    // [LogID, TaskID, Time, Status]
-    logSheet.appendRow([
+  // Check Highlight Status (Log-Centric)
+  const today = new Date();
+  const todayStr = Utilities.formatDate(today, CONFIG.TIMEZONE, 'yyyy/MM/dd');
+  
+  let highlightBonus = false;
+  
+  // Update Highlight Log if applicable
+  const logSheet = db.getSheetByName('ハイライトログ');
+  if (logSheet && isDone) {
+     const lastRow = logSheet.getLastRow();
+     if (lastRow > 1) {
+       const vals = logSheet.getRange(lastRow, 1, 1, 6).getValues()[0];
+       // Row: [Date, SetFlag, TargetID, Type, Achieved, Time]
+       // Check Date
+       let logDate = vals[0];
+       if (logDate instanceof Date) logDate = Utilities.formatDate(logDate, CONFIG.TIMEZONE, 'yyyy/MM/dd');
+       
+       if (logDate === todayStr && (vals[1] === true || vals[1] === 'TRUE') && String(vals[2]) === String(taskId)) {
+          // It's the highlight!
+          // Set Achieved = TRUE (Col 5), Time = HH:mm (Col 6)
+          const timeStr = Utilities.formatDate(today, CONFIG.TIMEZONE, 'HH:mm');
+          logSheet.getRange(lastRow, 5).setValue(true);
+          logSheet.getRange(lastRow, 6).setValue(timeStr);
+          highlightBonus = true;
+       }
+     }
+  }
+  
+  // Log Entry (TaskLog)
+  const taskLogSheet = db.getSheetByName('タスクログ');
+  if (taskLogSheet) {
+    taskLogSheet.appendRow([
       Utilities.getUuid(),
       taskId,
       new Date(),
@@ -146,7 +177,7 @@ function updateTaskStatus(taskId, statusStr) {
     ]);
   }
   
-  return 'Updated';
+  return { status: 'Updated', highlightBonus: highlightBonus };
 }
 
 function deleteTaskHard(taskId) {
@@ -259,6 +290,82 @@ function updateTaskPriority(taskId, priority) {
   // Priority is Column C (3)
   masterSheet.getRange(row, 3).setValue(priority);
   return 'Updated';
+}
+
+/**
+ * DAILY HIGHLIGHT (V3 - Log Centric)
+ */
+function ensureTodayHighlightLog(db) {
+  let sheet = db.getSheetByName('ハイライトログ');
+  if (!sheet) {
+     sheet = db.insertSheet('ハイライトログ');
+     // Headers: [Date, SetFlag, TargetID, TargetType, AchievedFlag, AchievedTime]
+     sheet.appendRow(['日付', '設定フラグ', 'ターゲットID', 'ターゲットタイプ', '達成フラグ', '達成時刻']);
+  }
+  
+  const today = new Date();
+  const todayStr = Utilities.formatDate(today, CONFIG.TIMEZONE, 'yyyy/MM/dd');
+  
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+     // Empty
+     sheet.appendRow([todayStr, false, '', '', false, '']);
+     return sheet.getLastRow(); // 2
+  }
+  
+  const lastDateRaw = sheet.getRange(lastRow, 1).getValue();
+  let lastDate = lastDateRaw;
+  if (lastDateRaw instanceof Date) lastDate = Utilities.formatDate(lastDateRaw, CONFIG.TIMEZONE, 'yyyy/MM/dd');
+  
+  if (lastDate !== todayStr) {
+     // New Day
+     sheet.appendRow([todayStr, false, '', '', false, '']);
+     return sheet.getLastRow();
+  }
+  
+  return lastRow; // Today exists
+}
+
+function setDailyHighlight(taskId) {
+  try {
+    const db = SpreadsheetApp.openById(CONFIG.TASK_DB_ID);
+    const masterSheet = db.getSheetByName('タスクマスタ');
+    if (!masterSheet) return 'No Master Sheet';
+
+    // 1. Ensure Log Row
+    const logRow = ensureTodayHighlightLog(db); 
+    const logS = db.getSheetByName('ハイライトログ');
+    
+    // 2. Update Log
+    // [Date, SetFlag, TargetID, Type, Achieved, Time]
+    // Cols: 1, 2, 3, 4, 5, 6
+    logS.getRange(logRow, 2).setValue(true);      // SetFlag
+    logS.getRange(logRow, 3).setValue(taskId);    // TargetID
+    logS.getRange(logRow, 4).setValue('Task');    // Type
+    logS.getRange(logRow, 5).setValue(false);     // AchievedFlag
+    logS.getRange(logRow, 6).setValue('');        // Time
+    
+    // 3. Update Cache in TaskMaster (TodayHighlight Col 9)
+    // Optimization: Bulk read 9th column
+    const lastRow = masterSheet.getLastRow();
+    if (lastRow > 1) {
+       // Bulk Clear
+       masterSheet.getRange(2, 9, lastRow - 1, 1).setValue(false);
+    }
+    
+    // Set New
+    const finder = masterSheet.getRange("A:A").createTextFinder(taskId).matchEntireCell(true);
+    const cell = finder.findNext();
+    if (cell) {
+       masterSheet.getRange(cell.getRow(), 9).setValue(true);
+    }
+
+    return 'Highlight Set: ' + taskId;
+    
+  } catch (e) {
+    console.error("Highlight Error", e);
+    return 'Error: ' + e.message;
+  }
 }
 
 
