@@ -1932,7 +1932,7 @@
           currentHabitDate = ymd;
           fetchHabits(ymd);
         };
-        el.innerHTML = `< div class="date-label" > ${days[d.getDay()]}</div > <div class="date-num">${d.getDate()}</div>`;
+        el.innerHTML = `<div class="date-label">${days[d.getDay()]}</div><div class="date-num">${d.getDate()}</div>`;
         strip.appendChild(el);
       }
     }
@@ -2027,11 +2027,11 @@
 
       let iconContent = '💧';
       if (h.icon) {
-        iconContent = `< span class="material-symbols-rounded" style = "font-size:24px;" > ${h.icon}</span > `;
+        iconContent = `<span class="material-symbols-rounded" style="font-size:24px;">${h.icon}</span>`;
       }
 
       div.innerHTML = `
-        < div class="habit-icon" > ${iconContent}</div >
+        <div class="habit-icon">${iconContent}</div>
            <div class="habit-info">
               <div class="habit-name">${h.name}</div>
            </div>
