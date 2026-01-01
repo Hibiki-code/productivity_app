@@ -1382,10 +1382,17 @@
       e.preventDefault();
       e.stopPropagation();
 
-      const id = taskObj.dataset.id; // Fixed: Retrieve from dataset
+      const id = taskObj.dataset.id; // Correct ID
       console.log('Task Tapped in Highlight Mode:', id);
 
       showHighlightConfirm(id);
+    }
+
+    function showHighlightConfirm(id) {
+      if (confirm('このタスクを「今日のハイライト」に設定しますか？')) {
+        doSetHighlight(id);
+        toggleHighlightMode();
+      }
     }
 
     function doSetHighlight(id) {
@@ -1397,8 +1404,10 @@
         const d = document.createElement('div');
         d.className = 'highlight-diamond';
         d.innerText = '💎';
+        item.prepend(d); // Add to UI
+
         google.script.run.withSuccessHandler(() => {
-          fetchTasks();
+          // fetchTasks(); // No need to refetch if UI synced
         }).setDailyHighlight(id);
       }
     }
@@ -1428,22 +1437,22 @@
         </div>
 
         <div class="task-item ${doneClass}" data-id="${t.id}" data-prio="${t.importance}" onclick="handleTaskTap(event, this)">
-           <div class="task-check" 
-                ontouchstart="toggleTask(event, this); event.preventDefault();" 
-                onclick="if(!event.defaultPrevented) toggleTask(event, this);">
-             ${checkMark}
-           </div>
-           
-           <div class="task-content">
-             <div class="test-tag"></div>
-             ${highlightIcon}
-             <div class="task-name">${t.name}</div>
-             <div class="task-meta">
-                ${t.dueDate ? `<span class="due-date">📅 ${t.dueDate.slice(5)}</span>` : ''}
-                ${t.estTime ? `<span class="est-time">⏱ ${t.estTime}</span>` : ''}
-             </div>
-           </div>
-           
+          <div class="task-check"
+            ontouchstart="toggleTask(event, this); event.preventDefault();"
+            onclick="if(!event.defaultPrevented) toggleTask(event, this);">
+            ${checkMark}
+          </div>
+
+          <div class="task-content">
+            <div class="test-tag"></div>
+            ${highlightIcon}
+            <div class="task-name">${t.name}</div>
+            <div class="task-meta">
+              ${t.dueDate ? `<span class="due-date">📅 ${t.dueDate.slice(5)}</span>` : ''}
+              ${t.estTime ? `<span class="est-time">⏱ ${t.estTime}</span>` : ''}
+            </div>
+          </div>
+
            <!-- Details removed for slim view -->
         </div>
       `;
@@ -1815,15 +1824,15 @@
 
         const count = items.length;
         sec.innerHTML = `
-          <div class="section-header" onclick="toggleSection('${listId}')">
+        < div class="section-header" onclick = "toggleSection('${listId}')" >
              <div style="color:${isDone ? '#AAA' : '#555'}; font-weight:bold;">${title} (${count})</div>
              <div class="toggle-icon">∧</div>
-          </div>
-          <div id="list-${listId}" class="list-content"></div>
-        `;
+          </div >
+        <div id="list-${listId}" class="list-content"></div>
+      `;
         container.appendChild(sec);
 
-        const listDiv = sec.querySelector(`#list-${listId}`);
+        const listDiv = sec.querySelector(`#list - ${listId} `);
         const innerDiv = document.createElement('div'); // Transition Wrapper
         listDiv.appendChild(innerDiv);
 
@@ -1831,17 +1840,17 @@
           const wrapper = document.createElement('div');
           wrapper.className = 'task-wrapper';
           wrapper.innerHTML = `
-          <div class="task-actions">
+        < div class="task-actions" >
                <div class="action-btn unarchive" onclick="doUnarchiveTask('${t.id}')" style="background:#8D6E63;">↩</div>
                <div class="action-btn delete" onclick="doDeleteTask('${t.id}')">❌</div>
+          </div >
+        <div class="task-item" style="background:#F9F9F9; opacity:0.9;">
+          <div style="flex:1;">
+            <div style="font-weight:bold; color:#555; text-decoration:${isDone ? 'line-through' : 'none'};">${t.name}</div>
+            <div style="font-size:0.8em; color:#999;">${t.dueDate || ''}</div>
           </div>
-          <div class="task-item" style="background:#F9F9F9; opacity:0.9;">
-            <div style="flex:1;">
-              <div style="font-weight:bold; color:#555; text-decoration:${isDone ? 'line-through' : 'none'};">${t.name}</div>
-              <div style="font-size:0.8em; color:#999;">${t.dueDate || ''}</div>
-            </div>
-          </div>
-        `;
+        </div>
+      `;
           const item = wrapper.querySelector('.task-item');
           addSwipeLogic(item);
           innerDiv.appendChild(wrapper);
@@ -1881,7 +1890,7 @@
           currentHabitDate = ymd;
           fetchHabits(ymd);
         };
-        el.innerHTML = `<div class="date-label">${days[d.getDay()]}</div><div class="date-num">${d.getDate()}</div>`;
+        el.innerHTML = `< div class="date-label" > ${days[d.getDay()]}</div > <div class="date-num">${d.getDate()}</div>`;
         strip.appendChild(el);
       }
     }
@@ -1891,7 +1900,7 @@
       habitDataCache = data;
       if (data.serverDate) { todayYear = data.serverDate.year; todayMonth = data.serverDate.month; }
       if (data.monthlyLogs) {
-        const key = `${todayYear} -${todayMonth} `;
+        const key = `${todayYear}-${todayMonth}`;
         Object.keys(data.monthlyLogs).forEach(hName => {
           if (!habitCalendarCache[hName]) habitCalendarCache[hName] = {};
           habitCalendarCache[hName][key] = data.monthlyLogs[hName];
@@ -1916,20 +1925,22 @@
         div.className = 'section-habit';
         div.id = 'sec-wrapper-' + sec.id;
         div.innerHTML = `
-          <div class="section-header" onclick="toggleHabitSection('${sec.id}')">
-               <div>${sec.name} <span id="count-${sec.id}" style="font-size:0.9em; opacity:0.8;"></span></div>
-               <div class="toggle-icon">∧</div>
-          </div>
-          <div id="list-habit-${sec.id}" class="habit-list-container">
-            <div><!-- Inner --></div>
-          </div>
-        `;
+      <div class="section-header" onclick="toggleHabitSection('${sec.id}')">
+           <div>${sec.name} <span id="count-${sec.id}" style="font-size:0.9em; opacity:0.8;"></span></div>
+           <div class="toggle-icon">∧</div>
+      </div>
+    <div id="list-habit-${sec.id}" class="habit-list-container">
+      <div><!-- Inner --></div>
+    </div>
+  `;
         root.appendChild(div);
       });
 
       // Clear Checked
-      document.querySelector('#list-habit-checked > div').innerHTML = '';
-      document.getElementById('count-habit-checked').innerText = '0';
+      const checkedInner = document.querySelector('#list-habit-checked > div');
+      if (checkedInner) checkedInner.innerHTML = '';
+      const countChecked = document.getElementById('count-habit-checked');
+      if (countChecked) countChecked.innerText = '0';
       let checkedCount = 0;
 
       if (!data.habits) { updateHabitSectionCounts(); return; }
@@ -1939,7 +1950,8 @@
 
         if (isDone) {
           const div = createHabitCard(h, true);
-          document.querySelector('#list-habit-checked > div').appendChild(div);
+          const target = document.querySelector('#list-habit-checked > div');
+          if (target) target.appendChild(div);
           checkedCount++;
         } else {
           // Find section
@@ -1957,14 +1969,15 @@
       updateHabitSectionCounts(); // Initial calculations
 
       const checkedSec = document.getElementById('sec-wrapper-checked');
-      if (checkedCount > 0) {
-        checkedSec.style.display = 'block';
-        document.getElementById('count-habit-checked').innerText = '(' + checkedCount + ')';
-      } else {
-        checkedSec.style.display = 'none';
+      if (checkedSec) {
+        if (checkedCount > 0) {
+          checkedSec.style.display = 'block';
+          if (countChecked) countChecked.innerText = '(' + checkedCount + ')';
+        } else {
+          checkedSec.style.display = 'none';
+        }
       }
     }
-
     function createHabitCard(h, isDone) {
       const div = document.createElement('div');
       div.className = 'habit-item' + (isDone ? ' done' : '');
@@ -1972,11 +1985,11 @@
 
       let iconContent = '💧';
       if (h.icon) {
-        iconContent = `<span class="material-symbols-rounded" style="font-size:24px;">${h.icon}</span>`;
+        iconContent = `< span class="material-symbols-rounded" style = "font-size:24px;" > ${h.icon}</span > `;
       }
 
       div.innerHTML = `
-          <div class="habit-icon">${iconContent}</div>
+        < div class="habit-icon" > ${iconContent}</div >
            <div class="habit-info">
               <div class="habit-name">${h.name}</div>
            </div>
@@ -1987,7 +2000,7 @@
            <div class="habit-check-area" onclick="event.stopPropagation(); toggleHabit(this, '${h.name}')">
               <div class="check-circle"></div>
            </div>
-        `;
+      `;
       // Store Section ID for return
       div.dataset.sectionId = h.sectionId || 'sec_other';
       return div;
@@ -2206,9 +2219,9 @@
         const card = document.createElement('div');
         card.style.cssText = 'background:rgba(255,255,255,0.8); border-radius:12px; padding:15px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);';
         card.innerHTML = `
-          < div style = "font-size:12px; color:#888; margin-bottom:5px;" > ${log.date}</div >
-            <div style="font-size:14px; color:#333; white-space:pre-wrap;">${log.text}</div>
-        `;
+        < div style = "font-size:12px; color:#888; margin-bottom:5px;" > ${log.date}</div >
+          <div style="font-size:14px; color:#333; white-space:pre-wrap;">${log.text}</div>
+      `;
         container.appendChild(card);
       });
     }
@@ -2469,10 +2482,10 @@
         row.dataset.id = s.id;
 
         row.innerHTML = `
-          < div class="section-handle" style = "cursor:move; padding-top:5px; padding-right:5px; color:#aaa;" >☰</div >
-            <input value="${s.name}" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
-              <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
-              `;
+        < div class="section-handle" style = "cursor:move; padding-top:5px; padding-right:5px; color:#aaa;" >☰</div >
+          <input value="${s.name}" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
+            <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
+            `;
         root.appendChild(row);
       });
     }
@@ -2501,10 +2514,10 @@
       row.dataset.id = ''; // New
 
       row.innerHTML = `
-              <div class="section-handle" style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
-              <input value="新しいセクション" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
-                <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
-                `;
+            <div class="section-handle" style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
+            <input value="新しいセクション" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
+              <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
+              `;
       root.appendChild(row);
     }
 
