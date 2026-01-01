@@ -1571,7 +1571,7 @@
     }
 
     function removeEl(id) {
-      const wrapper = document.querySelector(`.task - wrapper[data - id="${id}"]`);
+      const wrapper = document.querySelector(`.task-wrapper[data-id="${id}"]`);
       if (wrapper) {
         wrapper.style.height = wrapper.offsetHeight + 'px';
         wrapper.style.transition = 'height 0.3s, opacity 0.3s';
