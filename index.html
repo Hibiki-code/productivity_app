@@ -808,6 +808,54 @@
     .view.active {
       display: block;
     }
+
+    /* Task Animations */
+    .task-anim-leave {
+      animation: taskLeave 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      pointer-events: none;
+      /* Prevent clicks during anim */
+    }
+
+    .task-anim-enter {
+      animation: taskEnter 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    @keyframes taskLeave {
+      0% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+        max-height: 100px;
+        /* Approx height of task */
+        margin-bottom: 0;
+      }
+
+      50% {
+        opacity: 0;
+        transform: scale(0.95) translateY(5px);
+      }
+
+      100% {
+        opacity: 0;
+        transform: scale(0.9) translateY(10px);
+        max-height: 0;
+        margin-bottom: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+      }
+    }
+
+    @keyframes taskEnter {
+      0% {
+        opacity: 0;
+        transform: scale(0.95) translateY(-5px);
+      }
+
+      100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
   </style>
 </head>
 
@@ -1562,65 +1610,63 @@
       const isDoneCurrently = item.classList.contains('done');
       const isDoneNew = !isDoneCurrently;
 
-      // 1. Immediate Visual Update
+      // 1. Immediate Visual Update (Checkmark only)
       if (isDoneNew) {
-        item.classList.add('done');
         checkEl.innerText = '✓';
+        item.classList.add('done'); // Style update immediately
       } else {
-        item.classList.remove('done');
         checkEl.innerText = '';
+        item.classList.remove('done');
       }
 
-      // 2. Immediate List Move (No Animation Delay)
-      const p = item.dataset.prio || 0;
-      const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
-      const key = map[p];
+      // Add Leave Animation
+      wrapper.classList.add('task-anim-leave');
 
-      // Update Counts
-      const countEl = document.getElementById('count-' + key);
-      const doneCountEl = document.getElementById('count-done');
-      let val = parseInt(countEl.innerText.match(/\d+/)[0]) || 0;
-      let doneVal = parseInt(doneCountEl.innerText.match(/\d+/)[0]) || 0;
+      // Wait for Animation
+      setTimeout(() => {
+        wrapper.classList.remove('task-anim-leave');
 
-      if (isDoneNew) {
-        // Move to Done Top
-        const doneContainer = document.querySelector('#list-done > div');
-        if (doneContainer) {
-          doneContainer.prepend(wrapper);
-          countEl.innerText = Math.max(0, val - 1);
-          doneCountEl.innerText = doneVal + 1;
-          const secDone = document.getElementById('sec-done');
-          if (secDone) secDone.style.display = 'block';
-        }
-      } else {
-        // Move back to List
-        const sourceContainer = document.querySelector('#list-' + key + ' > div');
-        if (sourceContainer) {
-          sourceContainer.appendChild(wrapper);
-          countEl.innerText = val + 1;
-          doneCountEl.innerText = Math.max(0, doneVal - 1);
+        // 2. List Move Logic
+        const p = item.dataset.prio || 0;
+        const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+        const key = map[p];
 
-          // Hide done sec if empty?
+        // Update Counts
+        const countEl = document.getElementById('count-' + key);
+        const doneCountEl = document.getElementById('count-done');
+        let val = parseInt(countEl.innerText.match(/\d+/)[0]) || 0;
+        let doneVal = parseInt(doneCountEl.innerText.match(/\d+/)[0]) || 0;
+
+        if (isDoneNew) {
+          // Move to Done Top
           const doneContainer = document.querySelector('#list-done > div');
-          if (doneContainer && doneContainer.children.length === 0) {
+          if (doneContainer) {
+            doneContainer.prepend(wrapper);
+            countEl.innerText = Math.max(0, val - 1);
+            doneCountEl.innerText = doneVal + 1;
             const secDone = document.getElementById('sec-done');
-            if (secDone) secDone.style.display = 'none';
+            if (secDone) secDone.style.display = 'block';
+          }
+        } else {
+          // Move back to List
+          const sourceContainer = document.querySelector('#list-' + key + ' > div');
+          if (sourceContainer) {
+            sourceContainer.appendChild(wrapper);
+            countEl.innerText = val + 1;
+            doneCountEl.innerText = Math.max(0, doneVal - 1);
           }
         }
-      }
 
-      // 3. Background Sync
-      google.script.run
-        .withSuccessHandler((res) => {
-          console.log('Sync Success', res);
-        })
-        .withFailureHandler((err) => {
-          console.error('Sync Failed', err);
-          alert('変更を保存できませんでした。再読み込みしてください。');
-          // Revert logic is complex due to moves, simple reload might be safer or just alert.
-          // For now, let's just alert.
-        })
-        .updateTaskStatus(id, isDoneNew ? '完了' : '未完了');
+        // Animate Enter
+        wrapper.classList.add('task-anim-enter');
+        setTimeout(() => wrapper.classList.remove('task-anim-enter'), 400);
+
+        // 3. Server Update
+        google.script.run.withSuccessHandler((res) => {
+          console.log('Task toggled', res);
+        }).updateTaskStatus(id, isDoneNew);
+
+      }, 350); // Match CSS duration
     }
 
     function addSwipeLogic(el) {
