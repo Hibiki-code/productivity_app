@@ -1328,16 +1328,18 @@
     }
 
     function handleTaskTap(e, taskObj) {
-      if (!isHighlightMode) return; // Normal click handled by checkbox
-
-      // Stop checking the box
-      e.preventDefault();
-      e.stopPropagation();
-
-      const id = taskObj.dataset.id; // Fixed: Retrieve from dataset
-      console.log('Task Tapped in Highlight Mode:', id);
-
-      showHighlightConfirm(id);
+      if (isHighlightMode) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (confirm('このタスクを「今日のハイライト」に設定しますか？')) {
+          doSetHighlight(taskObj.id);
+          toggleHighlightMode();
+        }
+        return;
+      }
+      // Only toggle details if not tapping actions or checkbox
+      // Task header tap handles detail toggle usually.
+      // Here we intercept the row click.
     }
 
     function doSetHighlight(id) {
