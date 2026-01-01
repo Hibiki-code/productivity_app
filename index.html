@@ -2080,8 +2080,14 @@
       // Sync Backend
       google.script.run.logHabit(currentHabitDate, name, isDone);
 
+      // Streak Optimistic Update
+      const streakEl = item.querySelector('.habit-stats-right > div:first-child');
+      let currentStreak = parseInt(streakEl.innerText.replace('日', '')) || 0;
+
       if (isDone) {
         // --- CHECKING ---
+        streakEl.innerText = (currentStreak + 1) + '日'; // Optimistic Increment
+
         item.classList.add('fade-collapse');
         setTimeout(() => {
           document.querySelector('#list-habit-checked > div').prepend(item);
@@ -2098,6 +2104,8 @@
 
       } else {
         // --- UNCHECKING ---
+        streakEl.innerText = Math.max(0, currentStreak - 1) + '日'; // Optimistic Decrement
+
         item.classList.add('fade-collapse');
         setTimeout(() => {
           const secId = item.dataset.sectionId || 'sec_other';

@@ -511,11 +511,14 @@ function getHabitStatus(dateStr) {
     }
 
     // Check Date Match
-    if (rowYMD === dateStr) {
+    // Check Date Match (Numeric)
+    const rDate = new Date(rowRaw);
+    if (rDate.getFullYear() === targetYear && rDate.getMonth() === targetMonth && rDate.getDate() === targetDateNum) {
+      console.log('Match found (numeric) for:', dateStr);
       for (let c = 1; c < logHeaders.length; c++) {
         const hName = logHeaders[c];
         const val = logData[i][c];
-        const isDone = (val === 1 || val === true || val === 'TRUE');
+        const isDone = (val == 1 || val === true || val === 'TRUE');
         todaysLog[hName] = isDone ? 1 : 0;
       }
     }
@@ -539,7 +542,7 @@ function getHabitStatus(dateStr) {
       for (let c = 1; c < logHeaders.length; c++) {
         const hName = logHeaders[c];
         const val = logData[i][c];
-        const isDone = (val === 1 || val === true || val === 'TRUE');
+        const isDone = (val == 1 || val === true || val === 'TRUE');
         if (!monthlyLogs[hName]) monthlyLogs[hName] = {};
         monthlyLogs[hName][day] = isDone ? 1 : 0;
       }
