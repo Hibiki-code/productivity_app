@@ -1022,11 +1022,13 @@
       </select>
 
       <div style="display:flex; gap:10px; margin-top:10px; align-items:center;">
-        <input type="number" id="t-duration-h" class="input-std" placeholder="0"
-          style="width:50px; text-align:center; padding:8px;">
+        <input type="number" id="t-duration-h" class="input-std" placeholder="0" min="0"
+          style="width:50px; text-align:center; padding:8px;"
+          oninput="this.value = Math.max(0, parseInt(this.value) || 0)">
         <span style="font-size:12px; color:#666;">h</span>
-        <input type="number" id="t-duration-m" class="input-std" placeholder="15" value="15"
-          style="width:50px; text-align:center; padding:8px;">
+        <input type="number" id="t-duration-m" class="input-std" placeholder="15" value="15" min="0" max="59"
+          style="width:50px; text-align:center; padding:8px;"
+          onchange="this.value = Math.max(0, Math.min(59, parseInt(this.value) || 0))">
         <span style="font-size:12px; color:#666;">m</span>
         <input type="date" id="t-date" class="input-std" style="flex:1; padding:8px;">
       </div>
@@ -1790,9 +1792,9 @@
         importance: prio,
         status: '未完了',
         row: 'temp-' + Date.now(),
-        duration: durStr.trim(),
+        estTime: durStr.trim(),
         dueDate: date,
-        details: details
+        description: details
       };
 
       const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
