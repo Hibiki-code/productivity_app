@@ -1020,6 +1020,19 @@
         <option value="1">優先度: 低</option>
         <option value="0" selected>インボックス</option>
       </select>
+
+      <div style="display:flex; gap:10px; margin-top:10px; align-items:center;">
+        <input type="number" id="t-duration-h" class="input-std" placeholder="0"
+          style="width:50px; text-align:center; padding:8px;">
+        <span style="font-size:12px; color:#666;">h</span>
+        <input type="number" id="t-duration-m" class="input-std" placeholder="15" value="15"
+          style="width:50px; text-align:center; padding:8px;">
+        <span style="font-size:12px; color:#666;">m</span>
+        <input type="date" id="t-date" class="input-std" style="flex:1; padding:8px;">
+      </div>
+
+      <textarea id="t-details" class="input-std" placeholder="詳細..."
+        style="margin-top:10px; height:60px; resize:none; padding:8px; font-family:inherit;"></textarea>
       <button class="btn-save" onclick="saveTask()">追加</button>
     </div>
   </div>
@@ -1757,21 +1770,49 @@
     function saveTask() {
       const name = document.getElementById('t-name').value;
       const prio = document.getElementById('t-prio').value;
+
+      // New Inputs
+      const durH = document.getElementById('t-duration-h').value || 0;
+      const durM = document.getElementById('t-duration-m').value || 0;
+      const date = document.getElementById('t-date').value;
+      const details = document.getElementById('t-details').value;
+
       if (!name) return;
 
+      // Format Duration String (e.g. "2h 15m")
+      let durStr = '';
+      if (durH > 0) durStr += durH + 'h ';
+      if (durM > 0 || durH > 0) durStr += durM + 'm';
+
       // Optimistic Add
-      const t = { name: name, importance: prio, status: '未完了', row: 'temp-' + Date.now() };
+      const t = {
+        name: name,
+        importance: prio,
+        status: '未完了',
+        row: 'temp-' + Date.now(),
+        duration: durStr.trim(),
+        dueDate: date,
+        details: details
+      };
+
       const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
       createTaskEl(t, 'list-' + map[prio]);
 
       closeTaskModal();
-      document.getElementById('t-name').value = '';
 
       google.script.run.withSuccessHandler(fetchTasks).addTask(t);
     }
 
     function openTaskModal(p) {
       document.getElementById('t-prio').value = p;
+
+      // Reset Fields
+      document.getElementById('t-name').value = '';
+      document.getElementById('t-duration-h').value = '';
+      document.getElementById('t-duration-m').value = '15';
+      document.getElementById('t-date').value = '';
+      document.getElementById('t-details').value = '';
+
       document.getElementById('task-modal').classList.add('open');
       document.getElementById('t-name').focus();
     }
@@ -1824,15 +1865,14 @@
 
         const count = items.length;
         sec.innerHTML = `
-        < div class="section-header" onclick = "toggleSection('${listId}')" >
+        <div class="section-header" onclick="toggleSection('${listId}')">
              <div style="color:${isDone ? '#AAA' : '#555'}; font-weight:bold;">${title} (${count})</div>
-             <div class="toggle-icon">∧</div>
-          </div >
+          </div>
         <div id="list-${listId}" class="list-content"></div>
       `;
         container.appendChild(sec);
 
-        const listDiv = sec.querySelector(`#list - ${listId} `);
+        const listDiv = sec.querySelector(`#list-${listId}`);
         const innerDiv = document.createElement('div'); // Transition Wrapper
         listDiv.appendChild(innerDiv);
 
@@ -1840,10 +1880,10 @@
           const wrapper = document.createElement('div');
           wrapper.className = 'task-wrapper';
           wrapper.innerHTML = `
-        < div class="task-actions" >
+        <div class="task-actions">
                <div class="action-btn unarchive" onclick="doUnarchiveTask('${t.id}')" style="background:#8D6E63;">↩</div>
                <div class="action-btn delete" onclick="doDeleteTask('${t.id}')">❌</div>
-          </div >
+          </div>
         <div class="task-item" style="background:#F9F9F9; opacity:0.9;">
           <div style="flex:1;">
             <div style="font-weight:bold; color:#555; text-decoration:${isDone ? 'line-through' : 'none'};">${t.name}</div>
