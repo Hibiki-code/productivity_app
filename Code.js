@@ -9,7 +9,9 @@ const CONFIG = {
     HABIT_LOG: '習慣記録',
     HABIT_DETAILS: '習慣の内容説明',
     HABIT_STATS: '習慣の統計データ',
-    SLEEP: '睡眠記録'
+    SLEEP: '睡眠記録',
+    DB_GOALS: 'DB_Goals',
+    DB_MILESTONES: 'DB_Milestones'
   },
   GEMINI_API_KEY: 'Pending',
   TIMEZONE: 'Asia/Tokyo'
@@ -36,15 +38,41 @@ function doGet() {
   }
 
   const html = template.evaluate();
-  html.setTitle('Life OS');
+  html.setTitle('Life OS (Refined)');
   html.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   html.addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0');
   return html;
 }
 
+
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
+
+/**
+ * Helper to handle Sheet Name mismatches (Full-width/Half-width/Spaces)
+ */
+function getSafeSheet(ss, name) {
+  // 1. Try Exact Match
+  let sheet = ss.getSheetByName(name);
+  if (sheet) return sheet;
+
+  // 2. Fuzzy Search & Fix
+  const allSheets = ss.getSheets();
+  const normalize = (s) => s.trim().replace(/＿/g, '_').toLowerCase();
+  const targetNorm = normalize(name);
+
+  for (const s of allSheets) {
+    const sName = s.getName();
+    if (normalize(sName) === targetNorm) {
+      console.warn(`Found fuzzy match: "${sName}" -> Renaming to "${name}"`);
+      s.setName(name); // Rename to strict ASCII
+      return s;
+    }
+  }
+  return null;
+}
+
 
 /**
  * TASKS API
@@ -1047,3 +1075,201 @@ function saveHabitDefinition(name, newName, sectionId, icon) {
   }
 }
 
+
+// ========================================== 
+// ROADMAP FEATURES 
+// ========================================== 
+
+
+function getGoalsV2() {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+
+    // Debug: List all sheets
+    const allSheets = ss.getSheets().map(s => s.getName());
+    console.log('All Sheets:', allSheets);
+
+    // 1. Fetch Goals
+    const gSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS); // Use Safe Helper
+
+    if (!gSheet) {
+      console.warn('DB_Goals sheet missing entirely');
+      return [{
+        id: 'error_missing_sheet',
+        title: 'DEBUG: DB_Goals Sheet Not Found',
+        vision: 'Available: ' + allSheets.join(', '),
+        status: 'Error'
+      }];
+    }
+
+    const gData = gSheet.getDataRange().getValues();
+    console.log('getGoals: rows found', gData.length);
+
+    if (gData.length < 2) {
+      return [{
+        id: 'error_no_data',
+        title: 'DEBUG: No Data Rows Found',
+        vision: 'Rows: ' + gData.length,
+        status: 'Error'
+      }];
+    }
+
+    const gList = [];
+
+    // Add Verification Card
+    /*
+    gList.push({
+      id: 'debug_verified',
+      title: '✅ SYSTEM CONNECTED', 
+      status: 'Active'
+    });
+    */
+
+    for (let i = 1; i < gData.length; i++) {
+      const r = gData[i];
+      if (!r[0]) continue;
+      if (r[8] === 'DELETED') continue;
+
+      // SANITIZE DATA
+      let sDate = r[6];
+      if (sDate instanceof Date) sDate = Utilities.formatDate(sDate, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+      else sDate = String(sDate);
+
+      let eDate = r[7];
+      if (eDate instanceof Date) eDate = Utilities.formatDate(eDate, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+      else eDate = String(eDate);
+
+      gList.push({
+        id: String(r[0]),
+        title: String(r[1]),
+        vision: String(r[2]),
+        metricLabel: String(r[3]),
+        metricTarget: Number(r[4]) || 0,
+        metricCurrent: Number(r[5]) || 0,
+        startDate: sDate,
+        endDate: eDate,
+        status: String(r[8]),
+        // milestones: [] // Skip for now
+      });
+    }
+
+    console.log("FINAL RETURN V9:", JSON.stringify(gList));
+    // 2. Fetch Milestones
+    const mSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_MILESTONES);
+    if (mSheet) {
+      const mData = mSheet.getDataRange().getValues();
+      const milestones = [];
+      for (let i = 1; i < mData.length; i++) {
+        const r = mData[i];
+        if (!r[0]) continue;
+
+        let mDate = r[2];
+        if (mDate instanceof Date) mDate = Utilities.formatDate(mDate, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+        else mDate = String(mDate);
+
+        milestones.push({
+          id: String(r[0]),
+          goalId: String(r[1]),
+          date: mDate,
+          title: String(r[3]),
+          status: String(r[4]),
+          notes: String(r[5])
+        });
+      }
+
+      gList.forEach(g => {
+        g.milestones = milestones
+          .filter(m => m.goalId === g.id)
+          .sort((a, b) => new Date(a.date) - new Date(b.date));
+      });
+    }
+
+    // Safe Sort
+    return gList.sort((a, b) => {
+      const dateA = a.endDate ? new Date(a.endDate) : new Date('9999-12-31');
+      const dateB = b.endDate ? new Date(b.endDate) : new Date('9999-12-31');
+      return dateA - dateB;
+    });
+
+  } catch (e) {
+    console.error('getGoals Fatal Error', e);
+    return [{
+      id: 'fatal_error',
+      title: 'FATAL ERROR',
+      vision: e.toString() + e.stack,
+      status: 'Error'
+    }];
+  }
+}
+
+function saveGoal(goal) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  let sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS); // Use Safe Helper
+
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS);
+    sheet.appendRow(['id', 'title', 'vision', 'metric_label', 'metric_target', 'metric_current', 'start_date', 'end_date', 'status', 'created_at']);
+  }
+
+  // id, title, vision, metric_label, metric_target, metric_current, start_date, end_date, status, created_at 
+
+  const now = new Date();
+
+  if (goal.id) {
+    // UPDATE 
+    const data = sheet.getDataRange().getValues();
+    let rowIdx = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === goal.id) {
+        rowIdx = i + 1;
+        break;
+      }
+    }
+
+    if (rowIdx > 0) {
+      // Update columns 2-9 
+      sheet.getRange(rowIdx, 2).setValue(goal.title);
+      sheet.getRange(rowIdx, 3).setValue(goal.vision);
+      sheet.getRange(rowIdx, 4).setValue(goal.metricLabel);
+      sheet.getRange(rowIdx, 5).setValue(goal.metricTarget);
+      sheet.getRange(rowIdx, 6).setValue(goal.metricCurrent);
+      sheet.getRange(rowIdx, 7).setValue(goal.startDate);
+      sheet.getRange(rowIdx, 8).setValue(goal.endDate);
+      sheet.getRange(rowIdx, 9).setValue(goal.status || 'Active');
+      return 'Updated';
+    }
+  }
+
+  // CREATE 
+  const newId = Utilities.getUuid();
+  sheet.appendRow([
+    newId,
+    goal.title,
+    goal.vision,
+    goal.metricLabel,
+    goal.metricTarget,
+    goal.metricCurrent,
+    goal.startDate,
+    goal.endDate,
+    goal.status || 'Active',
+    now
+  ]);
+
+  return 'Created';
+}
+
+function deleteGoal(id) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!sheet) return 'Not Found (DB Missing)';
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === id) {
+      // Soft delete or Hard delete? Using Status 'DELETED' 
+      sheet.getRange(i + 1, 9).setValue('DELETED');
+      return 'Deleted';
+    }
+  }
+  return 'Not Found';
+}

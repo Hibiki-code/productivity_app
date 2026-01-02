@@ -987,6 +987,17 @@
       </div>
       <div id="schedule-list"></div>
     </div>
+
+    <!-- ROADMAP VIEW -->
+    <div id="view-roadmap" class="view">
+      <div class="glass-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>Roadmap</div>
+        <div class="add-btn-small" onclick="openGoalModal()" style="font-size:24px; width:40px; height:40px;">＋</div>
+      </div>
+      <div style="padding: 0 10px 100px 10px;">
+        <div id="goal-list-container"></div>
+      </div>
+    </div>
   </div> <!-- Main -->
 
   <!-- NAV BAR -->
@@ -995,14 +1006,26 @@
       <div class="nav-icon">✓</div>
       Tasks
     </div>
-    <div class="nav-item" onclick="switchTab('schedule', this)">
-      <div class="nav-icon">📅</div>
+
+    <!-- Roadmap (New) -->
+    <div class="nav-item" onclick="switchTab('roadmap', this)">
+      <div class="nav-icon"><span class="material-symbols-rounded">map</span></div>
+      Roadmap
+    </div>
+
+    <!-- Schedule (Cal) -->
+    <div class="nav-item" onclick="switchTab('cal', this)">
+      <div class="nav-icon"><span class="material-symbols-rounded">calendar_month</span></div>
       Schedule
     </div>
+
+    <!-- Habits -->
     <div class="nav-item" onclick="switchTab('habits', this)">
       <div class="nav-icon">⭕</div>
       Habits
     </div>
+
+    <!-- AI -->
     <div class="nav-item" onclick="switchTab('secretary', this)">
       <div class="nav-icon">🤖</div>
       AI
@@ -1038,6 +1061,46 @@
       <button class="btn-save" onclick="saveTask()">追加</button>
     </div>
   </div>
+  <!-- GOAL MODAL -->
+  <div class="modal-overlay" id="goal-modal" onclick="if(event.target===this) closeGoalModal()">
+    <div class="modal-box" style="max-height:85vh; overflow-y:auto;">
+      <h3>目標設定</h3>
+      <input id="g-id" type="hidden">
+      <label style="font-size:12px; color:#999;">タイトル</label>
+      <input id="g-title" class="input-std" placeholder="例: 副業で月10万稼ぐ">
+
+      <label style="font-size:12px; color:#999;">ビジョン (定性目標)</label>
+      <textarea id="g-vision" class="input-std" style="height:80px;" placeholder="達成時の情景など..."></textarea>
+
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;">
+          <label style="font-size:12px; color:#999;">単位 (例: 円, kg)</label>
+          <input id="g-metric-label" class="input-std" placeholder="円">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:12px; color:#999;">目標値</label>
+          <input type="number" id="g-metric-target" class="input-std" placeholder="100000">
+        </div>
+      </div>
+
+      <label style="font-size:12px; color:#999;">現在値</label>
+      <input type="number" id="g-metric-current" class="input-std" placeholder="0">
+
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;">
+          <label style="font-size:12px; color:#999;">開始日</label>
+          <input type="date" id="g-start-date" class="input-std">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:12px; color:#999;">達成期限</label>
+          <input type="date" id="g-end-date" class="input-std">
+        </div>
+      </div>
+
+      <button class="btn-save" onclick="saveGoal()">保存</button>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="journal-modal" onclick="if(event.target===this) closeJournalModal(false)">
     <div class="modal-box">
       <h3 id="journal-title">習慣の記録</h3>
@@ -2628,6 +2691,136 @@
         btn.innerText = 'Done';
       }).migrateHabitDefinitions();
     }
+
+    /* --- ROADMAP LOGIC --- */
+    function fetchGoals() {
+      const container = document.getElementById('goal-list-container');
+      container.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">Loading...</div>';
+      google.script.run
+        .withSuccessHandler((goals) => {
+          console.log('FrontEnd Received:', goals);
+          renderRoadmap(goals);
+        })
+        .withFailureHandler((e) => {
+          console.error("Fetch Error", e);
+          container.innerHTML = '<div style="color:red; padding:20px;">Load Error. Please reload.</div>';
+        })
+        .getGoalsV2();
+    }
+
+    function renderRoadmap(goals) {
+      const container = document.getElementById('goal-list-container');
+      container.innerHTML = '';
+
+      if (!goals || goals.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:#aaa;">目標を設定して、<br>理想の未来を描きましょう！</div>';
+        return;
+      }
+
+      goals.forEach(g => {
+        try {
+          let start = g.startDate ? new Date(g.startDate) : new Date();
+          let end = g.endDate ? new Date(g.endDate) : new Date(new Date().setFullYear(new Date().getFullYear() + 1));
+          const now = new Date();
+
+          if (isNaN(start.getTime())) start = new Date();
+          if (isNaN(end.getTime())) end = new Date(new Date().setFullYear(new Date().getFullYear() + 1));
+
+          // Progress Calculation (Time)
+          const totalTime = end - start;
+          const elapsedTime = now - start;
+          const timePercent = (totalTime > 0) ? Math.max(0, Math.min(100, (elapsedTime / totalTime) * 100)) : 0;
+
+          // Progress Calculation (Metric)
+          let metricPercent = 0;
+          const target = Number(g.metricTarget) || 0;
+          const current = Number(g.metricCurrent) || 0;
+          if (target > 0) {
+            metricPercent = Math.max(0, Math.min(100, (current / target) * 100));
+          }
+
+          const displayPercent = (target > 0) ? metricPercent : timePercent;
+
+          const endDateStr = g.endDate ? String(g.endDate).substring(0, 10) : 'No Date';
+
+          const div = document.createElement('div');
+          div.className = 'goal-card';
+          div.innerHTML = `
+                <div class="goal-header">
+                   <div class="goal-title">${g.title || 'Untitled'}</div>
+                   <div style="font-size:12px; color:${g.status === 'Active' ? '#4CAF50' : '#999'}; font-weight:bold;">${g.status}</div>
+                </div>
+                ${g.vision ? `<div class="goal-vision">${g.vision}</div>` : ''}
+                
+                <div class="goal-metrics">
+                   <span>現在: ${current}${g.metricLabel || ''}</span>
+                   <span>目標: ${target}${g.metricLabel || ''}</span>
+                </div>
+                
+                <div class="progress-container">
+                   <div class="progress-bar" style="width: ${displayPercent}%;"></div>
+                </div>
+                
+                <div class="goal-dates">
+                   <span>🏁 ${endDateStr}</span>
+                   <span style="margin-left:auto;">残り ${(end - now) / (1000 * 60 * 60 * 24) > 0 ? Math.ceil((end - now) / (1000 * 60 * 60 * 24)) : 0} 日</span>
+                </div>
+              `;
+          div.onclick = () => openGoalDetail(g.id);
+          container.appendChild(div);
+        } catch (err) {
+          console.error('Render Error Goal:', g, err);
+          const errDiv = document.createElement('div');
+          errDiv.innerText = 'Error loading goal: ' + g.title;
+          container.appendChild(errDiv);
+        }
+      });
+    }
+
+    function openGoalModal() {
+      document.getElementById('goal-modal').classList.add('open');
+      // Reset inputs
+      document.getElementById('g-id').value = '';
+      document.getElementById('g-title').value = '';
+      document.getElementById('g-vision').value = '';
+      document.getElementById('g-metric-label').value = '';
+      document.getElementById('g-metric-target').value = '';
+      document.getElementById('g-metric-current').value = '';
+      document.getElementById('g-start-date').value = new Date().toISOString().substring(0, 10);
+      document.getElementById('g-end-date').value = '';
+    }
+
+    function closeGoalModal() {
+      document.getElementById('goal-modal').classList.remove('open');
+    }
+
+    function saveGoal() {
+      const id = document.getElementById('g-id').value;
+      const title = document.getElementById('g-title').value;
+      if (!title) return alert('タイトルは必須です');
+
+      const goal = {
+        id: id || null,
+        title: title,
+        vision: document.getElementById('g-vision').value,
+        metricLabel: document.getElementById('g-metric-label').value,
+        metricTarget: Number(document.getElementById('g-metric-target').value) || 0,
+        metricCurrent: Number(document.getElementById('g-metric-current').value) || 0,
+        startDate: document.getElementById('g-start-date').value,
+        endDate: document.getElementById('g-end-date').value
+      };
+
+      closeGoalModal();
+      google.script.run.withSuccessHandler(() => {
+        fetchGoals();
+      }).saveGoal(goal);
+    }
+
+    // Hook into tab switch (Simple hack: fetch every time tab clicked via DOM attrib? No, just fetch once on init)
+    // Or we can expose fetchGoals global and add it to the onclick in HTML?
+    // Yes, I'll update the nav item... oh wait, I already wrote the HTML.
+    // Let's just run fetchGoals() on load for now.
+    window.addEventListener('load', () => setTimeout(fetchGoals, 1000)); 
   </script>
   <?!= include('icons'); ?>
 
@@ -2736,6 +2929,123 @@
     .add-btn-small:active {
       background: #eee;
 
+    }
+
+    /* Roadmap Styles */
+    .goal-card {
+      background: white;
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .goal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 15px;
+    }
+
+    .goal-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .goal-vision {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.5;
+      background: #f9f9f9;
+      padding: 10px;
+      border-radius: 12px;
+      margin-bottom: 15px;
+      font-style: italic;
+    }
+
+    .progress-container {
+      background: #F0F0F0;
+      height: 8px;
+      border-radius: 4px;
+      margin-top: 10px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #64B5F6, #1E88E5);
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+
+    .goal-metrics {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #888;
+      margin-top: 5px;
+      font-weight: 700;
+    }
+
+    .goal-dates {
+      font-size: 11px;
+      color: #AAA;
+      margin-top: 15px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .milestone-dots {
+      display: flex;
+      gap: 4px;
+      margin-top: 10px;
+    }
+
+    .m-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #eee;
+    }
+
+    .m-dot.done {
+      background: #81C784;
+    }
+
+    /* Fix Bottom Nav for 5 items (Robust Flex) */
+    .bottom-nav {
+      display: flex !important;
+      flex-direction: row !important;
+      justify-content: space-around !important;
+      align-items: center !important;
+      width: 100% !important;
+      height: 70px !important;
+      /* Fixed Height */
+      padding: 0 5px !important;
+      box-sizing: border-box !important;
+      gap: 0 !important;
+    }
+
+    .nav-item {
+      flex: 1 1 0px !important;
+      /* Forces equal width */
+      width: 0 !important;
+      /* Robustness for old browsers */
+      min-width: 0 !important;
+      max-width: none !important;
+      height: 100% !important;
+      padding: 5px 0 !important;
+      margin: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
     }
   </style>
 </body>
