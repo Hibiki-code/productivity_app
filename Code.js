@@ -455,41 +455,47 @@ function getHabitStatus(dateStr) {
   const defData = defSheet.getDataRange().getValues();
   const rawHeaders = defData.shift();
 
-  // Headers: [id, name, icon, category, description, createdAt, updatedAt, status]
+  // Headers: [id, title, icon, section, benefit, isActive, createdAt, text_input, time_needed]
   const hMap = {};
   rawHeaders.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
 
-  // Fallback Indices (Safety Net)
+  // Fallback Indices (Safety Net based on Screenshot)
+  // A=0: id, B=1: title, C=2: icon, D=3: section, E=4: benefit, F=5: isActive, G=6: createdAt, H=7: text_input, I=8: time_needed
   const FALLBACK = {
     id: 0,
-    name: 1,
+    title: 1,
     icon: 2,
-    category: 3,
-    description: 4,
-    status: 7
+    section: 3,
+    benefit: 4,
+    isactive: 5,
+    text_input: 7,
+    time_needed: 8
   };
 
   const getVal = (r, key, def) => {
     let idx = hMap[key.toLowerCase()];
     if (idx === undefined) idx = FALLBACK[key.toLowerCase()];
-    return (idx !== undefined && r[idx]) ? r[idx] : def;
+    return (idx !== undefined && r[idx] !== undefined) ? r[idx] : def;
   };
 
   const habits = defData.map(r => {
     // Correctly map DB_Habits columns to App keys
-    const name = getVal(r, 'name', '');
-    if (!name) return null;
+    const title = getVal(r, 'title', '');
+    if (!title) return null;
 
-    // Status check? If we implement archiving later.
-    const status = getVal(r, 'status', 'ACTIVE');
-    if (status !== 'ACTIVE') return null;
+    // Status check
+    const isActiveVal = getVal(r, 'isActive', 'ACTIVE'); // 'ACTIVE' or TRUE
+    // User might use 'ACTIVE' string or boolean TRUE. Screenshot shows 'ACTIVE'.
+    if (String(isActiveVal).toUpperCase() !== 'ACTIVE' && isActiveVal !== true) return null;
 
     return {
       id: getVal(r, 'id', ''),
-      name: name,
+      name: title, // Map 'title' to Internal 'name'
       icon: getVal(r, 'icon', 'water_drop'),
-      sectionId: getVal(r, 'category', 'sec_morning'),
-      benefit: getVal(r, 'description', '')
+      sectionId: getVal(r, 'section', 'sec_morning'),
+      benefit: getVal(r, 'benefit', ''),
+      hasTextInput: (getVal(r, 'text_input', false) === true),
+      time: getVal(r, 'time_needed', '')
     };
   }).filter(h => h);
 
@@ -615,13 +621,18 @@ function logHabit(dateStr, habitName, status) {
   // Lookup ID from DB_Habits
   const dbHabits = ss.getSheetByName('DB_Habits').getDataRange().getValues();
   let habitId = '';
+  // DB_Habits new schema: id(0), title(1)
+  // Assuming Fallback if header search fails: title is idx 1
   const hHeaders = dbHabits[0].map(h => String(h).trim().toLowerCase());
-  const nameIdx = hHeaders.indexOf('name');
+  let titleIdx = hHeaders.indexOf('title');
   const idIdx = hHeaders.indexOf('id');
 
-  if (nameIdx > -1 && idIdx > -1) {
+  if (titleIdx === -1) titleIdx = 1; // Fallback
+  // idIdx usually 0
+
+  if (titleIdx > -1 && idIdx > -1) {
     for (let i = 1; i < dbHabits.length; i++) {
-      if (dbHabits[i][nameIdx] === habitName) {
+      if (dbHabits[i][titleIdx] === habitName) {
         habitId = dbHabits[i][idIdx];
         break;
       }
@@ -690,38 +701,104 @@ function logHabit(dateStr, habitName, status) {
 
 function logHabitText(dateStr, habitName, text) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const logName = '習慣日記ログ';
+  const logName = '日記記録'; // New Sheet Name
   let sheet = ss.getSheetByName(logName);
 
   if (!sheet) {
     sheet = ss.insertSheet(logName);
-    sheet.appendRow(['Date', 'Habit', 'Content']);
+    sheet.appendRow(['日付']); // Header Init
   }
 
-  const d = new Date(dateStr);
-  const ymd = Utilities.formatDate(d, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  // 1. Ensure Column Exists (Habit Name)
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  let colIndex = headers.indexOf(habitName);
 
-  sheet.appendRow([ymd, habitName, text]);
+  if (colIndex === -1) {
+    if (lastCol === 0) {
+      // Should not happen if we appended '日付'
+      sheet.appendRow(['日付', habitName]);
+      colIndex = 1;
+    } else {
+      colIndex = lastCol; // New is at index = length of old array (which is 1-based size) -> Wait.
+      // headers length is lastCol.
+      // We write to lastCol + 1. Index in headers array would be headers.length.
+      sheet.getRange(1, lastCol + 1).setValue(habitName);
+    }
+  }
+
+  // 2. Ensure Row Exists (Date)
+  // Use TextFinder for date (A:A)
+  const targetYMD = Utilities.formatDate(new Date(dateStr), CONFIG.TIMEZONE, 'yyyy/MM/dd');
+  // Note: Standard sheet date format might be yyyy/MM/dd or yyyy-MM-dd.
+  // The Matrix usually uses what matches the User Locale. 
+  // Let's search by string first.
+
+  // Optimization: Check last row first (common case: today)
+  const lastRow = sheet.getLastRow();
+  let rowIndex = -1;
+
+  if (lastRow > 1) {
+    const lastDateRaw = sheet.getRange(lastRow, 1).getValue();
+    let lastDateStr = '';
+    if (lastDateRaw instanceof Date) lastDateStr = Utilities.formatDate(lastDateRaw, CONFIG.TIMEZONE, 'yyyy/MM/dd');
+    else lastDateStr = String(lastDateRaw);
+
+    if (lastDateStr === targetYMD) rowIndex = lastRow;
+  }
+
+  if (rowIndex === -1) {
+    // Search whole column
+    const dates = sheet.getRange("A:A").getValues().map(r => {
+      if (r[0] instanceof Date) return Utilities.formatDate(r[0], CONFIG.TIMEZONE, 'yyyy/MM/dd');
+      return String(r[0]);
+    });
+    // IndexOf + 1 (1-based)
+    rowIndex = dates.indexOf(targetYMD) + 1;
+  }
+
+  if (rowIndex === 0) { // Not found (indexOf -1 -> 0)
+    sheet.appendRow([targetYMD]);
+    rowIndex = sheet.getLastRow();
+  }
+
+  // 3. Write Data (Intersection)
+  // colIndex is 0-based index in headers array. 
+  // Column number is colIndex + 1.
+  sheet.getRange(rowIndex, colIndex + 1).setValue(text);
+
   return 'Logged Text';
 }
 
 function getHabitTextLogs(habitName) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const logName = '習慣日記ログ';
+  const logName = '日記記録'; // Matrix Sheet
   const sheet = ss.getSheetByName(logName);
 
   if (!sheet) return [];
 
-  const data = sheet.getDataRange().getValues();
-  if (data.length < 2) return [];
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const colIndex = headers.indexOf(habitName); // 0-based index in headers
 
-  // Headers: Date, Habit, Content
-  // Assuming Date=0, Habit=1, Content=2
+  if (colIndex === -1) return [];
+
+  // Read Column Data (Column index is colIndex + 1)
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  // Bulk Read: Date(Col 1) and Target(Col X)
+  // Optimization: Read entire range or just two columns?
+  // Reading two non-adjacent columns is tricky. Read DataRange is simplest.
+  const data = sheet.getDataRange().getValues(); // [Row][Col]
+
   const results = [];
 
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    if (row[1] === habitName) {
+    const val = row[colIndex];
+    if (val && String(val).trim() !== '') {
+      // Found Log
       let dStr = '';
       if (row[0] instanceof Date) {
         dStr = Utilities.formatDate(row[0], CONFIG.TIMEZONE, 'yyyy/MM/dd');
@@ -731,7 +808,7 @@ function getHabitTextLogs(habitName) {
 
       results.push({
         date: dStr,
-        text: row[2]
+        text: String(val)
       });
     }
   }
@@ -1049,19 +1126,28 @@ function saveHabitDefinition(name, newName, sectionId, icon) {
 
   let headers = data[0];
   // Map headers: name, category (section), icon
-  // Headers: [id, name, icon, category, description, createdAt, updatedAt, status]
+  // Headers: [id, title, icon, section, benefit, isActive, createdAt, text_input, time_needed]
 
   const hMap = {};
   headers.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
 
+  // Fallback
+  if (hMap['title'] === undefined) hMap['title'] = 1;
+  if (hMap['section'] === undefined) hMap['section'] = 3;
+  if (hMap['icon'] === undefined) hMap['icon'] = 2;
+
   let found = false;
   for (let i = 1; i < data.length; i++) {
-    if (data[i][hMap['name']] === name) {
+    if (data[i][hMap['title']] === name) {
       const row = i + 1;
-      if (newName && newName !== name) sheet.getRange(row, hMap['name'] + 1).setValue(newName);
-      if (sectionId) sheet.getRange(row, hMap['category'] + 1).setValue(sectionId);
+      if (newName && newName !== name) sheet.getRange(row, hMap['title'] + 1).setValue(newName);
+      if (sectionId) sheet.getRange(row, hMap['section'] + 1).setValue(sectionId);
       if (icon) sheet.getRange(row, hMap['icon'] + 1).setValue(icon);
-      sheet.getRange(row, hMap['updatedAt'] + 1).setValue(new Date());
+
+      // Update At (Only if exists)
+      if (hMap['updatedat'] !== undefined) {
+        sheet.getRange(row, hMap['updatedat'] + 1).setValue(new Date());
+      }
       found = true;
       break;
     }
