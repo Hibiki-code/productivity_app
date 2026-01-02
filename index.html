@@ -1032,6 +1032,25 @@
     </div>
   </div>
 
+  <!-- SLEEP MODAL -->
+  <div class="modal-overlay" id="sleep-modal" onclick="if(event.target===this) closeSleepModal()">
+    <div class="modal-box">
+      <h3>睡眠記録</h3>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;color:#666;">就寝時刻</label>
+        <input type="time" id="sleep-bedtime" class="input-std" value="23:00">
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;color:#666;">起床時刻</label>
+        <input type="time" id="sleep-wakeup" class="input-std" value="07:00">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-sec" onclick="closeSleepModal()">キャンセル</button>
+        <button class="btn-pri" onclick="saveSleepLog()">記録する</button>
+      </div>
+    </div>
+  </div>
+
   <!-- TASK MODAL -->
   <div class="modal-overlay" id="task-modal" onclick="if(event.target===this) closeTaskModal()">
     <div class="modal-box">
@@ -2118,6 +2137,14 @@
       const item = el.closest('.habit-item');
       const isDone = item.classList.toggle('done');
 
+      // Special Logic: Sleep Record
+      if (isDone && name === '睡眠時間記録') {
+        pendingJournalItem = item;
+        pendingJournalName = name;
+        document.getElementById('sleep-modal').classList.add('open');
+        return;
+      }
+
       // Special Logic: Any "Journal" (XX日記) (Only on Check)
       if (isDone && name.endsWith('日記')) {
         pendingJournalItem = item;
@@ -2137,6 +2164,38 @@
       }
 
       processHabitToggle(item, name, isDone);
+    }
+
+    function closeSleepModal() {
+      document.getElementById('sleep-modal').classList.remove('open');
+      // If canceled, revert check?
+      if (pendingJournalItem && !pendingJournalItem.classList.contains('processed')) {
+        pendingJournalItem.classList.remove('done');
+      }
+      pendingJournalItem = null;
+    }
+
+    function saveSleepLog() {
+      const bedtime = document.getElementById('sleep-bedtime').value;
+      const wakeup = document.getElementById('sleep-wakeup').value;
+
+      const item = pendingJournalItem;
+      const name = pendingJournalName;
+
+      closeSleepModal(); // Close first
+
+      // Save to Backend
+      // We also need today's date context? 
+      // toggleHabit operates on "Today" usually. 
+      // If we support back-dating, we need the date from the column/header.
+      // But currently habits are "Today's View".
+      // We'll assume Today.
+      const dateStr = new Date();
+
+      google.script.run.withSuccessHandler(() => {
+        // Success
+        processHabitToggle(item, name, true);
+      }).logSleep(dateStr, bedtime, wakeup);
     }
 
     function processHabitToggle(item, name, isDone) {

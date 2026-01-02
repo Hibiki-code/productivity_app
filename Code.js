@@ -845,6 +845,59 @@ function getHabitCalendar(habitName, year, month) {
 // OPTIMIZED STATS UPDATE
 // -----------------------------------------------------------------------------
 
+
+function logSleep(dateStr, bedtime, wakeup) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheetName = '睡眠記録';
+  let sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    sheet.appendRow(['日付', '睡眠開始時刻', '睡眠終了時刻', '睡眠時間']);
+  }
+
+  // Find Row by Date (Column A)
+  const targetYMD = Utilities.formatDate(new Date(dateStr), CONFIG.TIMEZONE, 'yyyy/MM/dd');
+
+  // Optimization: Check last row first
+  const lastRow = sheet.getLastRow();
+  let rowIndex = -1;
+
+  if (lastRow > 1) {
+    const lastDateRaw = sheet.getRange(lastRow, 1).getValue();
+    let lastDateStr = '';
+    if (lastDateRaw instanceof Date) lastDateStr = Utilities.formatDate(lastDateRaw, CONFIG.TIMEZONE, 'yyyy/MM/dd');
+    else lastDateStr = String(lastDateRaw);
+
+    if (lastDateStr === targetYMD) rowIndex = lastRow;
+  }
+
+  if (rowIndex === -1) {
+    // Search whole column
+    const dates = sheet.getRange("A:A").getValues().map(r => {
+      if (r[0] instanceof Date) return Utilities.formatDate(r[0], CONFIG.TIMEZONE, 'yyyy/MM/dd');
+      return String(r[0]);
+    });
+    // IndexOf + 1 (1-based)
+    rowIndex = dates.indexOf(targetYMD) + 1;
+  }
+
+  if (rowIndex === 0) { // Not found
+    sheet.appendRow([targetYMD]);
+    rowIndex = sheet.getLastRow();
+  }
+
+  // Write Times (Col B and C)
+  // Bedtime -> Col 2, Wakeup -> Col 3
+  if (bedtime) sheet.getRange(rowIndex, 2).setValue(bedtime);
+  if (wakeup) sheet.getRange(rowIndex, 3).setValue(wakeup);
+
+  // Col 4 (Duration) is assumed to be a formula. We do not write to it.
+
+  return 'Logged Sleep';
+}
+
+
 function updateSingleHabitStreak(habitName, isDone) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const statSheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_STATS);
