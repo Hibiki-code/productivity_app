@@ -2202,7 +2202,7 @@
       google.script.run.withSuccessHandler(() => {
         // Success
         processHabitToggle(item, name, true);
-      }).logSleep(dateStr, bedtime, wakeup);
+      }).logSleep(dateStr.toString(), bedtime, wakeup);
     }
 
     function processHabitToggle(item, name, isDone) {
