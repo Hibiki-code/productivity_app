@@ -1523,10 +1523,33 @@ function getWeeklyGoals(currentDateStr) {
   return activeWeeklyGoals;
 }
 
-function setWeeklyGoal(goalId, metric, target, notes, startDateStr, endDateStr) {
+function setWeeklyGoal(goalId, metric, target, notes, startDateStr, endDateStr, newGoalTitle) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
   if (!sheet) return 'DB_WEEKLY_GOALS Missing';
+
+  // Handle New Goal Creation Ad-hoc
+  if (goalId === 'new' && newGoalTitle) {
+    const goalSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+    if (goalSheet) {
+      const newGId = Utilities.getUuid();
+      const now = new Date();
+      // id, title, vision, metric_label, metric_target, metric_current, start_date, end_date, status, created_at
+      goalSheet.appendRow([
+        newGId,
+        newGoalTitle,
+        '', // Vision
+        metric, // Metric Label (matches weekly)
+        target, // Target (matches weekly)
+        0,
+        startDateStr,
+        endDateStr, // Short term?
+        'Active',
+        now
+      ]);
+      goalId = newGId; // Link to new goal
+    }
+  }
 
   const newId = Utilities.getUuid();
   // id, start_date, end_date, goal_id, target_metric, target_value, status, review_score, review_text, created_at
@@ -1539,7 +1562,7 @@ function setWeeklyGoal(goalId, metric, target, notes, startDateStr, endDateStr) 
     target,
     'Active',
     '', // score
-    notes || '', // text (using review_text column for notes initially? or just ignore notes)
+    notes || '', // text 
     new Date()
   ]);
   return 'Created';
@@ -1580,4 +1603,27 @@ function saveWeeklyReview(weeklyGoalId, score, text) {
     }
   }
   return 'Not Found';
+}
+
+function getActiveGoalsSimple() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!sheet) return [];
+
+  const data = sheet.getDataRange().getValues();
+  const list = [];
+
+  // Skip Header
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    // id=0, title=1, status=8
+    const status = row[8] || 'Active';
+    if (status !== 'DELETED' && status !== 'Done') {
+      list.push({
+        id: row[0],
+        title: row[1]
+      });
+    }
+  }
+  return list;
 }

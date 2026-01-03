@@ -3234,7 +3234,112 @@
     }
 
     function openGoalWizard() {
-      alert("Weekly Planning Wizard (Coming Soon)\n\nUse this to set new goals for the week.");
+      // Reset State
+      document.getElementById('gw-step-1').style.display = 'block';
+      document.getElementById('gw-step-2').style.display = 'none';
+      document.getElementById('gw-btn-back').style.display = 'none';
+      document.getElementById('gw-btn-next').innerText = 'Next';
+      document.getElementById('gw-btn-next').onclick = gwNextStep;
+
+      // Reset Inputs
+      document.getElementById('gw-goal-select').innerHTML = '<option value="">Loading...</option>';
+      document.getElementById('gw-new-goal-container').style.display = 'none';
+      document.getElementById('gw-new-goal-title').value = '';
+      document.getElementById('gw-metric-name').value = '';
+      document.getElementById('gw-target-value').value = '';
+      document.getElementById('gw-notes').value = '';
+
+      document.getElementById('goal-wizard-modal').classList.add('open');
+
+      // Fetch Goals
+      google.script.run.withSuccessHandler(goals => {
+        const sel = document.getElementById('gw-goal-select');
+        sel.innerHTML = '<option value="">-- Select --</option>';
+        if (goals && goals.length > 0) {
+          goals.forEach(g => {
+            sel.innerHTML += `<option value="${g.id}">${g.title}</option>`;
+          });
+        }
+        sel.innerHTML += '<option value="new">+ Create New Goal...</option>';
+      }).getActiveGoalsSimple();
+    }
+
+    function checkGwGoalSelect() {
+      const val = document.getElementById('gw-goal-select').value;
+      const newCont = document.getElementById('gw-new-goal-container');
+      if (val === 'new') {
+        newCont.style.display = 'block';
+        setTimeout(() => document.getElementById('gw-new-goal-title').focus(), 100);
+      } else {
+        newCont.style.display = 'none';
+      }
+    }
+
+    function gwNextStep() {
+      // Validation Step 1
+      const goalVal = document.getElementById('gw-goal-select').value;
+      if (!goalVal) { alert('Please select a goal or create new.'); return; }
+      if (goalVal === 'new' && !document.getElementById('gw-new-goal-title').value.trim()) {
+        alert('Please enter a title for the new goal.'); return;
+      }
+
+      document.getElementById('gw-step-1').style.display = 'none';
+      document.getElementById('gw-step-2').style.display = 'block';
+      document.getElementById('gw-btn-back').style.display = 'block';
+      document.getElementById('gw-btn-next').innerText = 'Set Focus';
+      document.getElementById('gw-btn-next').onclick = gwSave;
+
+      setTimeout(() => document.getElementById('gw-metric-name').focus(), 100);
+    }
+
+    function gwPrevStep() {
+      document.getElementById('gw-step-2').style.display = 'none';
+      document.getElementById('gw-step-1').style.display = 'block';
+      document.getElementById('gw-btn-back').style.display = 'none';
+      document.getElementById('gw-btn-next').innerText = 'Next';
+      document.getElementById('gw-btn-next').onclick = gwNextStep;
+    }
+
+    function gwSave() {
+      const metric = document.getElementById('gw-metric-name').value;
+      const target = document.getElementById('gw-target-value').value;
+      const notes = document.getElementById('gw-notes').value;
+
+      if (!metric || !target) { alert('Please enter metric and target value.'); return; }
+
+      // Prepare Data
+      const goalSelect = document.getElementById('gw-goal-select').value;
+      let goalId = goalSelect;
+
+      // If New, we might need to handle creation on backend or pass a flag?
+      // Current setWeeklyGoal expects goalId.
+      // Let's modify setWeeklyGoal to handle "new:Title" convention? or create goal first?
+      // Simpler: If goalId is "new", pass the TITLE in "notes" or separate param?
+      // Actually, let's just pass "new" and the title in notes is hacky.
+      // Let's pass goalId (which is 'new') and include the New Title in the call.
+      // I need to update setWeeklyGoal signature? Or just repurpose.
+
+      const newTitle = document.getElementById('gw-new-goal-title').value;
+
+      const startDate = new Date();
+      const day = startDate.getDay() || 7; // Mon=1, Sun=7
+      if (day !== 1) startDate.setDate(startDate.getDate() - (day - 1)); // Back to Monday
+      const startDateStr = startDate.toLocaleDateString('en-CA');
+
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 6); // To Sunday
+      const endDateStr = endDate.toLocaleDateString('en-CA');
+
+      document.getElementById('goal-wizard-modal').classList.remove('open');
+      renderWeeklyFocus(); // Spinner
+
+      // If goalId is 'new', we need the title. 
+      // Let's pass it as a composite or extra arg? 
+      // setWeeklyGoal(goalId, metric, target, notes, start, end, newGoalTitle)
+
+      google.script.run.withSuccessHandler(res => {
+        renderWeeklyFocus();
+      }).setWeeklyGoal(goalId, metric, target, notes, startDateStr, endDateStr, newTitle);
     }
 
   </script>
@@ -3252,6 +3357,53 @@
       <input id="mm-comment" type="text" class="input-std" placeholder="Optional">
 
       <button class="btn-save" style="margin-top:20px;" onclick="saveMeasurement()">Log</button>
+    </div>
+  </div>
+  <!-- GOAL WIZARD MODAL -->
+  <div class="modal-overlay" id="goal-wizard-modal">
+    <div class="modal-box" style="min-height:300px; display:flex; flex-direction:column;">
+      <div style="flex:1;">
+        <h3 style="margin-bottom:5px;">Weekly Plan 🗓️</h3>
+        <div style="font-size:12px; color:#999; margin-bottom:20px;">Set your focus for this week.</div>
+
+        <!-- Step 1: Select Parent Goal -->
+        <div id="gw-step-1">
+          <label class="label-std">Select a Vision / Goal</label>
+          <select id="gw-goal-select" class="input-std" onchange="checkGwGoalSelect()">
+            <option value="">Loading...</option>
+          </select>
+
+          <div id="gw-new-goal-container" style="display:none; margin-top:10px;">
+            <label class="label-std">New Goal Title</label>
+            <input id="gw-new-goal-title" class="input-std" placeholder="e.g. Master Python">
+          </div>
+        </div>
+
+        <!-- Step 2: Define Weekly Target -->
+        <div id="gw-step-2" style="display:none;">
+          <label class="label-std">What to measure this week?</label>
+          <input id="gw-metric-name" class="input-std" placeholder="e.g. Pages Read, Hours Studied">
+
+          <label class="label-std" style="margin-top:15px;">Target Value</label>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <input id="gw-target-value" type="number" class="input-std" style="flex:1;" placeholder="10">
+            <span style="font-size:12px; color:#666;">Total</span>
+          </div>
+
+          <label class="label-std" style="margin-top:15px;">Notes (Optional)</label>
+          <input id="gw-notes" class="input-std" placeholder="Strategy...">
+        </div>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div style="display:flex; justify-content:space-between; margin-top:20px;">
+        <button id="gw-btn-back" class="btn-save"
+          style="background:#eee; color:#555; width:auto; padding:0 20px; display:none;"
+          onclick="gwPrevStep()">Back</button>
+        <div style="flex:1;"></div>
+        <button id="gw-btn-next" class="btn-save" style="width:auto; padding:0 30px;"
+          onclick="gwNextStep()">Next</button>
+      </div>
     </div>
   </div>
 </body>
