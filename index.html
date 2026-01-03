@@ -2167,12 +2167,18 @@
       processHabitToggle(item, name, isDone);
     }
 
-    function closeSleepModal() {
+    function closeSleepModal(isSaved) {
       document.getElementById('sleep-modal').classList.remove('open');
-      // If canceled, revert check?
-      if (pendingJournalItem && !pendingJournalItem.classList.contains('processed')) {
+      // If canceled (not saved), revert check
+      if (!isSaved && pendingJournalItem) {
         pendingJournalItem.classList.remove('done');
       }
+      if (!isSaved) pendingJournalItem = null;
+      // Keep pendingJournalItem if saved? No, saveSleepLog needs it. 
+      // But saveSleepLog calls closeSleepModal FIRST. 
+      // So we should NOT null it if saved, OR capture it before closing.
+      // saveSleepLog already captures it: const item = pendingJournalItem;
+      // So we can null it here.
       pendingJournalItem = null;
     }
 
@@ -2183,7 +2189,7 @@
       const item = pendingJournalItem;
       const name = pendingJournalName;
 
-      closeSleepModal(); // Close first
+      closeSleepModal(true); // Close first, pass true to keep checkmark
 
       // Save to Backend
       // We also need today's date context? 
