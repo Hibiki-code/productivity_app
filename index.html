@@ -3233,16 +3233,35 @@
       }).logDailyMeasurement(currentMeasurementGoalId, val, comment, dateStr);
     }
 
+    function closeGoalWizard() {
+      document.getElementById('goal-wizard-modal').classList.remove('open');
+      // Clean up or just hide? 
+      // Resetting display style to empty string might be needed if classList handles it, 
+      // but 'none' ensures it's gone for the bug fix.
+      // Wait, if next time openGoalWizard adds .open, does it override display:none?
+      // .modal-overlay.open { display: flex; } in CSS usually.
+      // If element style is 'none', it overrides class.
+      // So we should remove the inline style in openGoalWizard just in case.
+      setTimeout(() => {
+        document.getElementById('goal-wizard-modal').style.display = '';
+        document.getElementById('goal-wizard-modal').classList.remove('open');
+      }, 100);
+      // Actually, safer to just remove .open and let CSS handle it. 
+      // But if the bug is "stuck", maybe the overlay is catching events?
+      // Let's assume removing .open is enough if the HTML attribute is fixed.
+      document.getElementById('goal-wizard-modal').classList.remove('open');
+    }
+
     function openGoalWizard() {
       // Reset State
       document.getElementById('gw-step-1').style.display = 'block';
       document.getElementById('gw-step-2').style.display = 'none';
       document.getElementById('gw-btn-back').style.display = 'none';
-      document.getElementById('gw-btn-next').innerText = 'Next';
+      document.getElementById('gw-btn-next').innerText = '次へ';
       document.getElementById('gw-btn-next').onclick = gwNextStep;
 
       // Reset Inputs
-      document.getElementById('gw-goal-select').innerHTML = '<option value="">Loading...</option>';
+      document.getElementById('gw-goal-select').innerHTML = '<option value="">読み込み中...</option>';
       document.getElementById('gw-new-goal-container').style.display = 'none';
       document.getElementById('gw-new-goal-title').value = '';
       document.getElementById('gw-metric-name').value = '';
@@ -3254,13 +3273,13 @@
       // Fetch Goals
       google.script.run.withSuccessHandler(goals => {
         const sel = document.getElementById('gw-goal-select');
-        sel.innerHTML = '<option value="">-- Select --</option>';
+        sel.innerHTML = '<option value="">-- 目標を選択 --</option>';
         if (goals && goals.length > 0) {
           goals.forEach(g => {
             sel.innerHTML += `<option value="${g.id}">${g.title}</option>`;
           });
         }
-        sel.innerHTML += '<option value="new">+ Create New Goal...</option>';
+        sel.innerHTML += '<option value="new">+ 新しい目標を作成...</option>';
       }).getActiveGoalsSimple();
     }
 
@@ -3278,15 +3297,15 @@
     function gwNextStep() {
       // Validation Step 1
       const goalVal = document.getElementById('gw-goal-select').value;
-      if (!goalVal) { alert('Please select a goal or create new.'); return; }
+      if (!goalVal) { alert('目標を選択するか、新規作成してください。'); return; }
       if (goalVal === 'new' && !document.getElementById('gw-new-goal-title').value.trim()) {
-        alert('Please enter a title for the new goal.'); return;
+        alert('新しい目標のタイトルを入力してください。'); return;
       }
 
       document.getElementById('gw-step-1').style.display = 'none';
       document.getElementById('gw-step-2').style.display = 'block';
       document.getElementById('gw-btn-back').style.display = 'block';
-      document.getElementById('gw-btn-next').innerText = 'Set Focus';
+      document.getElementById('gw-btn-next').innerText = '決定';
       document.getElementById('gw-btn-next').onclick = gwSave;
 
       setTimeout(() => document.getElementById('gw-metric-name').focus(), 100);
@@ -3296,7 +3315,7 @@
       document.getElementById('gw-step-2').style.display = 'none';
       document.getElementById('gw-step-1').style.display = 'block';
       document.getElementById('gw-btn-back').style.display = 'none';
-      document.getElementById('gw-btn-next').innerText = 'Next';
+      document.getElementById('gw-btn-next').innerText = '次へ';
       document.getElementById('gw-btn-next').onclick = gwNextStep;
     }
 
@@ -3305,19 +3324,11 @@
       const target = document.getElementById('gw-target-value').value;
       const notes = document.getElementById('gw-notes').value;
 
-      if (!metric || !target) { alert('Please enter metric and target value.'); return; }
+      if (!metric || !target) { alert('測定項目と目標値を入力してください。'); return; }
 
       // Prepare Data
       const goalSelect = document.getElementById('gw-goal-select').value;
       let goalId = goalSelect;
-
-      // If New, we might need to handle creation on backend or pass a flag?
-      // Current setWeeklyGoal expects goalId.
-      // Let's modify setWeeklyGoal to handle "new:Title" convention? or create goal first?
-      // Simpler: If goalId is "new", pass the TITLE in "notes" or separate param?
-      // Actually, let's just pass "new" and the title in notes is hacky.
-      // Let's pass goalId (which is 'new') and include the New Title in the call.
-      // I need to update setWeeklyGoal signature? Or just repurpose.
 
       const newTitle = document.getElementById('gw-new-goal-title').value;
 
@@ -3330,12 +3341,8 @@
       endDate.setDate(endDate.getDate() + 6); // To Sunday
       const endDateStr = endDate.toLocaleDateString('en-CA');
 
-      document.getElementById('goal-wizard-modal').classList.remove('open');
+      closeGoalWizard(); // Use helper
       renderWeeklyFocus(); // Spinner
-
-      // If goalId is 'new', we need the title. 
-      // Let's pass it as a composite or extra arg? 
-      // setWeeklyGoal(goalId, metric, target, notes, start, end, newGoalTitle)
 
       google.script.run.withSuccessHandler(res => {
         renderWeeklyFocus();
@@ -3360,38 +3367,38 @@
     </div>
   </div>
   <!-- GOAL WIZARD MODAL -->
-  <div class="modal-overlay" id="goal-wizard-modal">
+  <div class="modal-overlay" id="goal-wizard-modal" onclick="if(event.target===this) closeGoalWizard()">
     <div class="modal-box" style="min-height:300px; display:flex; flex-direction:column;">
       <div style="flex:1;">
-        <h3 style="margin-bottom:5px;">Weekly Plan 🗓️</h3>
-        <div style="font-size:12px; color:#999; margin-bottom:20px;">Set your focus for this week.</div>
+        <h3 style="margin-bottom:5px;">週間プラン 🗓️</h3>
+        <div style="font-size:12px; color:#999; margin-bottom:20px;">今週注力する目標を設定しましょう。</div>
 
         <!-- Step 1: Select Parent Goal -->
         <div id="gw-step-1">
-          <label class="label-std">Select a Vision / Goal</label>
+          <label class="label-std">目標（Vision）を選択</label>
           <select id="gw-goal-select" class="input-std" onchange="checkGwGoalSelect()">
-            <option value="">Loading...</option>
+            <option value="">読み込み中...</option>
           </select>
 
           <div id="gw-new-goal-container" style="display:none; margin-top:10px;">
-            <label class="label-std">New Goal Title</label>
-            <input id="gw-new-goal-title" class="input-std" placeholder="e.g. Master Python">
+            <label class="label-std">新しい目標のタイトル</label>
+            <input id="gw-new-goal-title" class="input-std" placeholder="例: Pythonをマスターする">
           </div>
         </div>
 
         <!-- Step 2: Define Weekly Target -->
         <div id="gw-step-2" style="display:none;">
-          <label class="label-std">What to measure this week?</label>
-          <input id="gw-metric-name" class="input-std" placeholder="e.g. Pages Read, Hours Studied">
+          <label class="label-std">今週の測定指標（Metric）</label>
+          <input id="gw-metric-name" class="input-std" placeholder="例: 読書ページ数, 勉強時間">
 
-          <label class="label-std" style="margin-top:15px;">Target Value</label>
+          <label class="label-std" style="margin-top:15px;">目標数値（Target）</label>
           <div style="display:flex; align-items:center; gap:10px;">
             <input id="gw-target-value" type="number" class="input-std" style="flex:1;" placeholder="10">
-            <span style="font-size:12px; color:#666;">Total</span>
+            <span style="font-size:12px; color:#666;">合計</span>
           </div>
 
-          <label class="label-std" style="margin-top:15px;">Notes (Optional)</label>
-          <input id="gw-notes" class="input-std" placeholder="Strategy...">
+          <label class="label-std" style="margin-top:15px;">メモ（任意）</label>
+          <input id="gw-notes" class="input-std" placeholder="戦略や意気込み...">
         </div>
       </div>
 
@@ -3399,10 +3406,9 @@
       <div style="display:flex; justify-content:space-between; margin-top:20px;">
         <button id="gw-btn-back" class="btn-save"
           style="background:#eee; color:#555; width:auto; padding:0 20px; display:none;"
-          onclick="gwPrevStep()">Back</button>
+          onclick="gwPrevStep()">戻る</button>
         <div style="flex:1;"></div>
-        <button id="gw-btn-next" class="btn-save" style="width:auto; padding:0 30px;"
-          onclick="gwNextStep()">Next</button>
+        <button id="gw-btn-next" class="btn-save" style="width:auto; padding:0 30px;" onclick="gwNextStep()">次へ</button>
       </div>
     </div>
   </div>
