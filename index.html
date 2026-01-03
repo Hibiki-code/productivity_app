@@ -3150,13 +3150,16 @@
     }
 
     function renderWeeklyFocus() {
+      console.log('Rendering Weekly Focus...');
       const container = document.getElementById('weekly-focus-container');
+      if (!container) { console.error('Container missing'); return; }
       container.innerHTML = '<div class="loading-spinner"></div>';
 
       // Pass today to backend
       const todayStr = new Date().toLocaleDateString('en-CA');
 
       google.script.run.withSuccessHandler(goals => {
+        console.log('Weekly Goals Received:', goals);
         if (!goals || goals.length === 0) {
           container.innerHTML = `
                     <div class="card" style="text-align:center; padding:30px; opacity:0.7;">
@@ -3191,6 +3194,9 @@
                 `;
         });
         container.innerHTML = html;
+      }).withFailureHandler(err => {
+        console.error('Failed to get goals', err);
+        container.innerHTML = '<div style="color:red">Error loading goals: ' + err + '</div>';
       }).getWeeklyGoals(todayStr);
     }
 
