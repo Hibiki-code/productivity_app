@@ -998,6 +998,32 @@
         <div id="goal-list-container"></div>
       </div>
     </div>
+    <!-- GOALS TAB (New) -->
+    <div id="view-goals" class="view" style="display:none;">
+      <div class="header-glass">
+        <div class="header-title">Goals & Vision</div>
+        <div class="add-btn-small" onclick="openGoalWizard()">+</div>
+      </div>
+      <div style="height:60px;"></div> <!-- Spacer -->
+
+      <!-- Weekly Focus Widget -->
+      <div id="weekly-focus-container">
+        <!-- Injected via JS -->
+        <div class="loading-spinner"></div>
+      </div>
+
+      <!-- Spacer -->
+      <div style="height:20px;"></div>
+
+      <!-- Roadmap / Long Term (Future) -->
+      <div class="section-header">
+        <span>Vision Roadmap</span>
+      </div>
+      <div class="goal-card" style="opacity:0.6;">
+        <div class="goal-title">Create your Vision</div>
+        <div style="font-size:12px; color:#999; margin-top:5px;">Define your long-term ideals... (Coming Soon)</div>
+      </div>
+    </div>
   </div> <!-- Main -->
 
   <!-- NAV BAR -->
@@ -1025,10 +1051,10 @@
       Habits
     </div>
 
-    <!-- AI -->
-    <div class="nav-item" onclick="switchTab('secretary', this)">
-      <div class="nav-icon">🤖</div>
-      AI
+    <!-- Goals (Vision) -->
+    <div class="nav-item" onclick="switchTab('goals', this)">
+      <div class="nav-icon"><span class="material-symbols-rounded">flag</span></div>
+      Goals
     </div>
   </div>
 
@@ -1341,6 +1367,9 @@
 
       if (id === 'habits') {
         // Maybe refresh habits to be sure
+      }
+      if (id === 'goals') {
+        renderGoalsTab();
       }
     }
 
@@ -3111,9 +3140,117 @@
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
-      justify-content: center !important;
+      justify-content !important;
     }
   </style>
+  <script>
+    // --- GOALS ---
+    function renderGoalsTab() {
+      renderWeeklyFocus();
+    }
+
+    function renderWeeklyFocus() {
+      const container = document.getElementById('weekly-focus-container');
+      container.innerHTML = '<div class="loading-spinner"></div>';
+
+      // Pass today to backend
+      const todayStr = new Date().toLocaleDateString('en-CA');
+
+      google.script.run.withSuccessHandler(goals => {
+        if (!goals || goals.length === 0) {
+          container.innerHTML = `
+                    <div class="card" style="text-align:center; padding:30px; opacity:0.7;">
+                        <div style="font-size:40px; margin-bottom:10px;">🎯</div>
+                        <div>No Active Focus</div>
+                        <div style="font-size:12px; margin-top:5px;">Set a weekly goal to start tracking.</div>
+                        <button class="btn-save" style="margin-top:15px;" onclick="openGoalWizard()">Set Focus</button>
+                    </div>
+                `;
+          return;
+        }
+
+        let html = '';
+        goals.forEach(g => {
+          const progress = (g.current_value / g.target_value) * 100;
+          const progressClamped = Math.min(100, progress);
+          const color = progress >= 100 ? '#4CAF50' : '#2196F3';
+
+          html += `
+                    <div class="goal-card" onclick="openMeasurementModal('${g.id}', '${g.target_metric}', '${g.title || g.goal_title}')">
+                        <div class="goal-header" style="margin-bottom:10px;">
+                            <div class="goal-title" style="font-size:16px;">${g.target_metric}</div>
+                            <div style="font-size:12px; color:#666;">${g.current_value} / ${g.target_value}</div>
+                        </div>
+                        <div style="background:#eee; height:8px; border-radius:4px; overflow:hidden;">
+                            <div style="background:${color}; width:${progressClamped}%; height:100%; transition:width 0.5s;"></div>
+                        </div>
+                        <div style="font-size:10px; color:#999; margin-top:8px; text-align:right;">
+                            ${g.goal_title ? 'Linked to: ' + g.goal_title : 'Weekly Goal'}
+                        </div>
+                    </div>
+                `;
+        });
+        container.innerHTML = html;
+      }).getWeeklyGoals(todayStr);
+    }
+
+    // Measurement Modal State
+    let currentMeasurementGoalId = null;
+
+    function openMeasurementModal(goalId, metricName, goalTitle) {
+      currentMeasurementGoalId = goalId;
+      document.getElementById('mm-title').innerText = metricName;
+      document.getElementById('mm-subtitle').innerText = goalTitle;
+      document.getElementById('mm-value').value = '';
+      document.getElementById('measurement-modal').classList.add('open');
+      setTimeout(() => document.getElementById('mm-value').focus(), 100);
+    }
+
+    function closeMeasurementModal() {
+      document.getElementById('measurement-modal').classList.remove('open');
+      currentMeasurementGoalId = null;
+    }
+
+    function saveMeasurement() {
+      const val = document.getElementById('mm-value').value;
+      const comment = document.getElementById('mm-comment').value;
+
+      if (!val) return;
+
+      closeMeasurementModal();
+
+      const dateStr = new Date().toLocaleDateString('en-CA');
+
+      // Optimistic UI? 
+      // Simple reload for now
+      renderWeeklyFocus(); // Show specific spinner?
+
+      google.script.run.withSuccessHandler(() => {
+        renderWeeklyFocus();
+      }).logDailyMeasurement(currentMeasurementGoalId, val, comment, dateStr);
+    }
+
+    function openGoalWizard() {
+      alert("Weekly Planning Wizard (Coming Soon)\n\nUse this to set new goals for the week.");
+    }
+
+  </script>
+
+  <!-- MEASUREMENT MODAL -->
+  <div class="modal-overlay" id="measurement-modal" onclick="if(event.target===this) closeMeasurementModal()">
+    <div class="modal-box">
+      <h3 id="mm-title">Metric Name</h3>
+      <div id="mm-subtitle" style="font-size:12px; color:#999; margin-bottom:15px;">Goal Title</div>
+
+      <label style="font-size:12px; color:#666;">Value (Today)</label>
+      <input id="mm-value" type="number" class="input-std" placeholder="e.g. 5">
+
+      <label style="font-size:12px; color:#666; margin-top:10px; display:block;">Comment</label>
+      <input id="mm-comment" type="text" class="input-std" placeholder="Optional">
+
+      <button class="btn-save" style="margin-top:20px;" onclick="saveMeasurement()">Log</button>
+    </div>
+  </div>
 </body>
 
 </html>

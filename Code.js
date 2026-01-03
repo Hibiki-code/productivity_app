@@ -11,7 +11,9 @@ const CONFIG = {
     HABIT_STATS: '習慣の統計データ',
     SLEEP: '睡眠記録',
     DB_GOALS: 'DB_Goals',
-    DB_MILESTONES: 'DB_Milestones'
+    DB_MILESTONES: 'DB_Milestones',
+    DB_WEEKLY_GOALS: 'DB_WeeklyGoals',
+    DB_DAILY_MEASUREMENTS: 'DB_DailyMeasurements'
   },
   GEMINI_API_KEY: 'Pending',
   TIMEZONE: 'Asia/Tokyo'
@@ -1408,6 +1410,173 @@ function deleteGoal(id) {
       // Soft delete or Hard delete? Using Status 'DELETED' 
       sheet.getRange(i + 1, 9).setValue('DELETED');
       return 'Deleted';
+    }
+  }
+  return 'Not Found';
+}
+
+/**
+ * WEEKLY GOAL SYSTEM API
+ */
+
+function ensureWeeklyGoalSheets() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+
+  // DB_WeeklyGoals
+  let sheetWG = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+  if (!sheetWG) {
+    sheetWG = ss.insertSheet(CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+    // id, start_date, end_date, goal_id, target_metric, target_value, status, review_score, review_text, created_at
+    sheetWG.appendRow(['id', 'start_date', 'end_date', 'goal_id', 'target_metric', 'target_value', 'status', 'review_score', 'review_text', 'created_at']);
+  }
+
+  // DB_DailyMeasurements
+  let sheetDM = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
+  if (!sheetDM) {
+    sheetDM = ss.insertSheet(CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
+    // id, date, weekly_goal_id, value, comment, created_at
+    sheetDM.appendRow(['id', 'date', 'weekly_goal_id', 'value', 'comment', 'created_at']);
+  }
+
+  return 'Ensured';
+}
+
+function getWeeklyGoals(currentDateStr) {
+  // Returns active weekly goals for the date, WITH aggregated measurements
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheetWG = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+  const sheetDM = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
+  // Also need Goal Titles
+  const sheetGoals = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+
+  // DB Auto-Init
+  if (!sheetWG || !sheetDM) {
+    ensureWeeklyGoalSheets();
+    sheetWG = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+    sheetDM = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
+  }
+
+  if (!sheetWG || !sheetDM) return [];
+
+  const targetDate = new Date(currentDateStr);
+  const wgData = sheetWG.getDataRange().getValues();
+  const dmData = sheetDM.getDataRange().getValues();
+
+  let goalMap = {}; // goal_id -> Title logic if needed, but for now we just pass goal_id
+
+  // 1. Find Weekly Goals covering targetDate
+  let activeWeeklyGoals = [];
+  // Skip Header
+  for (let i = 1; i < wgData.length; i++) {
+    const row = wgData[i];
+    const startDate = new Date(row[1]);
+    const endDate = new Date(row[2]);
+
+    // Simple Date Check (Inclusive)
+    // Normalize times to midnight for comparison?
+    // Assuming row dates are stored as Date objects or YYYY-MM-DD
+
+    if (targetDate >= startDate && targetDate <= endDate && row[6] !== 'DELETED') {
+      const id = row[0];
+      activeWeeklyGoals.push({
+        id: id,
+        start_date: row[1],
+        end_date: row[2],
+        goal_id: row[3],
+        target_metric: row[4],
+        target_value: row[5],
+        status: row[6],
+        review_score: row[7],
+        review_text: row[8],
+        current_value: 0 // To be aggregated
+      });
+    }
+  }
+
+  // 2. Aggregate Measurements
+  // Optimize: Filter dmData once? or Loop?
+  // dmData size might grow.
+  for (let i = 1; i < dmData.length; i++) {
+    const row = dmData[i];
+    const wgId = row[2];
+    const val = Number(row[3]);
+
+    const targetWG = activeWeeklyGoals.find(g => g.id === wgId);
+    if (targetWG) {
+      targetWG.current_value += val;
+    }
+  }
+
+  // 3. Enrich with Parent Vision Title (Optional but helpful for UI)
+  if (sheetGoals) {
+    const gData = sheetGoals.getDataRange().getValues();
+    // Create Map
+    const titleMap = {};
+    for (let i = 1; i < gData.length; i++) {
+      titleMap[gData[i][0]] = gData[i][1]; // id -> title
+    }
+    activeWeeklyGoals.forEach(g => {
+      g.goal_title = titleMap[g.goal_id] || 'Unknown Goal';
+    });
+  }
+
+  return activeWeeklyGoals;
+}
+
+function setWeeklyGoal(goalId, metric, target, notes, startDateStr, endDateStr) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+  if (!sheet) return 'DB_WEEKLY_GOALS Missing';
+
+  const newId = Utilities.getUuid();
+  // id, start_date, end_date, goal_id, target_metric, target_value, status, review_score, review_text, created_at
+  sheet.appendRow([
+    newId,
+    startDateStr,
+    endDateStr,
+    goalId,
+    metric,
+    target,
+    'Active',
+    '', // score
+    notes || '', // text (using review_text column for notes initially? or just ignore notes)
+    new Date()
+  ]);
+  return 'Created';
+}
+
+function logDailyMeasurement(weeklyGoalId, value, comment, dateStr) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
+  if (!sheet) return 'DB Missing';
+
+  const newId = Utilities.getUuid();
+  // id, date, weekly_goal_id, value, comment, created_at
+  sheet.appendRow([
+    newId,
+    dateStr,
+    weeklyGoalId,
+    value,
+    comment,
+    new Date()
+  ]);
+  return 'Logged';
+}
+
+function saveWeeklyReview(weeklyGoalId, score, text) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+  if (!sheet) return 'DB Missing';
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === weeklyGoalId) {
+      // review_score = Col 8 (Index 7 + 1 = 8)
+      // review_text = Col 9
+      sheet.getRange(i + 1, 8).setValue(score);
+      sheet.getRange(i + 1, 9).setValue(text);
+      sheet.getRange(i + 1, 7).setValue('Done'); // Status -> Done
+      return 'Saved';
     }
   }
   return 'Not Found';
