@@ -2846,8 +2846,8 @@
                 </div>
                 ${g.vision ? `<div class="goal-vision">${g.vision}</div>` : ''}
                 
-                  <div class="goal-metrics">
-                   <span>現在: ${current}${g.metricLabel || ''} <span onclick="event.stopPropagation(); openProgressModal('${g.id}', ${current}, '${g.title}')" style="cursor:pointer; margin-left:5px; background:#E3F2FD; padding:2px 6px; border-radius:50%; font-size:10px;">➕</span></span>
+                <div class="goal-metrics">
+                   <span>現在: ${current}${g.metricLabel || ''}</span>
                    <span>目標: ${target}${g.metricLabel || ''}</span>
                 </div>
                 
@@ -3412,70 +3412,6 @@
       </div>
     </div>
   </div>
-  <!-- PROGRESS MODAL -->
-  <div class="modal-overlay" id="progress-modal" onclick="if(event.target===this) closeProgressModal()">
-    <div class="modal-box">
-      <h3 id="pm-title">Progress Log</h3>
-      <div style="font-size:12px; color:#999; margin-bottom:15px;" id="pm-subtitle">Goal Title</div>
-
-      <label class="label-std">現在の到達値 (Snapshot)</label>
-      <div style="display:flex; align-items:center;">
-        <input id="pm-value" type="number" class="input-std" placeholder="例: 55">
-      </div>
-      <div style="font-size:10px; color:#aaa; margin-top:-5px; margin-bottom:10px;">
-        ※ 増分ではなく、その時点の合計値を入力してください。
-      </div>
-
-      <label class="label-std">メモ (Notes)</label>
-      <input id="pm-notes" class="input-std" placeholder="進捗のコメント...">
-
-      <button class="btn-save" style="margin-top:20px;" onclick="saveGoalProgress()">記録を保存</button>
-    </div>
-  </div>
-
-  <script>
-    /* --- PROGRESS LOGIC --- */
-    let currentProgressGoalId = null;
-
-    function openProgressModal(id, current, title) {
-      currentProgressGoalId = id;
-      document.getElementById('pm-title').innerText = '進捗を記録';
-      document.getElementById('pm-subtitle').innerText = title;
-      document.getElementById('pm-value').value = current; // Pre-fill current
-      document.getElementById('pm-notes').value = '';
-
-      document.getElementById('progress-modal').classList.add('open');
-      setTimeout(() => {
-        document.getElementById('pm-value').focus();
-        document.getElementById('pm-value').select();
-      }, 100);
-    }
-
-    function closeProgressModal() {
-      document.getElementById('progress-modal').classList.remove('open');
-      currentProgressGoalId = null;
-    }
-
-    function saveGoalProgress() {
-      const val = document.getElementById('pm-value').value;
-      const notes = document.getElementById('pm-notes').value;
-
-      if (val === '') { alert('数値を入力してください'); return; }
-
-      // Close immediately for perceived speed
-      closeProgressModal();
-
-      // Show temporary loading or rely on optimistics? 
-      // Reuse container spinner or simplified loading?
-      // Leaving as-is, fetchGoals will refresh.
-
-      const dateStr = new Date(); // Passing date object, backend turns to string/logs timestamp
-
-      google.script.run.withSuccessHandler(() => {
-        fetchGoals(); // Refresh Roadmap
-      }).logGoalProgress(currentProgressGoalId, Number(val), notes, dateStr);
-    }
-  </script>
 </body>
 
 </html>

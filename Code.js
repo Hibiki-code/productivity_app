@@ -13,8 +13,7 @@ const CONFIG = {
     DB_GOALS: 'DB_Goals',
     DB_MILESTONES: 'DB_Milestones',
     DB_WEEKLY_GOALS: 'DB_WeeklyGoals',
-    DB_DAILY_MEASUREMENTS: 'DB_DailyMeasurements',
-    DB_GOALS_PROGRESS: 'DB_GoalsProgress'
+    DB_DAILY_MEASUREMENTS: 'DB_DailyMeasurements'
   },
   GEMINI_API_KEY: 'Pending',
   TIMEZONE: 'Asia/Tokyo'
@@ -1627,96 +1626,4 @@ function getActiveGoalsSimple() {
     }
   }
   return list;
-}
-
-/**
- * ROADMAP / GOALS PROGRESS API
- */
-
-function ensureGoalProgressSheet() {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-
-  // 1. Ensure DB_GoalsProgress
-  let pSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
-  if (!pSheet) {
-    pSheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
-    // Headers: id, goal_id, metric_then, notes, created_at
-    pSheet.appendRow(['id', 'goal_id', 'metric_then', 'notes', 'created_at']);
-  }
-
-  // 2. Ensure DB_Goals (Basic check for missing columns or sheet)
-  let gSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
-  if (!gSheet) {
-    gSheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS);
-    // id, title, vision, metric_beginning, metric_target, metric_current, start_date, scheduled_end_date, status, created_at
-    gSheet.appendRow(['id', 'title', 'vision', 'metric_beginning', 'metric_target', 'metric_current', 'start_date', 'scheduled_end_date', 'status', 'created_at']);
-  }
-}
-
-function logGoalProgress(goalId, value, notes, dateStr) {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-
-  // 1. Update Parent Goal (DB_Goals)
-  const gSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
-  if (!gSheet) return 'DB_Goals Missing';
-
-  const gData = gSheet.getDataRange().getValues();
-  let goalFound = false;
-
-  // Search for Goal ID
-  for (let i = 1; i < gData.length; i++) {
-    if (gData[i][0] === goalId) {
-      // Assuming Schema: id(0), title(1), vision(2), metric_beginning(3), metric_target(4), metric_current(5)...
-      // Update metric_current (Col 6 / Index 5)
-      gSheet.getRange(i + 1, 6).setValue(value);
-      goalFound = true;
-      break;
-    }
-  }
-
-  if (!goalFound) return 'Goal Not Found';
-
-  // 2. Append Log (DB_GoalsProgress)
-  const pSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
-  if (!pSheet) {
-    ensureGoalProgressSheet(); // Lazy init
-    return logGoalProgress(goalId, value, notes, dateStr); // Retry
-  }
-
-  const newId = Utilities.getUuid();
-  // id, goal_id, metric_then, notes, created_at
-  pSheet.appendRow([
-    newId,
-    goalId,
-    value,      // Snapshot value
-    notes || '',
-    new Date()  // Timestamp
-  ]);
-
-  return 'Logged';
-}
-
-function getGoalHistory(goalId) {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
-  if (!sheet) return [];
-
-  const data = sheet.getDataRange().getValues();
-  const history = [];
-
-  // Skip Header
-  for (let i = 1; i < data.length; i++) {
-    // id=0, goal_id=1, metric_then=2, notes=3, created_at=4
-    if (data[i][1] === goalId) {
-      history.push({
-        id: data[i][0],
-        value: data[i][2],
-        notes: data[i][3],
-        date: data[i][4]
-      });
-    }
-  }
-
-  // Sort by Date Descending
-  return history.sort((a, b) => new Date(b.date) - new Date(a.date));
 }
