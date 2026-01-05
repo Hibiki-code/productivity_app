@@ -2857,11 +2857,6 @@
                 
                 <div class="goal-dates">
                    <span>🏁 ${endDateStr}</span>
-                   <span style="margin-left:auto;">残り ${(end - now) / (1000 * 60 * 60 * 24) > 0 ? Math.ceil((end - now) / (1000 * 60 * 60 * 24)) : 0} 日</span>
-                </div>
-              `;
-          div.onclick = () => openGoalDetail(g.id);
-          container.appendChild(div);
         } catch (err) {
           console.error('Render Error Goal:', g, err);
           const errDiv = document.createElement('div');
@@ -2869,6 +2864,229 @@
           container.appendChild(errDiv);
         }
       });
+
+      // Store for Detail View
+      window.loadedGoals = goals;
+    }
+
+    let currentGoalIdForProgress = null;
+    let currentGoalTitleForProgress = null;
+    let currentGoalConfirmCallback = null;
+
+    function openGoalDetail(goalId) {
+      const goal = window.loadedGoals.find(g => g.id === goalId);
+      if (!goal) {
+        console.error('Goal not found:', goalId);
+        return;
+      }
+
+      document.getElementById('gd-id').value = goal.id;
+      document.getElementById('gd-title').value = goal.title;
+      document.getElementById('gd-vision').value = goal.vision;
+      document.getElementById('gd-metric-label').value = goal.metricLabel;
+      document.getElementById('gd-metric-target').value = goal.metricTarget;
+      document.getElementById('gd-metric-current').value = goal.metricCurrent;
+      document.getElementById('gd-start-date').value = goal.startDate ? String(goal.startDate).substring(0, 10) : '';
+      document.getElementById('gd-end-date').value = goal.endDate ? String(goal.endDate).substring(0, 10) : '';
+      document.getElementById('gd-status').value = goal.status || 'Active';
+
+      document.getElementById('goal-detail-modal').classList.add('open');
+    }
+
+    function closeGoalDetail() {
+      document.getElementById('goal-detail-modal').classList.remove('open');
+    }
+
+    function deleteGoal() {
+      const goalId = document.getElementById('gd-id').value;
+      openConfirmModal('この目標を削除しますか？この操作は元に戻せません。', () => {
+        openLoadingOverlay();
+        google.script.run.withSuccessHandler(() => {
+          closeConfirmModal();
+          closeGoalDetail();
+          fetchGoals();
+          openToast('目標が削除されました', 'success');
+          closeLoadingOverlay();
+        }).withFailureHandler((e) => {
+          console.error("Delete Goal Error", e);
+          openToast('目標の削除に失敗しました', 'error');
+          closeLoadingOverlay();
+        }).deleteGoal(goalId);
+      });
+    }
+
+    function updateGoalProgress() {
+      const id = document.getElementById('gd-id').value;
+      const title = document.getElementById('gd-title').value;
+      if (!title) return alert('タイトルは必須です');
+
+      const goal = {
+        id: id,
+        title: title,
+        vision: document.getElementById('gd-vision').value,
+        metricLabel: document.getElementById('gd-metric-label').value,
+        metricTarget: Number(document.getElementById('gd-metric-target').value) || 0,
+        metricCurrent: Number(document.getElementById('gd-metric-current').value) || 0,
+        startDate: document.getElementById('gd-start-date').value,
+        endDate: document.getElementById('gd-end-date').value,
+        status: document.getElementById('gd-status').value
+      };
+
+      openLoadingOverlay();
+      google.script.run.withSuccessHandler(() => {
+        closeGoalDetail();
+        fetchGoals();
+        openToast('目標が更新されました', 'success');
+        closeLoadingOverlay();
+      }).withFailureHandler((e) => {
+        console.error("Update Goal Error", e);
+        openToast('目標の更新に失敗しました', 'error');
+        closeLoadingOverlay();
+      }).saveGoal(goal);
+    }
+
+    function openProgressModal(goalId, currentProgress, goalTitle) {
+      currentGoalIdForProgress = goalId;
+      currentGoalTitleForProgress = goalTitle;
+      document.getElementById('progress-goal-title').innerText = goalTitle;
+      document.getElementById('progress-current-value').innerText = currentProgress;
+      document.getElementById('progress-new-value').value = '';
+      document.getElementById('progress-date').value = new Date().toISOString().substring(0, 10);
+      document.getElementById('progress-note').value = '';
+      document.getElementById('progress-modal').classList.add('open');
+    }
+
+    function closeProgressModal() {
+      document.getElementById('progress-modal').classList.remove('open');
+      currentGoalIdForProgress = null;
+      currentGoalTitleForProgress = null;
+    }
+
+    function saveProgress() {
+      const goalId = currentGoalIdForProgress;
+      const newValue = Number(document.getElementById('progress-new-value').value);
+      const date = document.getElementById('progress-date').value;
+      const note = document.getElementById('progress-note').value;
+
+      if (isNaN(newValue) || newValue === '') {
+        openToast('進捗は数値で入力してください', 'error');
+        return;
+      }
+
+      openLoadingOverlay();
+      google.script.run.withSuccessHandler(() => {
+        closeProgressModal();
+        fetchGoals();
+        openToast('進捗が記録されました', 'success');
+        closeLoadingOverlay();
+      }).withFailureHandler((e) => {
+        console.error("Save Progress Error", e);
+        openToast('進捗の記録に失敗しました', 'error');
+        closeLoadingOverlay();
+      }).addGoalProgress(goalId, newValue, date, note);
+    }
+
+    function openGoalHistoryModal(goalId) {
+      openLoadingOverlay();
+      google.script.run.withSuccessHandler((history) => {
+        renderGoalHistory(history);
+        document.getElementById('goal-history-modal').classList.add('open');
+        closeLoadingOverlay();
+      }).withFailureHandler((e) => {
+        console.error("Fetch History Error", e);
+        openToast('履歴の取得に失敗しました', 'error');
+        closeLoadingOverlay();
+      }).getGoalProgressHistory(goalId);
+    }
+
+    function closeGoalHistoryModal() {
+      document.getElementById('goal-history-modal').classList.remove('open');
+      document.getElementById('goal-history-list').innerHTML = '';
+    }
+
+    function renderGoalHistory(history) {
+      const list = document.getElementById('goal-history-list');
+      list.innerHTML = '';
+
+      if (!history || history.length === 0) {
+        list.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">履歴はありません。</div>';
+        return;
+      }
+
+      history.forEach(entry => {
+        const div = document.createElement('div');
+        div.className = 'history-entry';
+        div.innerHTML = `
+            < div >
+            <span class="history-date">${String(entry.date).substring(0, 10)}</span>
+            <span class="history-value">${entry.value}</span>
+          </div >
+          <div class="history-note">${entry.note || ''}</div>
+          <div class="history-actions">
+            <button onclick="deleteProgressEntry('${entry.id}')" class="delete-history-btn">削除</button>
+          </div>
+          `;
+        list.appendChild(div);
+      });
+    }
+
+    function deleteProgressEntry(entryId) {
+      openConfirmModal('この進捗記録を削除しますか？', () => {
+        openLoadingOverlay();
+        google.script.run.withSuccessHandler(() => {
+          closeConfirmModal();
+          closeGoalHistoryModal(); // Re-fetch history after deletion
+          fetchGoals(); // Update goal card
+          openToast('進捗記録が削除されました', 'success');
+          closeLoadingOverlay();
+        }).withFailureHandler((e) => {
+          console.error("Delete Progress Entry Error", e);
+          openToast('進捗記録の削除に失敗しました', 'error');
+          closeLoadingOverlay();
+        }).deleteGoalProgressEntry(entryId);
+      });
+    }
+
+    function openConfirmModal(message, onConfirm) {
+      document.getElementById('confirm-message').innerText = message;
+      currentGoalConfirmCallback = onConfirm;
+      document.getElementById('confirm-modal').classList.add('open');
+    }
+
+    function closeConfirmModal() {
+      document.getElementById('confirm-modal').classList.remove('open');
+      currentGoalConfirmCallback = null;
+    }
+
+    function confirmAction() {
+      if (currentGoalConfirmCallback) {
+        currentGoalConfirmCallback();
+      }
+    }
+
+    function cancelAction() {
+      closeConfirmModal();
+    }
+
+    let toastTimeout;
+    function openToast(message, type = 'success') {
+      const toast = document.getElementById('toast-notification');
+      toast.innerText = message;
+      toast.className = `toast ${ type } open`;
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(closeToast, 3000);
+    }
+
+    function closeToast() {
+      document.getElementById('toast-notification').classList.remove('open');
+    }
+
+    function openLoadingOverlay() {
+      document.getElementById('loading-overlay').classList.add('open');
+    }
+
+    function closeLoadingOverlay() {
+      document.getElementById('loading-overlay').classList.remove('open');
     }
 
     function openGoalModal() {
@@ -3159,13 +3377,13 @@
       google.script.run.withSuccessHandler(goals => {
         if (!goals || goals.length === 0) {
           container.innerHTML = `
-            <div style="background:white; border-radius:18px; text-align:center; padding:30px; opacity:0.9; box-shadow:0 2px 10px rgba(0,0,0,0.02);">
+            < div style = "background:white; border-radius:18px; text-align:center; padding:30px; opacity:0.9; box-shadow:0 2px 10px rgba(0,0,0,0.02);" >
                 <div style="font-size:40px; margin-bottom:10px;">🎯</div>
                 <div style="font-weight:bold; font-size:16px;">No Active Focus</div>
                 <div style="font-size:12px; color:#999; margin-top:5px;">Set a weekly goal to start tracking.</div>
                 <button class="btn-save" style="margin-top:15px;" onclick="openGoalWizard()">Set Focus</button>
-            </div>
-          `;
+            </div >
+            `;
           return;
         }
 
@@ -3176,7 +3394,7 @@
           const color = progress >= 100 ? '#4CAF50' : '#2196F3';
 
           html += `
-                    <div class="goal-card" onclick="openMeasurementModal('${g.id}', '${g.target_metric}', '${g.title || g.goal_title}')">
+            < div class="goal-card" onclick = "openMeasurementModal('${g.id}', '${g.target_metric}', '${g.title || g.goal_title}')" >
                         <div class="goal-header" style="margin-bottom:10px;">
                             <div class="goal-title" style="font-size:16px;">${g.target_metric}</div>
                             <div style="font-size:12px; color:#666;">${g.current_value} / ${g.target_value}</div>
@@ -3187,8 +3405,8 @@
                         <div style="font-size:10px; color:#999; margin-top:8px; text-align:right;">
                             ${g.goal_title ? 'Linked to: ' + g.goal_title : 'Weekly Goal'}
                         </div>
-                    </div>
-                `;
+                    </div >
+            `;
         });
         container.innerHTML = html;
       }).withFailureHandler(err => {
@@ -3276,7 +3494,7 @@
         sel.innerHTML = '<option value="">-- 目標を選択 --</option>';
         if (goals && goals.length > 0) {
           goals.forEach(g => {
-            sel.innerHTML += `<option value="${g.id}">${g.title}</option>`;
+            sel.innerHTML += `< option value = "${g.id}" > ${ g.title }</option >`;
           });
         }
         sel.innerHTML += '<option value="new">+ 新しい目標を作成...</option>';
@@ -3474,6 +3692,125 @@
       google.script.run.withSuccessHandler(() => {
         fetchGoals(); // Refresh Roadmap
       }).logGoalProgress(currentProgressGoalId, Number(val), notes, dateStr);
+    }
+  </script>
+  <!-- GOAL DETAIL MODAL -->
+  <div class="modal-overlay" id="goal-detail-modal-overlay" onclick="if(event.target===this) closeGoalDetail()">
+    <div class="modal-box" style=" max-width: 500px; width: 90%;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <h2 id="gdm-title" style="margin:0; font-size:20px; font-weight:bold; color:#34495e;">Goal Title</h2>
+        <button onclick="closeGoalDetail()"
+          style="background:none; border:none; color:#999; font-size:24px; cursor:pointer;">&times;</button>
+      </div>
+
+      <div id="gdm-vision"
+        style="color:#7f8c8d; font-size:14px; margin-top:5px; margin-bottom:20px; white-space: pre-wrap;">Vision Text
+      </div>
+
+      <div class="stat-card" style="margin-bottom:20px;">
+        <div style="font-size:12px; color:#95a5a6; margin-bottom:5px;">PROGRESS</div>
+        <div style="display:flex; justify-content:space-between; align-items:baseline;">
+          <span id="gdm-current" style="font-size:24px; font-weight:bold; color:#2c3e50;">0</span>
+          <span id="gdm-target" style="font-size:16px; color:#7f8c8d;">/ 100</span>
+        </div>
+        <div style="background:#ecf0f1; height:8px; border-radius:4px; margin-top:10px; overflow:hidden;">
+          <div id="gdm-bar" style="background:#3498db; height:100%; width:0%;"></div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-bottom:20px;">
+        <button class="btn-save" style="flex:1; background:#3498db;" onclick="openProgressFromDetail()">📊
+          進捗を記録</button>
+        <!-- Future: Edit Goal Button -->
+      </div>
+
+      <h4 style="margin:0 0 10px 0; color:#34495e; font-size:14px;">History</h4>
+      <div id="gdm-history-list"
+        style="max-height:200px; overflow-y:auto; background:#f9f9f9; border-radius:8px; padding:10px;">
+        <div style="text-align:center; color:#ccc; font-size:12px;">No logs yet</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* --- GOAL DETAIL LOGIC --- */
+    let activeGoalDetailId = null;
+    let activeGoalDetailData = null; // Store full object for reference
+
+    function openGoalDetail(goalId) {
+      activeGoalDetailId = goalId;
+      
+      // Find goal data locally first (from rendered list if possible, or fetch?)
+      // We don't have a global 'goals' store easily accessible unless we attached it to DOM or stored formerly.
+      // For simplicity, let's look at the DOM or fetch again? 
+      // Better: when rendering roadmap, store goals in a global var `loadedGoals`.
+      
+      const goal = (window.loadedGoals || []).find(g => g.id === goalId);
+      
+      if (!goal) {
+          console.error('Goal data not found for id:', goalId);
+          return;
+      }
+      activeGoalDetailData = goal;
+
+      document.getElementById('gdm-title').innerText = goal.title;
+      document.getElementById('gdm-vision').innerText = goal.vision || 'No vision defined.';
+      
+      const current = Number(goal.metricCurrent) || 0;
+      const target = Number(goal.metricTarget) || 0;
+      document.getElementById('gdm-current').innerText = current + (goal.metricLabel || '');
+      document.getElementById('gdm-target').innerText = '/ ' + target + (goal.metricLabel || '');
+      
+      const percent = (target > 0) ? Math.min(100, Math.max(0, (current/target)*100)) : 0;
+      document.getElementById('gdm-bar').style.width = percent + '%';
+      
+      // Load History
+      document.getElementById('gdm-history-list').innerHTML = '<div class="spinner"></div>';
+      google.script.run.withSuccessHandler(renderGoalHistory).getGoalHistory(goalId);
+
+      document.getElementById('goal-detail-modal-overlay').classList.add('open');
+    }
+
+    function closeGoalDetail() {
+      document.getElementById('goal-detail-modal-overlay').classList.remove('open');
+      activeGoalDetailId = null;
+    }
+
+    function renderGoalHistory(history) {
+      const container = document.getElementById('gdm-history-list');
+      container.innerHTML = '';
+      
+      if (!history || history.length === 0) {
+        container.innerHTML = '<div style="text-align:center; color:#ccc; font-size:12px;">履歴はありません</div>';
+        return;
+      }
+
+      history.forEach(log => {
+        const d = new Date(log.date);
+        const dateStr = d.toLocaleDateString() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+        
+        const div = document.createElement('div');
+        div.style.padding = '8px 0';
+        div.style.borderBottom = '1px solid #eee';
+        div.style.fontSize = '12px';
+        div.innerHTML = `
+            < div style = "display:flex; justify-content:space-between;" >
+             <span style="font-weight:bold; color:#555;">${log.value}</span>
+             <span style="color:#999;">${dateStr}</span>
+          </div >
+            ${ log.notes ? `<div style="color:#777; margin-top:2px;">${log.notes}</div>` : '' }
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function openProgressFromDetail() {
+       if (!activeGoalDetailData) return;
+       // Close detail? Or keep open? Maybe close for now and let update refresh everything.
+       // Or keep detail open and refresh it? Complexity.
+       // Let's close detail, open progress. User flow: Detail -> Add -> Save -> Refresh All.
+       closeGoalDetail();
+       openProgressModal(activeGoalDetailData.id, activeGoalDetailData.metricCurrent, activeGoalDetailData.title);
     }
   </script>
 </body>
