@@ -29,15 +29,15 @@ function doGet() {
     const tasks = getTasks();
     const habits = getHabitStatus(new Date().toDateString()); // Today
 
-    template.initialTasksJson = JSON.stringify(tasks);
-    template.initialHabitsJson = JSON.stringify(habits);
-    template.ssrError = null;
+    template.initialTasksJson = JSON.stringify(tasks).replace(/</g, '\\u003c');
+    template.initialHabitsJson = JSON.stringify(habits).replace(/</g, '\\u003c');
+    template.ssrError = 'null';
 
   } catch (e) {
     console.error("SSR Error", e);
     template.initialTasksJson = '[]';
     template.initialHabitsJson = '{}';
-    template.ssrError = 'Server Error: ' + e.toString() + ' Stack: ' + e.stack;
+    template.ssrError = JSON.stringify('Server Error: ' + e.toString() + ' Stack: ' + e.stack).replace(/</g, '\\u003c');
   }
 
   const html = template.evaluate();
@@ -1524,6 +1524,31 @@ function getWeeklyGoals(currentDateStr) {
   return activeWeeklyGoals;
 }
 
+function createGoal(title, vision, metricLabel, metricTarget, metricCurrent, startDateStr, endDateStr) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!sheet) return 'DB_GOALS Missing';
+
+  const newId = Utilities.getUuid();
+  const now = new Date();
+
+  // Scema: id, title, vision, metric_beginning, metric_target, metric_current, start_date, scheduled_end_date, status, created_at
+  sheet.appendRow([
+    newId,
+    title,
+    vision,
+    metricCurrent || 0, // beginning
+    metricTarget,
+    metricCurrent || 0, // current
+    startDateStr,
+    endDateStr,
+    'Active',
+    now
+  ]);
+
+  return 'Created';
+}
+
 function setWeeklyGoal(goalId, metric, target, notes, startDateStr, endDateStr, newGoalTitle) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
@@ -1674,7 +1699,7 @@ function logGoalProgress(goalId, value, notes, dateStr) {
     }
   }
 
-  if (!goalFound) return 'Goal Not Found';
+  if (!goalFound) return 'Goal Not Found: ' + goalId;
 
   // 2. Append Log (DB_GoalsProgress)
   const pSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
@@ -1693,6 +1718,7 @@ function logGoalProgress(goalId, value, notes, dateStr) {
     new Date()  // Timestamp
   ]);
 
+  SpreadsheetApp.flush(); // FORCE UPDATE
   return 'Logged';
 }
 
@@ -1719,4 +1745,8 @@ function getGoalHistory(goalId) {
 
   // Sort by Date Descending
   return history.sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }

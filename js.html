@@ -1,0 +1,1739 @@
+<script>
+    // --- CRITICAL GLOBAL FUNCTIONS (Defined Early) ---
+    window.activeGoalDetailId = null;
+    window.activeGoalDetailData = null;
+
+    window.openGoalDetail = function (goalId) {
+        console.log('SAFE openGoalDetail called with:', goalId);
+        window.activeGoalDetailId = goalId;
+
+        const goal = (window.loadedGoals || []).find(g => g.id === goalId);
+        if (!goal) {
+            console.error('Goal data not found for id:', goalId);
+            return;
+        }
+        window.activeGoalDetailData = goal;
+
+        document.getElementById('gdm-title').innerText = goal.title;
+        document.getElementById('gdm-vision').innerText = goal.vision || 'No vision defined.';
+
+        const current = Number(goal.metricCurrent) || 0;
+        const target = Number(goal.metricTarget) || 0;
+        document.getElementById('gdm-current').innerText = current + (goal.metricLabel || '');
+        document.getElementById('gdm-target').innerText = '/ ' + target + (goal.metricLabel || '');
+
+        const percent = (target > 0) ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
+        document.getElementById('gdm-bar').style.width = percent + '%';
+
+        // Load History
+        document.getElementById('gdm-history-list').innerHTML = '<div class="spinner"></div>';
+        google.script.run.withSuccessHandler(window.renderGoalHistory).getGoalHistory(goalId);
+
+        document.getElementById('goal-detail-modal-overlay').classList.add('open');
+        document.getElementById('goal-detail-modal-overlay').style.display = 'flex'; // FORCE display
+    };
+
+    window.closeGoalDetail = function () {
+        document.getElementById('goal-detail-modal-overlay').classList.remove('open');
+        document.getElementById('goal-detail-modal-overlay').style.display = 'none'; // FORCE hide
+        window.activeGoalDetailId = null;
+    };
+
+    window.renderGoalHistory = function (history) {
+        const container = document.getElementById('gdm-history-list');
+        container.innerHTML = '';
+
+        if (!history || history.length === 0) {
+            container.innerHTML = '<div style="text-align:center; color:#ccc; font-size:12px;">履歴はありません</div>';
+            return;
+        }
+
+        history.forEach(log => {
+            const d = new Date(log.date);
+            const dateStr = d.toLocaleDateString() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+
+            const div = document.createElement('div');
+            div.style.padding = '8px 0';
+            div.style.borderBottom = '1px solid #eee';
+            div.style.fontSize = '12px';
+            div.innerHTML = `
+            <div style="display:flex; justify-content:space-between;">
+             <span style="font-weight:bold; color:#555;">${log.value}</span>
+             <span style="color:#999;">${dateStr}</span>
+          </div>
+            ${log.notes ? `<div style="color:#777; margin-top:2px;">${log.notes}</div>` : ''}
+        `;
+            container.appendChild(div);
+        });
+    };
+
+    window.openProgressFromDetail = function () {
+        if (!window.activeGoalDetailData) return;
+        window.closeGoalDetail();
+        if (window.openProgressModal) {
+            window.openProgressModal(window.activeGoalDetailData.id, window.activeGoalDetailData.metricCurrent, window.activeGoalDetailData.title);
+        } else {
+            console.error("openProgressModal not ready yet");
+        }
+    };
+
+    // --- NAVIGATION HELPERS (Global) ---
+    window.showTab = function (id) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        const view = document.getElementById('view-' + id);
+        if (view) view.classList.add('active');
+
+        document.querySelectorAll('.nav-item').forEach(n => {
+            n.classList.remove('active');
+            if (n.innerHTML.includes(id) || (id === 'tasks' && n.innerHTML.includes('done_all')) || (id === 'habits' && n.innerHTML.includes('water_drop'))) {
+                n.classList.add('active');
+            }
+        });
+    };
+
+    window.switchTab = function (id, el) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-' + id).classList.add('active');
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        if (el) el.classList.add('active');
+
+        if (id === 'goals' && window.renderGoalsTab) {
+            window.renderGoalsTab();
+        }
+        if (id === 'roadmap' && window.renderRoadmap) {
+            window.renderRoadmap();
+        }
+    };
+
+    // --- STATE ---
+    let currentHabitDate = new Date().toLocaleDateString('en-CA');
+    let habitCalendarCache = {};
+    let currentDetailHabit = null; // Object
+    let currentDetailYear = 0;
+    let currentDetailMonth = 0;
+    let todayYear = 0; // RESTORED
+    let todayMonth = 0; // RESTORED
+
+    let activeGoalDetailId = null;
+    let activeGoalDetailData = null;
+    let habitDataCache = null; // { habits: [], sections: [] } for re-rendering
+
+    // --- INIT ---
+    window.onload = function () {
+        console.log("App Started v2026-01-05-1305 FIXED_SSR_TAGS");
+        // Check for Debug Errors
+        let ssrError = null;
+        try {
+            const errTag = document.getElementById('ssr-data-error');
+            if (errTag) {
+                const val = errTag.textContent;
+                if (val && val !== 'null' && val !== '"null"') {
+                    ssrError = JSON.parse(val);
+                }
+            }
+        } catch (e) { console.error("Error parsing SSR error", e); }
+
+        if (ssrError) {
+            const errDiv = document.createElement('div');
+            errDiv.style.background = '#ffebee';
+            errDiv.style.color = '#c62828';
+            errDiv.style.padding = '10px';
+            errDiv.style.borderBottom = '1px solid #ef5350';
+            errDiv.innerText = ssrError;
+            document.body.prepend(errDiv);
+        }
+
+        // Force Migration Button Visibility
+        const btn = document.getElementById('migration-btn');
+        if (btn) document.body.prepend(btn);
+
+
+        // 1. Render Injected Data (SSR)
+        try {
+            const tasksTag = document.getElementById('ssr-data-tasks');
+            const rawTasks = tasksTag ? JSON.parse(tasksTag.textContent) : [];
+
+            const habitsTag = document.getElementById('ssr-data-habits');
+            const rawHabits = habitsTag ? JSON.parse(habitsTag.textContent) : null;
+
+            if (rawTasks) renderTasks(rawTasks);
+
+            initDateStrip();
+
+            if (rawHabits) {
+                renderHabits(rawHabits);
+            } else {
+                // Fallback
+                fetchHabits(new Date().toLocaleDateString('en-CA'));
+            }
+        } catch (e) {
+            console.error("SSR Parse Error", e);
+            fetchTasks();
+            fetchHabits(new Date().toLocaleDateString('en-CA'));
+        }
+
+        setupModal();
+        showTab('tasks');
+    };
+
+    // Programmatic Tab Switch
+    function showTab(id) {
+        // Manual Switch without 'el' dependency if el not found
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        const view = document.getElementById('view-' + id);
+        if (view) view.classList.add('active');
+
+        document.querySelectorAll('.nav-item').forEach(n => {
+            n.classList.remove('active');
+            // Try to match
+            if (n.innerHTML.includes(id) || (id === 'tasks' && n.innerHTML.includes('done_all')) || (id === 'habits' && n.innerHTML.includes('water_drop'))) {
+                n.classList.add('active');
+            }
+        });
+
+        if (id === 'habits') {
+            // Refresh habits
+            // fetchHabits(new Date().toLocaleDateString('en-CA')); // Optional
+        }
+    }
+
+    function setupModal() {
+        // Close Modals on Overlay Click
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    overlay.classList.remove('open');
+                    overlay.style.display = 'none'; // Fallback
+                }
+            });
+        });
+
+        // Task Modal
+        const taskModal = document.getElementById('task-modal');
+        if (taskModal) {
+            taskModal.addEventListener('click', e => {
+                if (e.target === taskModal) closeTaskModal();
+            });
+        }
+    }
+
+    function switchTab(id, el) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-' + id).classList.add('active');
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        el.classList.add('active');
+
+        if (id === 'habits') {
+            // Maybe refresh habits to be sure
+        }
+        if (id === 'goals') {
+            renderGoalsTab();
+        }
+    }
+
+    // --- TASKS ---
+    function fetchTasks() {
+        // Still useful for manual refresh
+        google.script.run.withSuccessHandler(renderTasks).getTasks();
+    }
+
+    function renderTasks(tasks) {
+        console.log('Rendering Tasks:', tasks.length);
+        try {
+            // Clear
+            const lists = ['high', 'med', 'low', 'none', 'done'];
+            lists.forEach(k => {
+                const el = document.querySelector('#list-' + k + ' > div');
+                if (el) el.innerHTML = '';
+            });
+            let counts = { 3: 0, 2: 0, 1: 0, 0: 0, done: 0 };
+
+            tasks.forEach(t => {
+                const p = Number(t.importance) || 0;
+                const status = (t.status || '').trim();
+
+                if (status === '完了') {
+                    counts.done++;
+                    createTaskEl(t, 'list-done');
+                } else {
+                    counts[p]++;
+                    const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+                    createTaskEl(t, 'list-' + map[p]);
+                }
+            });
+
+            // Update counts
+            if (document.getElementById('count-high')) document.getElementById('count-high').innerText = counts[3];
+            if (document.getElementById('count-med')) document.getElementById('count-med').innerText = counts[2];
+            if (document.getElementById('count-low')) document.getElementById('count-low').innerText = counts[1];
+            if (document.getElementById('count-none')) document.getElementById('count-none').innerText = counts[0];
+            if (document.getElementById('count-done')) document.getElementById('count-done').innerText = counts.done;
+
+            const doneSec = document.getElementById('sec-done');
+            if (doneSec) doneSec.style.display = counts.done > 0 ? 'block' : 'none';
+
+            initTaskSortables(); // Init Drag & Drop
+
+        } catch (e) {
+            console.error('Error rendering tasks:', e);
+        }
+    }
+
+    let taskSortables = [];
+
+    function initTaskSortables() {
+        // Clean old
+        taskSortables.forEach(s => s.destroy());
+        taskSortables = [];
+
+        const lists = ['high', 'med', 'low', 'none'];
+        lists.forEach(k => {
+            const el = document.querySelector('#list-' + k + ' > div');
+            if (!el) return;
+
+            const s = Sortable.create(el, {
+                group: 'tasks',
+                delay: 200, // Long press 200ms
+                delayOnTouchOnly: true,
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                dragClass: 'sortable-drag',
+                onEnd: function (evt) {
+                    const item = evt.item;
+                    const toList = evt.to.closest('.list-content').id; // list-high
+                    const fromList = evt.from.closest('.list-content').id;
+
+                    if (toList === fromList) return; // Same list
+
+                    const map = { 'list-high': 3, 'list-med': 2, 'list-low': 1, 'list-none': 0 };
+                    const newPrio = map[toList] !== undefined ? map[toList] : 0;
+
+                    // Update Data
+                    item.dataset.prio = newPrio;
+
+                    // Update Counts Logic
+                    updateTaskCounts();
+
+                    // Backend Update
+                    const row = item.dataset.row;
+                    google.script.run.updateTaskPriority(row, newPrio);
+                }
+            });
+            taskSortables.push(s);
+        });
+    }
+
+    function updateTaskCounts() {
+        const counts = { 3: 0, 2: 0, 1: 0, 0: 0 };
+        // Valid lists only
+        ['list-high', 'list-med', 'list-low', 'list-none'].forEach(id => {
+            const container = document.querySelector('#' + id + ' > div');
+            const count = container ? container.children.length : 0;
+            // Map id to prio
+            const pMap = { 'list-high': 3, 'list-med': 2, 'list-low': 1, 'list-none': 0 };
+            counts[pMap[id]] = count;
+        });
+
+        // Done count is static unless moved
+        const doneCount = document.querySelector('#list-done > div').children.length;
+
+        if (document.getElementById('count-high')) document.getElementById('count-high').innerText = counts[3];
+        if (document.getElementById('count-med')) document.getElementById('count-med').innerText = counts[2];
+        if (document.getElementById('count-low')) document.getElementById('count-low').innerText = counts[1];
+        if (document.getElementById('count-none')) document.getElementById('count-none').innerText = counts[0];
+        if (document.getElementById('count-done')) document.getElementById('count-done').innerText = doneCount;
+    }
+
+    /* --- HIGHLIGHT LOGIC --- */
+    let isHighlightMode = false;
+
+    function toggleHighlightMode() {
+        isHighlightMode = !isHighlightMode;
+        const btn = document.getElementById('highlight-mode-btn');
+        if (btn) {
+            btn.style.opacity = isHighlightMode ? '1' : '0.4';
+            btn.style.transform = isHighlightMode ? 'scale(1.2)' : 'scale(1.0)';
+        }
+        document.body.classList.toggle('highlight-mode-active', isHighlightMode);
+    }
+
+    function handleTaskTap(e, taskObj) {
+        if (!isHighlightMode) return; // Normal click handled by checkbox
+
+        // Stop checking the box
+        e.preventDefault();
+        e.stopPropagation();
+
+        const id = taskObj.dataset.id;
+        console.log('Task Tapped in Highlight Mode:', id);
+
+        showHighlightConfirm(id);
+    }
+
+    function showHighlightConfirm(id) {
+        if (confirm('このタスクを「今日のハイライト」に設定しますか？')) {
+            doSetHighlight(id);
+            toggleHighlightMode();
+        }
+    }
+
+    function doSetHighlight(id) {
+        // Optimistic UI updates
+        document.querySelectorAll('.highlight-diamond').forEach(el => el.remove());
+
+        const item = document.querySelector(`.task-item[data-id="${id}"] .task-content`);
+        if (item) {
+            const d = document.createElement('div');
+            d.className = 'highlight-diamond';
+            d.innerText = '💎';
+            item.prepend(d); // Add to UI
+
+            google.script.run.withSuccessHandler(() => {
+            }).setDailyHighlight(id);
+        }
+    }
+
+    /* --- TASK CREATION --- */
+    function createTaskEl(t, listId) {
+        const list = document.getElementById(listId);
+        if (!list) return;
+
+        const doneClass = t.status === '完了' ? 'done' : '';
+        const checkMark = t.status === '完了' ? '✓' : '';
+        const highlightIcon = t.isHighlight ? `<div class="highlight-diamond" style="font-size:18px; margin-right:5px;">💎</div>` : '';
+        const isCompleted = (t.status === '完了');
+
+        const div = document.createElement('div');
+        div.className = 'task-wrapper';
+        div.dataset.id = t.id;
+
+        div.innerHTML = `
+        <div class="task-actions right">
+           <div class="action-btn archive-btn" onclick="doArchiveTask('${t.id}')">
+             <span class="material-symbols-rounded">archive</span>
+           </div>
+           <div class="action-btn delete-btn" style="margin-left: 10px;" onclick="doDeleteTask('${t.id}')">
+             <span class="material-symbols-rounded">delete</span>
+           </div>
+        </div>
+
+        <div class="task-item ${doneClass}" data-id="${t.id}" data-prio="${t.importance}" onclick="handleTaskTap(event, this)">
+          <div class="task-check"
+            ontouchstart="toggleTask(event, this); event.preventDefault();"
+            onclick="if(!event.defaultPrevented) toggleTask(event, this);">
+            ${checkMark}
+          </div>
+
+          <div class="task-content">
+            <div class="test-tag"></div>
+            ${highlightIcon}
+            <div class="task-name">${t.name}</div>
+            <div class="task-meta">
+              ${t.dueDate ? `<span class="due-date">📅 ${t.dueDate.slice(5)}</span>` : ''}
+              ${t.estTime ? `<span class="est-time">⏱ ${t.estTime}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+
+        const item = div.querySelector('.task-item');
+        addSwipeLogic(item);
+
+        div.style.opacity = '0';
+        div.style.transform = 'translateY(10px)';
+        if (isCompleted) {
+            list.querySelector('div').prepend(div);
+        } else {
+            list.querySelector('div').appendChild(div);
+        }
+
+        requestAnimationFrame(() => {
+            div.style.transition = 'all 0.3s ease';
+            div.style.opacity = '1';
+            div.style.transform = 'translateY(0)';
+        });
+    }
+
+    // --- SWIPE LOGIC ---
+    let openSwipes = []; // Track open elements
+
+    function doUnarchiveTask(id) {
+        if (!confirm('タスクをリストに戻しますか？')) return;
+        removeEl(id);
+        google.script.run.unarchiveTask(id);
+    }
+
+    function addSwipeLogic(el) {
+        let startX = 0;
+        let currentTranslate = 0;
+        let isDragging = false;
+
+        el.addEventListener('touchstart', e => {
+            startX = e.touches[0].clientX;
+            el.style.transition = 'none';
+            closeAllSwipes(el); // Standard behavior
+        }, { passive: true });
+
+        el.addEventListener('touchmove', e => {
+            const currentX = e.touches[0].clientX;
+            const diff = currentX - startX;
+
+            // Dead Zone & Direction Lock (Only allow left swipe)
+            if (diff > 0 && !el.classList.contains('swiped-open')) return;
+            if (Math.abs(diff) < 10) return;
+
+            // Simple Translation (Limit to negative or zero)
+            const trans = Math.min(0, diff);
+            el.style.transform = `translateX(${trans}px)`;
+            currentTranslate = trans;
+            isDragging = true;
+        }, { passive: true });
+
+        el.addEventListener('touchend', e => {
+            el.style.transition = 'transform 0.2s ease-out';
+            isDragging = false;
+
+            // Snap Logic - Right Side Only
+            if (currentTranslate < -60) {
+                // Open Right (reveals buttons)
+                el.style.transform = 'translateX(-120px)'; // Enough for 2 buttons
+                el.classList.add('swiped-open');
+            } else {
+                closeSwipe(el);
+            }
+            currentTranslate = 0;
+        });
+    }
+
+    function closeSwipe(el) {
+        el.style.transform = `translateX(0)`;
+        el.classList.remove('swiped-open');
+    }
+
+    function closeAllSwipes(exceptEl) {
+        document.querySelectorAll('.task-item.swiped-open').forEach(el => {
+            if (el !== exceptEl) closeSwipe(el);
+        });
+    }
+
+    // Tap Outside Listener
+    document.addEventListener('touchstart', (e) => {
+        // If target is NOT a task-item or child of swiped-open, close all
+        if (!e.target.closest('.task-item.swiped-open') && !e.target.closest('.action-btn')) {
+            closeAllSwipes(null);
+        }
+    });
+
+    function doArchiveTask(id) {
+        if (!confirm('このタスクをアーカイブしますか？')) return;
+        removeEl(id);
+        google.script.run.archiveTask(id);
+    }
+
+    function doDeleteTask(id) {
+        if (!confirm('このタスクを完全に削除しますか？(復元できません)')) return;
+        removeEl(id);
+        google.script.run.deleteTaskHard(id); // Hard Delete
+    }
+
+    function removeEl(id) {
+        const wrapper = document.querySelector(`.task-wrapper[data-id="${id}"]`);
+        if (wrapper) {
+            wrapper.style.height = wrapper.offsetHeight + 'px';
+            wrapper.style.transition = 'height 0.3s, opacity 0.3s';
+            setTimeout(() => {
+                wrapper.style.height = '0';
+                wrapper.style.opacity = '0';
+                setTimeout(() => wrapper.remove(), 300);
+            }, 10);
+        }
+    }
+
+    // Legacy mapping (if used elsewhere)
+    function deleteTask(id) { doDeleteTask(id); }
+    function editTask(id) { alert('Edit disabled'); } // cleanup later
+
+    function toggleSection(id) {
+        const list = document.getElementById('list-' + id);
+        if (!list) return;
+
+        const container = list.parentElement;
+
+        if (list.style.display === 'none') {
+            list.style.display = 'block';
+            if (container) container.classList.add('expanded');
+        } else {
+            list.style.display = 'none';
+            if (container) container.classList.remove('expanded');
+        }
+    }
+
+    function toggleDetails(header) {
+        const item = header.closest('.task-item');
+        const details = item.querySelector('.task-details');
+        const icon = item.querySelector('.task-icon');
+
+        if (details.style.display === 'none') {
+            details.style.display = 'block';
+            icon.innerText = '∧';
+            icon.style.color = '#333';
+        } else {
+            details.style.display = 'none';
+            icon.innerText = '⋁';
+            icon.style.color = '#CCC';
+        }
+    }
+
+    function toggleTask(e, checkEl) {
+        e.stopPropagation();
+
+        const item = checkEl.closest('.task-item');
+        if (!item) return;
+
+        const wrapper = item.closest('.task-wrapper') || item;
+        const id = item.dataset.id;
+        // Determine new status (if currently done, make undone)
+        const isDoneCurrently = item.classList.contains('done');
+        const isDoneNew = !isDoneCurrently;
+
+        // 1. Immediate Visual Update (Checkmark only)
+        if (isDoneNew) {
+            checkEl.innerText = '✓';
+            item.classList.add('done'); // Style update immediately
+        } else {
+            checkEl.innerText = '';
+            item.classList.remove('done');
+        }
+
+        // Add Leave Animation
+        wrapper.classList.add('task-anim-leave');
+
+        // Wait for Animation
+        setTimeout(() => {
+            wrapper.classList.remove('task-anim-leave');
+
+            // 2. List Move Logic
+            const p = item.dataset.prio || 0;
+            const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+            const key = map[p];
+
+            // Update Counts
+            const countEl = document.getElementById('count-' + key);
+            const doneCountEl = document.getElementById('count-done');
+            let val = parseInt(countEl.innerText.match(/\d+/)[0]) || 0;
+            let doneVal = parseInt(doneCountEl.innerText.match(/\d+/)[0]) || 0;
+
+            if (isDoneNew) {
+                // Move to Done Top
+                const doneContainer = document.querySelector('#list-done > div');
+                if (doneContainer) {
+                    doneContainer.prepend(wrapper);
+                    countEl.innerText = Math.max(0, val - 1);
+                    doneCountEl.innerText = doneVal + 1;
+                    const secDone = document.getElementById('sec-done');
+                    if (secDone) secDone.style.display = 'block';
+                }
+            } else {
+                // Move back to List
+                const sourceContainer = document.querySelector('#list-' + key + ' > div');
+                if (sourceContainer) {
+                    sourceContainer.appendChild(wrapper);
+                    countEl.innerText = val + 1;
+                    doneCountEl.innerText = Math.max(0, doneVal - 1);
+                }
+            }
+
+            // Animate Enter
+            wrapper.classList.add('task-anim-enter');
+            setTimeout(() => wrapper.classList.remove('task-anim-enter'), 400);
+
+            // 3. Server Update
+            google.script.run.withSuccessHandler((res) => {
+                console.log('Task toggled', res);
+            }).updateTaskStatus(id, isDoneNew);
+
+        }, 350);
+    }
+
+    function saveTask() {
+        const name = document.getElementById('t-name').value;
+        const prio = document.getElementById('t-prio').value;
+
+        // New Inputs
+        const durH = document.getElementById('t-duration-h').value || 0;
+        const durM = document.getElementById('t-duration-m').value || 0;
+        const date = document.getElementById('t-date').value;
+        const details = document.getElementById('t-details').value;
+
+        if (!name) return;
+
+        // Format Duration String (e.g. "2h 15m")
+        let durStr = '';
+        if (durH > 0) durStr += durH + 'h ';
+        if (durM > 0 || durH > 0) durStr += durM + 'm';
+
+        // Optimistic Add
+        const t = {
+            name: name,
+            importance: prio,
+            status: '未完了',
+            row: 'temp-' + Date.now(),
+            estTime: durStr.trim(),
+            dueDate: date,
+            description: details
+        };
+
+        const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+        createTaskEl(t, 'list-' + map[prio]);
+
+        closeTaskModal();
+
+        google.script.run.withSuccessHandler(fetchTasks).addTask(t);
+    }
+
+    function openTaskModal(p) {
+        document.getElementById('t-prio').value = p;
+
+        // Reset Fields
+        document.getElementById('t-name').value = '';
+        document.getElementById('t-duration-h').value = '';
+        document.getElementById('t-duration-m').value = '15';
+        document.getElementById('t-date').value = '';
+        document.getElementById('t-details').value = '';
+
+        document.getElementById('task-modal').classList.add('open');
+        document.getElementById('t-name').focus();
+    }
+    function closeTaskModal() { document.getElementById('task-modal').classList.remove('open'); }
+
+    function toggleArchiveView() {
+        const v = document.getElementById('view-archive');
+        const t = document.getElementById('view-tasks');
+
+        if (document.getElementById('view-archive').classList.contains('active')) {
+            document.getElementById('view-archive').classList.remove('active');
+            document.getElementById('view-tasks').classList.add('active');
+            document.querySelector('.bottom-nav').style.display = 'flex';
+        } else {
+            document.getElementById('view-tasks').classList.remove('active');
+            document.getElementById('view-archive').classList.add('active');
+            fetchArchivedTasks();
+        }
+    }
+
+    function fetchArchivedTasks() {
+        const list = document.getElementById('archive-list');
+        if (list) list.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">Loading...</div>';
+        google.script.run.withSuccessHandler(renderArchiveTasks).getArchivedTasks();
+    }
+
+    function renderArchiveTasks(tasks) {
+        const container = document.getElementById('archive-list');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (!tasks || tasks.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:#CCC;">アーカイブされたタスクはありません</div>';
+            return;
+        }
+
+        const incomplete = tasks.filter(t => t.status !== '完了');
+        const complete = tasks.filter(t => t.status === '完了');
+
+        // Helper to create list
+        const createSection = (title, listId, items, isDone) => {
+            const sec = document.createElement('div');
+            sec.className = 'section-container' + (isDone ? ' completed' : '');
+
+            const count = items.length;
+            sec.innerHTML = `
+        <div class="section-header" onclick="toggleSection('${listId}')">
+             <div style="color:${isDone ? '#AAA' : '#555'}; font-weight:bold;">${title} (${count})</div>
+          </div>
+        <div id="list-${listId}" class="list-content"></div>
+      `;
+            container.appendChild(sec);
+
+            const listDiv = sec.querySelector(`#list-${listId}`);
+            const innerDiv = document.createElement('div'); // Transition Wrapper
+            listDiv.appendChild(innerDiv);
+
+            items.forEach(t => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'task-wrapper';
+                wrapper.innerHTML = `
+        <div class="task-actions">
+               <div class="action-btn unarchive" onclick="doUnarchiveTask('${t.id}')" style="background:#8D6E63;">↩</div>
+               <div class="action-btn delete" onclick="doDeleteTask('${t.id}')">❌</div>
+          </div>
+        <div class="task-item" style="background:#F9F9F9; opacity:0.9;">
+          <div style="flex:1;">
+            <div style="font-weight:bold; color:#555; text-decoration:${isDone ? 'line-through' : 'none'};">${t.name}</div>
+            <div style="font-size:0.8em; color:#999;">${t.dueDate || ''}</div>
+          </div>
+        </div>
+      `;
+                const item = wrapper.querySelector('.task-item');
+                addSwipeLogic(item);
+                innerDiv.appendChild(wrapper);
+            });
+        };
+
+        if (incomplete.length > 0) createSection('未完了', 'arc-inc', incomplete, false);
+        if (complete.length > 0) createSection('完了', 'arc-com', complete, true);
+    }
+    /* --- HABITS --- */
+    function fetchHabits(dateStr) {
+        const root = document.getElementById('habit-sections-root');
+        if (root) root.style.opacity = '0.4';
+        google.script.run.withSuccessHandler((data) => {
+            if (root) root.style.opacity = '1.0';
+            renderHabits(data);
+        }).getHabitStatus(dateStr);
+    }
+
+    function initDateStrip() {
+        const strip = document.getElementById('calendar-strip');
+        strip.innerHTML = '';
+        const days = ['日', '月', '火', '水', '木', '金', '土'];
+        const today = new Date();
+
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(); d.setDate(today.getDate() - i);
+            const isToday = i === 0;
+            const ymd = d.toLocaleDateString('en-CA');
+
+            const el = document.createElement('div');
+            el.className = 'date-item' + (isToday ? ' active' : '');
+            el.onclick = () => {
+                document.querySelectorAll('.date-item').forEach(e => e.classList.remove('active'));
+                el.classList.add('active');
+                currentHabitDate = ymd;
+                fetchHabits(ymd);
+            };
+            el.innerHTML = `<div class="date-label">${days[d.getDay()]}</div><div class="date-num">${d.getDate()}</div>`;
+            strip.appendChild(el);
+        }
+    }
+
+    function renderHabits(data) {
+        // Cache Logic
+        habitDataCache = data;
+        if (data.serverDate) { todayYear = data.serverDate.year; todayMonth = data.serverDate.month; }
+        if (data.monthlyLogs) {
+            const key = `${todayYear}-${todayMonth}`;
+            Object.keys(data.monthlyLogs).forEach(hName => {
+                if (!habitCalendarCache[hName]) habitCalendarCache[hName] = {};
+                habitCalendarCache[hName][key] = data.monthlyLogs[hName];
+            });
+        }
+
+        const root = document.getElementById('habit-sections-root');
+        if (!root) return;
+        root.innerHTML = '';
+
+        // Ensure sections exist (SSR fallback)
+        const sections = (data.sections && data.sections.length > 0) ? data.sections : [
+            { id: 'sec_morning', name: '朝', order: 1 },
+            { id: 'sec_afternoon', name: '昼', order: 2 },
+            { id: 'sec_evening', name: '夜', order: 3 },
+            { id: 'sec_other', name: 'その他', order: 4 }
+        ];
+
+        // Render Sections
+        sections.forEach(sec => {
+            const div = document.createElement('div');
+            div.className = 'section-habit';
+            div.id = 'sec-wrapper-' + sec.id;
+            div.innerHTML = `
+      <div class="section-header" onclick="toggleHabitSection('${sec.id}')">
+           <div>${sec.name} <span id="count-${sec.id}" style="font-size:0.9em; opacity:0.8;"></span></div>
+           <div class="toggle-icon">∧</div>
+      </div>
+    <div id="list-habit-${sec.id}" class="habit-list-container">
+      <div><!-- Inner --></div>
+    </div>
+  `;
+            root.appendChild(div);
+        });
+
+        // Clear Checked
+        const checkedInner = document.querySelector('#list-habit-checked > div');
+        if (checkedInner) checkedInner.innerHTML = '';
+        const countChecked = document.getElementById('count-habit-checked');
+        if (countChecked) countChecked.innerText = '0';
+        let checkedCount = 0;
+
+        if (!data.habits) { updateHabitSectionCounts(); return; }
+
+        data.habits.forEach(h => {
+            const isDone = (h.status === 1);
+
+            if (isDone) {
+                const div = createHabitCard(h, true);
+                const target = document.querySelector('#list-habit-checked > div');
+                if (target) target.appendChild(div);
+                checkedCount++;
+            } else {
+                // Find section
+                let targetSecId = h.sectionId || 'sec_other';
+                // Verify section exists in DOM
+                if (!document.getElementById('list-habit-' + targetSecId)) targetSecId = 'sec_other';
+
+                const div = createHabitCard(h, false);
+                // Append to section
+                const container = document.querySelector(`#list-habit-${targetSecId} > div`);
+                if (container) container.appendChild(div);
+            }
+        });
+
+        updateHabitSectionCounts(); // Initial calculations
+
+        const checkedSec = document.getElementById('sec-wrapper-checked');
+        if (checkedSec) {
+            if (checkedCount > 0) {
+                checkedSec.style.display = 'block';
+                if (countChecked) countChecked.innerText = '(' + checkedCount + ')';
+            } else {
+                checkedSec.style.display = 'none';
+            }
+        }
+    }
+    function createHabitCard(h, isDone) {
+        const div = document.createElement('div');
+        div.className = 'habit-item' + (isDone ? ' done' : '');
+        div.onclick = () => openHabitDetail(h);
+
+        let iconContent = '💧';
+        if (h.icon) {
+            iconContent = `<span class="material-symbols-rounded" style="font-size:24px;">${h.icon}</span>`;
+        }
+
+        div.innerHTML = `
+        <div class="habit-icon">${iconContent}</div>
+           <div class="habit-info">
+              <div class="habit-name">${h.name}</div>
+           </div>
+           <div class="habit-stats-right">
+              <div style="font-size:16px; font-weight:bold; color:var(--primary)">${h.streak || 0}日</div>
+              <div style="font-size:10px; color:#999">現在の連続</div>
+           </div>
+           <div class="habit-check-area" onclick="event.stopPropagation(); toggleHabit(this, '${h.name}')">
+              <div class="check-circle"></div>
+           </div>
+      `;
+        // Store Section ID for return
+        div.dataset.sectionId = h.sectionId || 'sec_other';
+        return div;
+    }
+
+    let pendingJournalItem = null;
+    let pendingJournalName = '';
+
+    function toggleHabit(el, name) {
+        const item = el.closest('.habit-item');
+        const isDone = item.classList.toggle('done');
+
+        // Special Logic: Sleep Record
+        if (isDone && name === '睡眠時間記録') {
+            pendingJournalItem = item;
+            pendingJournalName = name;
+            document.getElementById('sleep-modal').classList.add('open');
+            return;
+        }
+
+        // Special Logic: Any "Journal" (XX日記) (Only on Check)
+        if (isDone && name.endsWith('日記')) {
+            pendingJournalItem = item;
+            pendingJournalName = name;
+
+
+            const pEl = document.getElementById('journal-prompt');
+            if (name === '感謝日記') {
+                pEl.innerText = '今日あった良いことや感謝したいことを書きましょう。';
+            } else {
+                pEl.innerText = name + ' の記録を入力してください。';
+            }
+
+            document.getElementById('journal-modal').classList.add('open');
+            document.getElementById('journal-input').value = '';
+            setTimeout(() => document.getElementById('journal-input').focus(), 100);
+            return;
+        }
+
+        processHabitToggle(item, name, isDone);
+    }
+
+    function closeSleepModal(isSaved) {
+        document.getElementById('sleep-modal').classList.remove('open');
+        // If canceled (not saved), revert check
+        if (!isSaved && pendingJournalItem) {
+            pendingJournalItem.classList.remove('done');
+        }
+        if (!isSaved) pendingJournalItem = null;
+        // Keep pendingJournalItem if saved? No, saveSleepLog needs it. 
+        // But saveSleepLog calls closeSleepModal FIRST. 
+        // So we should NOT null it if saved, OR capture it before closing.
+        // saveSleepLog already captures it: const item = pendingJournalItem;
+        // So we can null it here.
+        pendingJournalItem = null;
+    }
+
+    function saveSleepLog() {
+        const bedtime = document.getElementById('sleep-bedtime').value;
+        const wakeup = document.getElementById('sleep-wakeup').value;
+
+        const item = pendingJournalItem;
+        const name = pendingJournalName;
+
+        closeSleepModal(true); // Close first, pass true to keep checkmark
+
+        // Save to Backend
+        // We also need today's date context? 
+        // toggleHabit operates on "Today" usually. 
+        // If we support back-dating, we need the date from the column/header.
+        // But currently habits are "Today's View".
+        // We'll assume Today.
+        const dateStr = new Date();
+
+        google.script.run.withSuccessHandler(() => {
+            // Success
+            processHabitToggle(item, name, true);
+        }).logSleep(dateStr.toString(), bedtime, wakeup);
+    }
+
+    function processHabitToggle(item, name, isDone) {
+        // Sync Backend
+        google.script.run.logHabit(currentHabitDate, name, isDone);
+
+        // Streak Optimistic Update
+        const streakEl = item.querySelector('.habit-stats-right > div:first-child');
+        let currentStreak = parseInt(streakEl.innerText.replace('日', '')) || 0;
+
+        if (isDone) {
+            // --- CHECKING ---
+            streakEl.innerText = (currentStreak + 1) + '日'; // Optimistic Increment
+
+            item.classList.add('fade-collapse');
+            setTimeout(() => {
+                document.querySelector('#list-habit-checked > div').prepend(item);
+                document.getElementById('sec-wrapper-checked').style.display = 'block';
+
+                // Update counts
+                const countEl = document.getElementById('count-habit-checked');
+                const currentVal = parseInt(countEl.innerText.replace(/\D/g, '')) || 0;
+                countEl.innerText = '(' + (currentVal + 1) + ')';
+
+                item.classList.remove('fade-collapse');
+                updateHabitSectionCounts();
+            }, 500);
+
+        } else {
+            // --- UNCHECKING ---
+            streakEl.innerText = Math.max(0, currentStreak - 1) + '日'; // Optimistic Decrement
+
+            item.classList.add('fade-collapse');
+            setTimeout(() => {
+                const secId = item.dataset.sectionId || 'sec_other';
+                let container = document.querySelector('#list-habit-' + secId + ' > div');
+                if (!container) container = document.querySelector('#list-habit-sec_other > div');
+
+                container.appendChild(item);
+
+                // Update counts
+                const countEl = document.getElementById('count-habit-checked');
+                const currentVal = parseInt(countEl.innerText.replace(/\D/g, '')) || 0;
+                let c = currentVal - 1;
+                c = c > 0 ? c : 0;
+                countEl.innerText = '(' + c + ')';
+
+                if (c <= 0) document.getElementById('sec-wrapper-checked').style.display = 'none';
+
+                item.classList.remove('fade-collapse');
+                updateHabitSectionCounts();
+            }, 500);
+        }
+    }
+
+    function closeJournalModal(saved) {
+        document.getElementById('journal-modal').classList.remove('open');
+        if (!saved && pendingJournalItem) {
+            // Cancelled: Revert the checkbox visually
+            pendingJournalItem.classList.toggle('done');
+            pendingJournalItem = null;
+        }
+    }
+
+    function submitJournal() {
+        const text = document.getElementById('journal-input').value;
+        if (!text.trim()) {
+            alert('内容を入力してください');
+            return;
+        }
+        // Log Text
+        google.script.run.logHabitText(currentHabitDate, pendingJournalName, text);
+
+        // Proceed with completions
+        processHabitToggle(pendingJournalItem, pendingJournalName, true);
+
+        // Cleanup
+        pendingJournalItem = null;
+        document.getElementById('journal-modal').classList.remove('open');
+    }
+
+    function toggleHabitSection(id) {
+        const list = document.getElementById('list-habit-' + id);
+        if (!list) return;
+
+        const header = list.previousElementSibling;
+        const icon = header.querySelector('.toggle-icon');
+
+        // Using style.display for simplicity as transitions can be tricky with dynamic height
+        if (list.style.display === 'none') {
+            list.style.display = 'block';
+            icon.innerText = '∧';
+        } else {
+            list.style.display = 'none';
+            icon.innerText = '⋁';
+        }
+    }
+
+    function markSectionDirty(input) {
+        // Can use valid visual cue
+        input.style.backgroundColor = '#FFF8E1';
+    }
+
+    function updateHabitSectionCounts() {
+        const sections = habitDataCache ? habitDataCache.sections : [];
+        sections.forEach(sec => {
+            const listId = 'list-habit-' + sec.id;
+            const wrapperId = 'sec-wrapper-' + sec.id;
+            const countId = 'count-' + sec.id;
+
+            const listContainer = document.querySelector('#' + listId + ' > div');
+            if (!listContainer) return;
+
+            const count = listContainer.children.length;
+            const countEl = document.getElementById(countId);
+            const wrapperEl = document.getElementById(wrapperId);
+
+            if (countEl) countEl.innerText = '(' + count + ')';
+
+            // Auto Hide Logic (keep wrapper in DOM but hide)
+            if (wrapperEl) {
+                if (count === 0) {
+                    wrapperEl.style.display = 'none';
+                } else {
+                    wrapperEl.style.display = 'block';
+                }
+            }
+        });
+    }
+
+    // --- HABIT DETAIL & CALENDAR ---
+    function openHabitDetail(habit) {
+        currentDetailHabit = habit;
+        if (!todayYear) {
+            const d = new Date();
+            todayYear = d.getFullYear();
+            todayMonth = d.getMonth() + 1;
+        }
+        currentDetailYear = todayYear;
+        currentDetailMonth = todayMonth;
+
+        const titleEl = document.getElementById('detail-name');
+        if (titleEl) titleEl.innerText = habit.name;
+
+        const timeEl = document.getElementById('detail-time');
+        if (timeEl) timeEl.innerText = '所要時間: ' + (habit.time || '未設定');
+
+        const descEl = document.getElementById('detail-desc');
+        if (descEl) descEl.innerText = habit.benefit || '習慣を続けて目標を達成しましょう';
+
+        const streakEl = document.getElementById('detail-streak');
+        if (streakEl) streakEl.innerText = `${habit.streak || 0} 日`;
+
+        const rateEl = document.getElementById('detail-rate');
+        if (rateEl) rateEl.innerText = `${habit.rate30 || 0}% `;
+
+        // Journal Logs Logic
+        const logContainer = document.getElementById('detail-journal-logs-container');
+        if (logContainer) {
+            logContainer.innerHTML = ''; // Clear previous
+
+            if (habit.name.endsWith('日記')) {
+                logContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">読み込み中...</div>';
+                google.script.run.withSuccessHandler(renderJournalLogs).getHabitTextLogs(habit.name);
+            }
+        }
+
+        document.getElementById('habit-detail-modal').classList.add('open');
+
+        renderDetailCalendar();
+        preloadPastMonths(habit.name, currentDetailYear, currentDetailMonth);
+    }
+
+    function renderCalendar() { console.log('Calendar view not implemented'); }
+
+    function renderJournalLogs(logs) {
+        const container = document.getElementById('detail-journal-logs-container');
+        if (!container) return;
+
+        if (!logs || logs.length === 0) {
+            container.innerHTML = '<div style="color:#999; text-align:center; font-size:12px;">記録はまだありません</div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        logs.forEach(log => {
+            const card = document.createElement('div');
+            card.style.cssText = 'background:rgba(255,255,255,0.8); border-radius:12px; padding:15px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);';
+            card.innerHTML = `
+        <div style="font-size:12px; color:#888; margin-bottom:5px;">${log.date}</div>
+          <div style="font-size:14px; color:#333; white-space:pre-wrap;">${log.text}</div>
+      `;
+            container.appendChild(card);
+        });
+    }
+
+    function closeHabitDetail() {
+        document.getElementById('habit-detail-modal').classList.remove('open');
+    }
+
+    function preloadPastMonths(habitName, year, month) {
+        loadMonthInBackground(habitName, year, month - 1, 3);
+    }
+
+    function loadMonthInBackground(habitName, year, month, depth) {
+        if (depth <= 0) return;
+        let y = year, m = month;
+        if (m < 1) { m = 12; y--; }
+        const key = `${y} -${m} `;
+
+        if (habitCalendarCache[habitName] && habitCalendarCache[habitName][key]) {
+            loadMonthInBackground(habitName, y, m - 1, depth - 1);
+            return;
+        }
+
+        google.script.run.withSuccessHandler(data => {
+            if (!habitCalendarCache[habitName]) habitCalendarCache[habitName] = {};
+            habitCalendarCache[habitName][key] = data;
+            loadMonthInBackground(habitName, y, m - 1, depth - 1);
+        }).getHabitCalendar(habitName, y, m);
+    }
+
+    function changeDetailMonth(delta) {
+        let newM = currentDetailMonth + delta;
+        let newY = currentDetailYear;
+
+        // Fix Overflow
+        if (newM > 12) { newM = 1; newY++; }
+        else if (newM < 1) { newM = 12; newY--; }
+
+        // Restrict Future
+        // todayMonth is 1-12. newM is 1-12.
+        if (newY > todayYear || (newY === todayYear && newM > todayMonth)) {
+            return;
+        }
+
+        currentDetailYear = newY;
+        currentDetailMonth = newM;
+        renderDetailCalendar();
+    }
+
+    function renderDetailCalendar() {
+        if (!currentDetailHabit) return;
+        const year = currentDetailYear;
+        const month = currentDetailMonth;
+        document.getElementById('cal-month-label').innerText = `${year}年 ${month} 月`;
+
+        // Arrow Style
+        const btnNext = document.getElementById('btn-next-month');
+        if (btnNext) {
+            let isAtLimit = (year > todayYear) || (year === todayYear && month >= todayMonth);
+            btnNext.style.opacity = isAtLimit ? '0.2' : '1';
+            btnNext.classList.toggle('disabled', isAtLimit); // pointer-events:none via css
+            // but keeping inline style logic for sureness
+            btnNext.style.pointerEvents = isAtLimit ? 'none' : 'auto';
+        }
+
+        const container = document.getElementById('detail-cal-grid');
+        container.innerHTML = 'Loading...';
+
+        const key = `${year} -${month} `;
+        const cache = habitCalendarCache[currentDetailHabit.name];
+
+        const renderGrid = (map) => {
+            container.innerHTML = '';
+            // Headers
+            ['日', '月', '火', '水', '木', '金', '土'].forEach(d => {
+                const c = document.createElement('div');
+                c.className = 'cal-header-cell'; c.innerText = d;
+                container.appendChild(c);
+            });
+
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const firstDay = new Date(year, month - 1, 1).getDay();
+
+            for (let i = 0; i < firstDay; i++) container.appendChild(document.createElement('div'));
+
+            const today = new Date();
+            // Reset time for accurate comparison
+            today.setHours(0, 0, 0, 0);
+
+            const start = currentDetailHabit.startDate ? new Date(currentDetailHabit.startDate) : new Date('2024-01-01');
+            start.setHours(0, 0, 0, 0);
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const cell = document.createElement('div');
+                cell.className = 'cal-cell';
+                cell.innerText = d;
+
+                const current = new Date(year, month - 1, d);
+
+                if (current > today) {
+                    // Futur: Faint text
+                    cell.style.opacity = '0.3';
+                } else if (current < start) {
+                    // Before Start
+                } else { // Active Range
+                    const status = map[d];
+                    if (status === 1) {
+                        cell.classList.add('status-done');
+                    } else if (current.getTime() === today.getTime()) {
+                        // Today & Not Done
+                        cell.classList.add('status-today-incomplete');
+                    } else {
+                        // Failed (0 or undefined) -> Gray Ring
+                        cell.classList.add('status-failed');
+                    }
+                }
+                container.appendChild(cell);
+            }
+        };
+
+        if (cache && cache[key]) {
+            renderGrid(cache[key]);
+        } else {
+            google.script.run.withSuccessHandler(data => {
+                if (!habitCalendarCache[currentDetailHabit.name]) habitCalendarCache[currentDetailHabit.name] = {};
+                habitCalendarCache[currentDetailHabit.name][key] = data;
+                if (currentDetailYear === year && currentDetailMonth === month) {
+                    renderGrid(data);
+                }
+            }).getHabitCalendar(currentDetailHabit.name, year, month);
+        }
+    }
+
+    // --- SETTINGS LOGIC ---
+    let hsCurrentIcon = '';
+    const popularIcons = [];
+
+    function openHabitSettings() {
+        if (!currentDetailHabit) return;
+        document.getElementById('habit-settings-modal').style.display = 'flex';
+        document.getElementById('hs-name').value = currentDetailHabit.name;
+
+        // Icon Init
+        hsCurrentIcon = currentDetailHabit.icon || '';
+        updateIconPreview();
+
+        // Populate Sections
+        const sel = document.getElementById('hs-section');
+        sel.innerHTML = '';
+        const sections = habitDataCache ? habitDataCache.sections : [];
+        sections.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.innerText = s.name;
+            if (s.id === currentDetailHabit.sectionId) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    }
+
+    function updateIconPreview() {
+        const preview = document.getElementById('hs-icon-preview');
+        preview.innerHTML = hsCurrentIcon
+            ? `<span class="material-symbols-rounded" style="color:var(--primary);">${hsCurrentIcon}</span>`
+            : `<span class="material-symbols-rounded" style="color:#ccc;">add_reaction</span>`;
+    }
+
+    function closeHabitSettings() {
+        document.getElementById('habit-settings-modal').style.display = 'none';
+    }
+
+    function saveHabitDefinition() {
+        const newName = document.getElementById('hs-name').value;
+        const newSec = document.getElementById('hs-section').value;
+
+        if (!newName) return;
+
+        google.script.run.withSuccessHandler(() => {
+            closeHabitSettings();
+            closeHabitDetail(); // Close detail too to refresh
+            fetchHabits();
+        }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon);
+    }
+
+    // --- ICON PICKER ---
+    function openIconPicker() {
+        document.getElementById('icon-picker-modal').style.display = 'flex';
+        renderIconGrid(materialIconsList.slice(0, 100));
+    }
+
+    function closeIconPicker() {
+        document.getElementById('icon-picker-modal').style.display = 'none';
+    }
+
+    function renderIconGrid(icons) {
+        const grid = document.getElementById('icon-grid');
+        grid.innerHTML = '';
+        icons.forEach(icon => {
+            const div = document.createElement('div');
+            div.style.cssText = 'height:50px; background:#f9f9f9; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer;';
+            div.onclick = () => selectIcon(icon);
+            div.innerHTML = `<span class="material-symbols-rounded" style="font-size:24px; color:#555;">${icon}</span>`;
+            grid.appendChild(div);
+        });
+    }
+
+    function selectIcon(icon) {
+        hsCurrentIcon = icon;
+        updateIconPreview();
+        closeIconPicker();
+    }
+
+    function filterIcons(query) {
+        if (!query) { document.getElementById('icon-grid').innerHTML = ''; renderIconGrid(materialIconsList.slice(0, 100)); return; }
+        const filtered = materialIconsList.filter(i => i.includes(query.toLowerCase())).slice(0, 100);
+        renderIconGrid(filtered);
+    }
+
+    let sectionSortable = null;
+
+    // --- SECTIONS ---
+    function openSectionManager() {
+        document.getElementById('section-manager-modal').style.display = 'flex';
+        renderSectionManagerList();
+
+        // Init Sortable
+        const el = document.getElementById('sm-list');
+        if (sectionSortable) sectionSortable.destroy();
+        sectionSortable = Sortable.create(el, {
+            handle: '.section-handle', // Drag handle class
+            animation: 150
+        });
+    }
+
+    function closeSectionManager() {
+        document.getElementById('section-manager-modal').style.display = 'none';
+        if (sectionSortable) {
+            sectionSortable.destroy();
+            sectionSortable = null;
+        }
+    }
+
+    function renderSectionManagerList() {
+        const root = document.getElementById('sm-list');
+        root.innerHTML = '';
+
+        const sections = habitDataCache ? habitDataCache.sections : [];
+
+        sections.forEach((s, idx) => {
+            const row = document.createElement('div');
+            row.className = 'section-row';
+            row.style.display = 'flex';
+            row.style.gap = '10px';
+            row.style.marginBottom = '10px';
+            row.dataset.id = s.id;
+
+            row.innerHTML = `
+        <div class="section-handle" style = "cursor:move; padding-top:5px; padding-right:5px; color:#aaa;" >☰</div >
+          <input value="${s.name}" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
+            <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
+            `;
+            root.appendChild(row);
+        });
+    }
+
+    function toggleHabitSection(secId) {
+        const list = document.getElementById('list-habit-' + secId);
+        const wrapper = document.getElementById('sec-wrapper-' + secId);
+        const icon = wrapper.querySelector('.toggle-icon');
+
+        if (list.classList.contains('collapsed')) {
+            list.classList.remove('collapsed');
+            icon.style.transform = 'rotate(0deg)';
+        } else {
+            list.classList.add('collapsed');
+            icon.style.transform = 'rotate(180deg)';
+        }
+    }
+
+    function addSectionRow() {
+        const root = document.getElementById('sm-list');
+        const row = document.createElement('div');
+        row.className = 'section-row';
+        row.style.gap = '10px';
+        row.style.marginBottom = '10px';
+        row.dataset.id = 'new-' + Date.now();
+
+        row.innerHTML = `
+    <div class="section-handle" style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
+    <input value="" placeholder="新しいセクション" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
+    <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
+  `;
+        root.appendChild(row);
+    }
+
+    function deleteSectionRow(el) {
+        if (confirm('このセクションを削除しますか？')) {
+            el.closest('.section-row').remove();
+        }
+    }
+
+    function saveSections() {
+        const rows = document.querySelectorAll('#sm-list .section-row');
+        const sections = [];
+        rows.forEach((r, idx) => {
+            const id = r.dataset.id.startsWith('new-') ? 'sec_' + Math.random().toString(36).substr(2, 9) : r.dataset.id;
+            const name = r.querySelector('input').value;
+            if (name) {
+                sections.push({ id: id, name: name });
+            }
+        });
+
+        google.script.run.withSuccessHandler(() => {
+            closeSectionManager();
+            fetchHabits();
+        }).saveHabitSections(sections);
+    }
+
+    // --- GOALS AND DASHBOARD ---
+
+    function fetchGoals() {
+        const activeTab = document.querySelector('.nav-item.active');
+        const isRoadmap = activeTab && activeTab.innerText.includes('Roadmap');
+
+        if (isRoadmap) {
+            renderRoadmap();
+        }
+    }
+
+    function renderGoalsTab() {
+        // Deleted
+    }
+
+    /* --- ROADMAP RENDERING (Updated UI) --- */
+    function renderRoadmap() {
+        const container = document.getElementById('goal-list-container');
+        if (!container) return;
+        if (container.dataset.loading === 'true') return;
+
+        container.dataset.loading = 'true';
+        container.innerHTML = '<div class="loading-spinner"></div>';
+
+        google.script.run.withSuccessHandler(goals => {
+            container.dataset.loading = 'false';
+            window.loadedGoals = goals; // Keep global sync
+
+            if (!goals || goals.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align:center; padding:40px; color:#aaa;">
+                        <div style="font-size:40px; margin-bottom:10px;">🗺️</div>
+                        <div>No goals found.</div>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            goals.forEach(g => {
+                if (g.id.startsWith('error')) return;
+
+                const current = Number(g.metricCurrent) || 0;
+                const target = Number(g.metricTarget) || 1;
+                const percent = Math.min(100, Math.max(0, (current / target) * 100));
+
+                // Calculate remaining days
+                let remaining = '';
+                if (g.endDate) {
+                    const today = new Date();
+                    const end = new Date(g.endDate);
+                    const diffTime = end - today;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    if (diffDays >= 0) remaining = `残り ${diffDays} 日`;
+                    else remaining = '期限切れ';
+                }
+
+                html += `
+                    <div class="goal-card" onclick="openGoalDetail('${g.id}')" style="box-shadow: none; border: 1px solid #eee;">
+                        <div class="goal-header" style="margin-bottom:10px; display:block;">
+                             <div class="goal-title" style="font-size:20px; margin-bottom: 8px;">${g.title}</div>
+                        </div>
+
+                        ${g.vision ? `
+                        <div style="background:#f7f7f7; padding:10px 15px; border-radius:12px; font-size:14px; color:#555; font-style:italic; margin-bottom:15px; width:100%;">
+                            ${g.vision}
+                        </div>` : ''}
+
+                        <div style="display:flex; justify-content:space-between; font-size:12px; color:#666; margin-bottom:5px; font-weight:bold;">
+                            <div>現在: ${current} <span style="font-weight:normal; font-size:10px;">${g.metricLabel || ''}</span></div>
+                            <div>目標: ${target} <span style="font-weight:normal; font-size:10px;">${g.metricLabel || ''}</span></div>
+                        </div>
+
+                        <div class="progress-container" style="height:10px; background:#f0f0f0;">
+                            <div class="progress-bar" style="width:${percent}%; background:#2196F3;"></div>
+                        </div>
+                        
+                        <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:11px; color:#999;">
+                             <div>${g.endDate ? '🏁 ' + g.endDate : ''}</div>
+                             <div>${remaining}</div>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+
+        }).withFailureHandler(err => {
+            container.dataset.loading = 'false';
+            container.innerHTML = `<div style="color:red; padding:20px;">Error: ${err}</div>`;
+        }).getGoalsV2();
+    }
+
+    /* --- GOAL MODAL LOGIC (New) --- */
+    function openGoalModal() {
+        // Clear inputs
+        document.getElementById('g-title').value = '';
+        document.getElementById('g-vision').value = '';
+        document.getElementById('g-metric-label').value = '';
+        document.getElementById('g-metric-target').value = '';
+        document.getElementById('g-metric-current').value = '';
+        document.getElementById('g-start-date').value = new Date().toISOString().split('T')[0];
+        document.getElementById('g-end-date').value = '';
+
+        document.getElementById('goal-modal').classList.add('open');
+    }
+
+    function closeGoalModal() {
+        document.getElementById('goal-modal').classList.remove('open');
+    }
+
+    function saveGoal() {
+        const title = document.getElementById('g-title').value;
+        const vision = document.getElementById('g-vision').value;
+        const metric = document.getElementById('g-metric-label').value;
+        const target = document.getElementById('g-metric-target').value;
+        const current = document.getElementById('g-metric-current').value;
+        const start = document.getElementById('g-start-date').value;
+        const end = document.getElementById('g-end-date').value;
+
+        if (!title || !metric || !target) {
+            alert('タイトル、単位、目標値は必須です');
+            return;
+        }
+
+        closeGoalModal();
+
+        // Optimistic / Spinner
+        const container = document.getElementById('goal-list-container');
+        if (container) container.innerHTML = '<div class="loading-spinner"></div>';
+
+        google.script.run.withSuccessHandler(() => {
+            renderRoadmap();
+        }).createGoal(title, vision, metric, Number(target), Number(current), start, end);
+    }
+
+    let currentMeasurementGoalId = null;
+
+    function openMeasurementModal(goalId, metricName, goalTitle) {
+        currentMeasurementGoalId = goalId;
+        document.getElementById('mm-title').innerText = metricName;
+        document.getElementById('mm-subtitle').innerText = goalTitle;
+        document.getElementById('mm-value').value = '';
+        document.getElementById('measurement-modal').classList.add('open');
+        setTimeout(() => document.getElementById('mm-value').focus(), 100);
+    }
+
+    function closeMeasurementModal() {
+        document.getElementById('measurement-modal').classList.remove('open');
+        currentMeasurementGoalId = null;
+    }
+
+    function saveMeasurement() {
+        const val = document.getElementById('mm-value').value;
+        const comment = document.getElementById('mm-comment').value;
+
+        if (!val) return;
+
+        const idToLog = currentMeasurementGoalId;
+        closeMeasurementModal();
+        const dateStr = new Date().toLocaleDateString('en-CA');
+
+        google.script.run.withSuccessHandler(() => {
+            // Success
+        }).logDailyMeasurement(idToLog, val, comment, dateStr);
+    }
+
+    /* --- DELETED WIZARD LOGIC --- */
+
+    /* --- GOAL DETAIL LOGIC (Moved to Top) --- */
+
+    /* --- PROGRESS LOGIC --- */
+    let currentProgressGoalId = null;
+
+    function openProgressModal(id, current, title) {
+        currentProgressGoalId = id;
+        document.getElementById('pm-title').innerText = '進捗を記録';
+        document.getElementById('pm-subtitle').innerText = title;
+        document.getElementById('pm-value').value = current; // Pre-fill current
+        document.getElementById('pm-notes').value = '';
+
+        document.getElementById('progress-modal').classList.add('open');
+        setTimeout(() => {
+            document.getElementById('pm-value').focus();
+            document.getElementById('pm-value').select();
+        }, 100);
+    }
+
+    function closeProgressModal() {
+        document.getElementById('progress-modal').classList.remove('open');
+        currentProgressGoalId = null;
+    }
+
+    function saveGoalProgress() {
+        const val = document.getElementById('pm-value').value;
+        const notes = document.getElementById('pm-notes').value;
+
+        if (val === '') { alert('数値を入力してください'); return; }
+
+        const idToLog = currentProgressGoalId; // Capture ID before nulling
+
+        // Close immediately for perceived speed
+        closeProgressModal();
+
+        const dateStr = new Date().toLocaleDateString('en-CA');
+
+        google.script.run.withSuccessHandler((res) => {
+            if (res !== 'Logged') {
+                alert('エラー: ' + res);
+            }
+            fetchGoals(); // Refresh Roadmap
+        }).logGoalProgress(idToLog, Number(val), notes, dateStr);
+    }
+
+    /* --- EXPOSE TO GLOBAL (Fix for Scope Issues) --- */
+    window.openGoalModal = openGoalModal;
+    window.closeGoalModal = closeGoalModal;
+    window.saveGoal = saveGoal;
+    window.openMeasurementModal = openMeasurementModal;
+    window.closeMeasurementModal = closeMeasurementModal;
+    window.openProgressModal = openProgressModal;
+    window.closeProgressModal = closeProgressModal;
+    window.saveGoalProgress = saveGoalProgress;
+    window.renderGoalsTab = renderGoalsTab;
+    window.renderRoadmap = renderRoadmap;
+
+    console.log("Functions exposed to window.");
+
+</script>
