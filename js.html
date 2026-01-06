@@ -906,7 +906,13 @@
 
         let iconContent = '💧';
         if (h.icon) {
-            iconContent = `<span class="material-symbols-rounded" style="font-size:24px;">${h.icon}</span>`;
+            // Material icons are usually snake_case. Emojis are unicode.
+            const isMaterial = /^[a-z0-9_]+$/.test(h.icon);
+            if (isMaterial) {
+                iconContent = `<span class="material-symbols-rounded" style="font-size:24px;">${h.icon}</span>`;
+            } else {
+                iconContent = `<span style="font-size:24px;">${h.icon}</span>`;
+            }
         }
 
         div.innerHTML = `
@@ -1133,13 +1139,35 @@
     // --- HABIT DETAIL & CALENDAR ---
     function openHabitDetail(habit) {
         currentDetailHabit = habit;
-        if (!todayYear) {
-            const d = new Date();
+
+        // Ensure valid date references to prevent 1970 bug
+        const d = new Date();
+        if (!todayYear || isNaN(todayYear)) {
             todayYear = d.getFullYear();
             todayMonth = d.getMonth() + 1;
         }
+
+        // Initialize current detail view date
         currentDetailYear = todayYear;
         currentDetailMonth = todayMonth;
+
+        // Extra safety: if somehow still invalid, force defaults
+        if (!currentDetailYear) currentDetailYear = 2025;
+        if (!currentDetailMonth) currentDetailMonth = 1;
+
+        const iconEl = document.querySelector('#habit-detail-modal .detail-icon');
+        if (iconEl) {
+            if (habit.icon) {
+                const isMaterial = /^[a-z0-9_]+$/.test(habit.icon);
+                if (isMaterial) {
+                    iconEl.innerHTML = `<span class="material-symbols-rounded" style="color:var(--primary); font-size:40px;">${habit.icon}</span>`;
+                } else {
+                    iconEl.innerHTML = `<span style="font-size:40px;">${habit.icon}</span>`;
+                }
+            } else {
+                iconEl.innerHTML = '💧';
+            }
+        }
 
         const titleEl = document.getElementById('detail-name');
         if (titleEl) titleEl.innerText = habit.name;
@@ -1353,9 +1381,23 @@
 
     function updateIconPreview() {
         const preview = document.getElementById('hs-icon-preview');
-        preview.innerHTML = hsCurrentIcon
-            ? `<span class="material-symbols-rounded" style="color:var(--primary);">${hsCurrentIcon}</span>`
-            : `<span class="material-symbols-rounded" style="color:#ccc;">add_reaction</span>`;
+        // Simple logic: if in material list, render as material icon. Else assume emoji text.
+        // Or cleaner: check if string matching regex for emoji?
+        // Easiest is checking material list presence, but that might be slow if list is huge (it is).
+        // Material icons are usually snake_case words. Emojis are unicode.
+        // Let's assume regex /^[a-z0-9_]+$/ is material.
+
+        const isMaterial = hsCurrentIcon && /^[a-z0-9_]+$/.test(hsCurrentIcon);
+
+        if (hsCurrentIcon) {
+            if (isMaterial) {
+                preview.innerHTML = `<span class="material-symbols-rounded" style="color:var(--primary);">${hsCurrentIcon}</span>`;
+            } else {
+                preview.innerHTML = `<span style="font-size:24px;">${hsCurrentIcon}</span>`;
+            }
+        } else {
+            preview.innerHTML = `<span class="material-symbols-rounded" style="color:#ccc;">add_reaction</span>`;
+        }
     }
 
     function closeHabitSettings() {
@@ -1368,21 +1410,75 @@
 
         if (!newName) return;
 
+        // Visual Feedback
+        const btn = document.querySelector('#habit-settings-modal .btn-save');
+        const originalText = btn ? btn.innerText : '保存';
+        if (btn) {
+            btn.innerText = '保存中...';
+            btn.disabled = true;
+        }
+
         google.script.run.withSuccessHandler(() => {
             closeHabitSettings();
-            closeHabitDetail(); // Close detail too to refresh
+            // closeHabitDetail(); // Kept open as requested
             fetchHabits();
+
+            if (btn) {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }).withFailureHandler((e) => {
+            alert('保存に失敗しました: ' + e);
+            if (btn) {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
         }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon);
     }
 
     // --- ICON PICKER ---
+    // --- ICON PICKER ---
+    let iconTab = 'material'; // 'material' | 'emoji'
+    let currentIconList = [];
+
     function openIconPicker() {
         document.getElementById('icon-picker-modal').style.display = 'flex';
-        renderIconGrid(materialIconsList.slice(0, 100));
+        // Reset to Material default or keep last? Let's reset for now or keep consistency.
+        switchIconTab('material');
     }
 
     function closeIconPicker() {
         document.getElementById('icon-picker-modal').style.display = 'none';
+        document.getElementById('icon-search').value = ''; // Clear search
+    }
+
+    function switchIconTab(tab) {
+        iconTab = tab;
+        const tabMat = document.getElementById('tab-material');
+        const tabEmo = document.getElementById('tab-emoji');
+        const input = document.getElementById('icon-search');
+
+        if (tab === 'material') {
+            tabMat.style.background = 'white';
+            tabMat.style.fontWeight = 'bold';
+            tabMat.style.color = '#333';
+            tabEmo.style.background = 'transparent';
+            tabEmo.style.fontWeight = 'normal';
+            tabEmo.style.color = '#666';
+            input.placeholder = 'アイコンを検索 (例: home, account)...';
+            renderIconGrid(materialIconsList.slice(0, 100)); // Default view
+        } else {
+            tabMat.style.background = 'transparent';
+            tabMat.style.fontWeight = 'normal';
+            tabMat.style.color = '#666';
+            tabEmo.style.background = 'white';
+            tabEmo.style.fontWeight = 'bold';
+            tabEmo.style.color = '#333';
+            input.placeholder = '絵文字を検索 (例: smile, cat)...';
+            // Render first 100 emojis
+            const previewList = emojiList.slice(0, 100).map(e => e[0]);
+            renderIconGrid(previewList);
+        }
     }
 
     function renderIconGrid(icons) {
@@ -1390,9 +1486,18 @@
         grid.innerHTML = '';
         icons.forEach(icon => {
             const div = document.createElement('div');
-            div.style.cssText = 'height:50px; background:#f9f9f9; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer;';
+            div.style.cssText = 'height:50px; background:#f9f9f9; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:24px; color:#555;';
             div.onclick = () => selectIcon(icon);
-            div.innerHTML = `<span class="material-symbols-rounded" style="font-size:24px; color:#555;">${icon}</span>`;
+
+            // Check if it's an emoji (simple length check or regex? actually just check if it's in material list?)
+            // Faster: if iconTab is emoji, render text. If material, render span class.
+
+            if (iconTab === 'material') {
+                div.innerHTML = `<span class="material-symbols-rounded">${icon}</span>`;
+            } else {
+                div.innerHTML = `<span>${icon}</span>`;
+            }
+
             grid.appendChild(div);
         });
     }
@@ -1404,9 +1509,24 @@
     }
 
     function filterIcons(query) {
-        if (!query) { document.getElementById('icon-grid').innerHTML = ''; renderIconGrid(materialIconsList.slice(0, 100)); return; }
-        const filtered = materialIconsList.filter(i => i.includes(query.toLowerCase())).slice(0, 100);
-        renderIconGrid(filtered);
+        const q = query.toLowerCase();
+
+        if (iconTab === 'material') {
+            if (!q) { renderIconGrid(materialIconsList.slice(0, 100)); return; }
+            const filtered = materialIconsList.filter(i => i.includes(q)).slice(0, 100);
+            renderIconGrid(filtered);
+        } else {
+            // Emojis: [char, keywords]
+            if (!q) {
+                renderIconGrid(emojiList.slice(0, 100).map(e => e[0]));
+                return;
+            }
+            const filtered = emojiList
+                .filter(e => e[1].includes(q)) // Search keywords
+                .map(e => e[0]) // Extract char
+                .slice(0, 100);
+            renderIconGrid(filtered);
+        }
     }
 
     let sectionSortable = null;

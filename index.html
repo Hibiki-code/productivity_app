@@ -209,7 +209,8 @@
       width: 40px;
       height: 40px;
       border-radius: 50%;
-      background: #E0E0E0;
+      background: #81C784;
+      /* Unified Green */
       display: flex;
       align-items: center;
       justify-content: center;
@@ -218,17 +219,8 @@
       color: white;
     }
 
-    .habit-item:nth-child(3n+1) .habit-icon {
-      background: #81C784;
-    }
+    /* REMOVED Colorful Logic per user request */
 
-    .habit-item:nth-child(3n+2) .habit-icon {
-      background: #64B5F6;
-    }
-
-    .habit-item:nth-child(3n+3) .habit-icon {
-      background: #FFB74D;
-    }
 
     .habit-info {
       flex: 1;
@@ -1199,8 +1191,22 @@
   <div class="modal-overlay" id="icon-picker-modal" onclick="if(event.target===this) closeIconPicker()">
     <div class="modal-box" style="max-height:80vh; overflow-y:auto;">
       <h3>アイコン選択</h3>
+
+      <!-- TABS -->
+      <div style="display:flex; margin-bottom:15px; background:#f0f0f0; border-radius:8px; padding:4px;">
+        <div id="tab-material" onclick="switchIconTab('material')"
+          style="flex:1; text-align:center; padding:8px; border-radius:6px; background:white; font-weight:bold; cursor:pointer;">
+          Material
+        </div>
+        <div id="tab-emoji" onclick="switchIconTab('emoji')"
+          style="flex:1; text-align:center; padding:8px; border-radius:6px; color:#666; cursor:pointer;">
+          Emoji
+        </div>
+      </div>
+
       <input type="text" id="icon-search" placeholder="検索..." oninput="filterIcons(this.value)"
         style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd; margin-bottom:15px;">
+
       <div id="icon-grid" style="display:grid; grid-template-columns:repeat(5, 1fr); gap:10px;">
         <!-- JS -->
       </div>
@@ -1226,6 +1232,7 @@
 
   <?!= include('js'); ?>
   <?!= include('icons'); ?>
+  <?!= include('emojis'); ?>
 
   <style>
     .cal-cell.status-failed {
