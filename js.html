@@ -557,16 +557,10 @@
         const list = document.getElementById('list-' + id);
         if (!list) return;
 
-        const container = list.parentElement;
-
-        if (list.style.display === 'none') {
-            list.style.display = 'block';
-            if (container) container.classList.add('expanded');
-        } else {
-            list.style.display = 'none';
-            if (container) container.classList.remove('expanded');
-        }
+        // Logic: Toggle 'collapsed' class on list ONLY
+        list.classList.toggle('collapsed');
     }
+
 
     function toggleDetails(header) {
         const item = header.closest('.task-item');
@@ -1091,17 +1085,8 @@
         const list = document.getElementById('list-habit-' + id);
         if (!list) return;
 
-        const header = list.previousElementSibling;
-        const icon = header.querySelector('.toggle-icon');
-
-        // Using style.display for simplicity as transitions can be tricky with dynamic height
-        if (list.style.display === 'none') {
-            list.style.display = 'block';
-            icon.innerText = '∧';
-        } else {
-            list.style.display = 'none';
-            icon.innerText = '⋁';
-        }
+        // CSS Grid Transition
+        list.classList.toggle('collapsed');
     }
 
     function markSectionDirty(input) {
