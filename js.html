@@ -1638,6 +1638,8 @@
         if (!currentDetailHabit) return;
         document.getElementById('habit-settings-modal').style.display = 'flex';
         document.getElementById('hs-name').value = currentDetailHabit.name;
+        document.getElementById('hs-time').value = currentDetailHabit.time || '';
+        document.getElementById('hs-benefit').value = currentDetailHabit.benefit || '';
 
         // Icon Init
         hsCurrentIcon = currentDetailHabit.icon || '';
@@ -1684,6 +1686,8 @@
     function saveHabitDefinition() {
         const newName = document.getElementById('hs-name').value;
         const newSec = document.getElementById('hs-section').value;
+        const newTime = document.getElementById('hs-time').value;
+        const newBenefit = document.getElementById('hs-benefit').value;
 
         if (!newName) return;
 
@@ -1710,7 +1714,7 @@
                 btn.innerText = originalText;
                 btn.disabled = false;
             }
-        }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon);
+        }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon, newTime, newBenefit);
     }
 
     // --- ICON PICKER ---

@@ -1174,7 +1174,7 @@ function reorderSections(idList) {
   return getHabitSections();
 }
 
-function saveHabitDefinition(name, newName, sectionId, icon) {
+function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = ss.getSheetByName('DB_Habits');
   const data = sheet.getDataRange().getValues();
@@ -1199,6 +1199,14 @@ function saveHabitDefinition(name, newName, sectionId, icon) {
       if (newName && newName !== name) sheet.getRange(row, hMap['title'] + 1).setValue(newName);
       if (sectionId) sheet.getRange(row, hMap['section'] + 1).setValue(sectionId);
       if (icon) sheet.getRange(row, hMap['icon'] + 1).setValue(icon);
+
+      // Expanding for Benefit and Time
+      if (hMap['benefit'] !== undefined && newBenefit !== undefined) {
+        sheet.getRange(row, hMap['benefit'] + 1).setValue(newBenefit);
+      }
+      if (hMap['time_needed'] !== undefined && newTime !== undefined) {
+        sheet.getRange(row, hMap['time_needed'] + 1).setValue(newTime);
+      }
 
       // Update At (Only if exists)
       if (hMap['updatedat'] !== undefined) {

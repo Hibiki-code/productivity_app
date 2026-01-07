@@ -1223,6 +1223,18 @@
       <label style="font-size:12px; color:#999;">セクション</label>
       <select id="hs-section" class="input-std"></select>
 
+      <div style="margin-top:10px; display:flex; gap:10px;">
+        <div style="flex:1;">
+          <label style="font-size:12px; color:#999;">所要時間 (例: 15m)</label>
+          <input id="hs-time" class="input-std" placeholder="15m">
+        </div>
+      </div>
+
+      <div style="margin-top:10px;">
+        <label style="font-size:12px; color:#999;">メリット・効果</label>
+        <textarea id="hs-benefit" class="input-std" rows="2" placeholder="この習慣を行うメリットは？"></textarea>
+      </div>
+
       <button class="btn-save" onclick="saveHabitDefinition()">保存</button>
     </div>
   </div>
