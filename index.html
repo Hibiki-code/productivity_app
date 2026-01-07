@@ -305,6 +305,8 @@
       background: transparent;
       border-radius: 12px;
       transition: background 0.2s, box-shadow 0.2s;
+      overflow: visible;
+      /* Ensure swipe actions aren't clipped */
     }
 
     .section-container.expanded {
@@ -340,8 +342,8 @@
     }
 
     .list-content {
-      /* Padding inside the card - Removed to align width */
       padding: 0;
+      overflow: visible;
     }
 
     .list-content>div {
@@ -369,7 +371,6 @@
     }
 
     /* Enforce White Background on Task Item always */
-    /* Enforce White Background on Task Item always */
     .task-item {
       background: #FFF !important;
       /* Always opaque */
@@ -379,50 +380,30 @@
       /* Ensure above actions */
     }
 
-    .task-item.done {
-      opacity: 1 !important;
-      /* No container transparency */
-      background: #F8F8F8 !important;
-      /* Light gray solid background */
-    }
+    /* ... (skipped done styles) ... */
 
-    .task-item.done .task-content,
-    .task-item.done .check-area {
-      opacity: 0.5;
-      /* Dim content only */
-      /* filter: grayscale(100%); Optional */
-    }
-
-    .task-item.done .task-name {
-      text-decoration: line-through;
-      color: #888;
-    }
-
-    /* Clean up the expanded rule too just in case */
-    .section-container.expanded .task-item {
-      background: #FFF !important;
-    }
-
-    /* Swipe actions */
     /* Swipe actions */
     .task-wrapper {
       position: relative;
       overflow: visible;
-      /* Ensure nothing is clipped */
     }
 
     .task-actions {
       position: absolute;
       top: 0;
       bottom: 0;
+      left: 0;
+      right: 0;
       width: 100%;
+      height: 100%;
       display: flex;
       align-items: center;
-      z-index: 1;
-      /* Above base, below item */
+      /* z-index handled inline (1) */
       padding: 0 15px;
-      /* Spacing from edge */
       box-sizing: border-box;
+      opacity: 1;
+      /* visibility handled inline (hidden default) */
+      background: transparent;
     }
 
     .task-actions.left {
@@ -436,12 +417,16 @@
     .task-item {
       position: relative;
       z-index: 10;
-      /* Definitely above actions */
+      /* Ensure item is above actions */
     }
 
     .task-actions .action-btn {
       pointer-events: auto;
-      padding: 0 15px;
+      flex-shrink: 0;
+      /* Critical: Prevent collapse */
+      min-width: 50px;
+      /* Critical: Ensure size */
+      width: 50px;
       height: 100%;
       border-radius: 8px;
       /* Slightly rounded */
@@ -466,9 +451,9 @@
       background: #8D6E63;
     }
 
-    /* For Archive List */
-
-    border-radius: 50%;
+    /* For Archive List - ensure circular buttons if needed? */
+    .action-btn.round {
+      border-radius: 50%;
     }
 
     .date-item.active .date-num {

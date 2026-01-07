@@ -204,6 +204,7 @@
     window.openEditVisionModal = openEditVisionModal; // New
     window.closeEditVisionModal = closeEditVisionModal;
     window.saveEditedVision = saveEditedVision;
+    window.openProgressFromDetailPage = openProgressFromDetailPage;
 
     // --- NAVIGATION HELPERS (Global) ---
     window.showTab = function (id) {
@@ -728,12 +729,12 @@
         div.dataset.id = t.id;
 
         div.innerHTML = `
-        <div class="task-actions right">
-           <div class="action-btn archive-btn" onclick="doArchiveTask('${t.id}')">
-             <span class="material-symbols-rounded">archive</span>
+        <div class="task-actions right" style="position:absolute; top:0; left:0; right:0; width:100%; height:100%; display:flex; justify-content:flex-end; align-items:center; z-index:1; visibility: hidden; opacity: 1; pointer-events: none;">
+           <div class="action-btn archive-btn" onclick="doArchiveTask('${t.id}')" style="pointer-events: auto; background:#5E6CD8 !important; width:50px !important; min-width:50px !important; max-width:50px !important; flex: 0 0 50px !important; height:100%; display:flex; align-items:center; justify-content:center; color:white; border-radius:0; margin:0; padding:0;">
+             <span class="material-symbols-rounded" style="font-size: 24px;">archive</span>
            </div>
-           <div class="action-btn delete-btn" style="margin-left: 10px;" onclick="doDeleteTask('${t.id}')">
-             <span class="material-symbols-rounded">delete</span>
+           <div class="action-btn delete-btn" style="pointer-events: auto; background:#FF5252 !important; width:50px !important; min-width:50px !important; max-width:50px !important; flex: 0 0 50px !important; height:100%; display:flex; align-items:center; justify-content:center; color:white; border-radius:0; margin:0; padding:0;" onclick="doDeleteTask('${t.id}')">
+             <span class="material-symbols-rounded" style="font-size: 24px;">delete</span>
            </div>
         </div>
 
@@ -771,6 +772,11 @@
             div.style.transition = 'all 0.3s ease';
             div.style.opacity = '1';
             div.style.transform = 'translateY(0)';
+
+            // Clear transform after animation to avoid stacking context issues
+            setTimeout(() => {
+                div.style.transform = '';
+            }, 350);
         });
     }
 
@@ -787,6 +793,7 @@
         let startX = 0;
         let currentTranslate = 0;
         let isDragging = false;
+        const actionsEl = el.parentElement.querySelector('.task-actions');
 
         el.addEventListener('touchstart', e => {
             startX = e.touches[0].clientX;
@@ -802,6 +809,9 @@
             if (diff > 0 && !el.classList.contains('swiped-open')) return;
             if (Math.abs(diff) < 10) return;
 
+            // Show actions when swiping starts
+            if (actionsEl && diff < 0) actionsEl.style.visibility = 'visible';
+
             // Simple Translation (Limit to negative or zero)
             const trans = Math.min(0, diff);
             el.style.transform = `translateX(${trans}px)`;
@@ -813,11 +823,12 @@
             el.style.transition = 'transform 0.2s ease-out';
             isDragging = false;
 
-            // Snap Logic - Right Side Only
-            if (currentTranslate < -60) {
+            // Snap Logic - Right Side Only (Threshold 50px for 50px buttons)
+            if (currentTranslate < -50) {
                 // Open Right (reveals buttons)
-                el.style.transform = 'translateX(-120px)'; // Enough for 2 buttons
+                el.style.transform = 'translateX(-100px)'; // 2 * 50px = 100px
                 el.classList.add('swiped-open');
+                if (actionsEl) actionsEl.style.visibility = 'visible';
             } else {
                 closeSwipe(el);
             }
@@ -828,6 +839,14 @@
     function closeSwipe(el) {
         el.style.transform = `translateX(0)`;
         el.classList.remove('swiped-open');
+
+        // Hide actions after animation to fix transparency leak
+        const actionsEl = el.parentElement.querySelector('.task-actions');
+        if (actionsEl) {
+            setTimeout(() => {
+                actionsEl.style.visibility = 'hidden';
+            }, 250); // Match transition length
+        }
     }
 
     function closeAllSwipes(exceptEl) {
@@ -2085,6 +2104,17 @@
                 valInput.select();
             }
         }, 100);
+    }
+
+
+    function openProgressFromDetailPage() {
+        if (!window.activeGoalDetailId || !window.activeGoalDetailData) {
+            console.error('No active goal detail data found');
+            return;
+        }
+        const g = window.activeGoalDetailData;
+        const current = Number(g.metricCurrent) || 0;
+        openProgressModal(g.id, current, g.title);
     }
 
     function closeProgressModal() {
