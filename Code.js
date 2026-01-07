@@ -1676,6 +1676,8 @@ function ensureGoalProgressSheet() {
     // id, title, vision, metric_beginning, metric_target, metric_current, start_date, scheduled_end_date, status, created_at
     gSheet.appendRow(['id', 'title', 'vision', 'metric_beginning', 'metric_target', 'metric_current', 'start_date', 'scheduled_end_date', 'status', 'created_at']);
   }
+
+  return pSheet;
 }
 
 function logGoalProgress(goalId, value, notes, dateStr) {
@@ -1690,7 +1692,7 @@ function logGoalProgress(goalId, value, notes, dateStr) {
 
   // Search for Goal ID
   for (let i = 1; i < gData.length; i++) {
-    if (gData[i][0] === goalId) {
+    if (String(gData[i][0]) === String(goalId)) { // Robust string comparison
       // Assuming Schema: id(0), title(1), vision(2), metric_beginning(3), metric_target(4), metric_current(5)...
       // Update metric_current (Col 6 / Index 5)
       gSheet.getRange(i + 1, 6).setValue(value);
@@ -1702,21 +1704,28 @@ function logGoalProgress(goalId, value, notes, dateStr) {
   if (!goalFound) return 'Goal Not Found: ' + goalId;
 
   // 2. Append Log (DB_GoalsProgress)
-  const pSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
+  // Use explicit ensure to get sheet
+  let pSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
   if (!pSheet) {
-    ensureGoalProgressSheet(); // Lazy init
-    return logGoalProgress(goalId, value, notes, dateStr); // Retry
+    pSheet = ensureGoalProgressSheet();
   }
+
+  if (!pSheet) return 'DB_GoalsProgress Creation Failed';
 
   const newId = Utilities.getUuid();
   // id, goal_id, metric_then, notes, created_at
-  pSheet.appendRow([
-    newId,
-    goalId,
-    value,      // Snapshot value
-    notes || '',
-    new Date()  // Timestamp
-  ]);
+  try {
+    pSheet.appendRow([
+      newId,
+      String(goalId),
+      value,      // Snapshot value
+      notes || '',
+      new Date()  // Timestamp
+    ]);
+  } catch (e) {
+    console.error('Append Error:', e);
+    return 'Append Failed: ' + e.message;
+  }
 
   SpreadsheetApp.flush(); // FORCE UPDATE
   return 'Logged';
@@ -1747,6 +1756,3 @@ function getGoalHistory(goalId) {
   return history.sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
-}
