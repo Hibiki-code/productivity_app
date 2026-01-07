@@ -4,7 +4,7 @@
     window.activeGoalDetailData = null;
 
     window.openGoalDetail = function (goalId) {
-        console.log('SAFE openGoalDetail called with:', goalId);
+        console.log('Switching to Goal Detail Page:', goalId);
         window.activeGoalDetailId = goalId;
 
         const goal = (window.loadedGoals || []).find(g => g.id === goalId);
@@ -14,68 +14,196 @@
         }
         window.activeGoalDetailData = goal;
 
-        document.getElementById('gdm-title').innerText = goal.title;
-        document.getElementById('gdm-vision').innerText = goal.vision || 'No vision defined.';
+        // Populate New View Elements
+        document.getElementById('gd-page-title').innerText = goal.title;
+
+        // Vision with Edit Icon (In-Place)
+        const visionText = goal.vision || 'No vision defined.';
+        const visionHtml = `
+            <div style="position:relative; padding-right:20px;">
+                <div id="gd-vision-text" contenteditable="true" 
+                     onblur="saveVisionInline('${goal.id}', this)"
+                     style="outline:none; white-space:pre-wrap; min-height:20px;">${visionText}</div>
+                <div onclick="document.getElementById('gd-vision-text').focus()" 
+                     style="position:absolute; bottom:-5px; right:-5px; cursor:pointer; color:#ccc; padding:5px;">
+                    <span class="material-symbols-rounded" style="font-size:16px;">edit</span>
+                </div>
+            </div>
+        `;
+        document.getElementById('gd-vision-card').innerHTML = visionHtml;
 
         const current = Number(goal.metricCurrent) || 0;
         const target = Number(goal.metricTarget) || 0;
-        document.getElementById('gdm-current').innerText = current + (goal.metricLabel || '');
-        document.getElementById('gdm-target').innerText = '/ ' + target + (goal.metricLabel || '');
-
+        document.getElementById('gd-current-val').innerText = current + (goal.metricLabel || '');
+        document.getElementById('gd-target-val').innerText = '/ ' + target + (goal.metricLabel || '');
         const percent = (target > 0) ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
-        document.getElementById('gdm-bar').style.width = percent + '%';
+        document.getElementById('gd-progress-fill').style.width = percent + '%';
 
         // Load History
-        document.getElementById('gdm-history-list').innerHTML = '<div class="spinner"></div>';
+        document.getElementById('gd-history-list').innerHTML = '<div class="spinner"></div>';
         google.script.run.withSuccessHandler(window.renderGoalHistory).getGoalHistory(goalId);
 
-        document.getElementById('goal-detail-modal-overlay').classList.add('open');
-        document.getElementById('goal-detail-modal-overlay').style.display = 'flex'; // FORCE display
+        // Switch View
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-goal-detail').classList.add('active');
     };
 
     window.closeGoalDetail = function () {
-        document.getElementById('goal-detail-modal-overlay').classList.remove('open');
-        document.getElementById('goal-detail-modal-overlay').style.display = 'none'; // FORCE hide
         window.activeGoalDetailId = null;
+        window.activeGoalDetailData = null;
+
+        // Hide detail, show roadmap
+        document.getElementById('view-goal-detail').classList.remove('active');
+        document.getElementById('view-roadmap').classList.add('active');
+    };
+
+    window.saveVisionInline = function (id, element) {
+        const newText = element.innerText;
+        // Visual indicator
+        element.style.color = '#aaa';
+
+        google.script.run.withSuccessHandler(() => {
+            element.style.color = ''; // Restore
+            // Optional: Toast "Saved"
+        }).updateGoalVision(id, newText);
     };
 
     window.renderGoalHistory = function (history) {
-        const container = document.getElementById('gdm-history-list');
+        const container = document.getElementById('gd-history-list');
         container.innerHTML = '';
 
         if (!history || history.length === 0) {
-            container.innerHTML = '<div style="text-align:center; color:#ccc; font-size:12px;">履歴はありません</div>';
+            container.innerHTML = '<div style="text-align:center; color:#ccc; font-size:12px; padding:20px;">履歴はありません</div>';
             return;
         }
 
         history.forEach(log => {
             const d = new Date(log.date);
-            const dateStr = d.toLocaleDateString() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+            // Format: 2024/01/01 12:00
+            const dateStr = `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 
             const div = document.createElement('div');
-            div.style.padding = '8px 0';
-            div.style.borderBottom = '1px solid #eee';
-            div.style.fontSize = '12px';
+            div.className = 'history-card';
+            div.style.background = 'white';
+            div.style.padding = '15px';
+            div.style.borderRadius = '16px';
+            div.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)';
+            div.style.border = '1px solid rgba(0,0,0,0.03)';
+            div.style.display = 'flex';
+            div.style.flexDirection = 'column';
+            div.style.gap = '8px';
+
             div.innerHTML = `
-            <div style="display:flex; justify-content:space-between;">
-             <span style="font-weight:bold; color:#555;">${log.value}</span>
-             <span style="color:#999;">${dateStr}</span>
-          </div>
-            ${log.notes ? `<div style="color:#777; margin-top:2px;">${log.notes}</div>` : ''}
+            <div style="font-size:11px; color:#aaa; font-family:monospace;">${dateStr}</div>
+            
+            <div style="display:flex; align-items:baseline; gap:6px;">
+                 <span style="font-size:12px; color:#666;">達成値:</span>
+                 <span style="font-size:18px; font-weight:800; color:#333;">${log.value}</span>
+            </div>
+            
+            ${log.notes ? `
+            <div style="background:#f9f9f9; padding:10px; border-radius:8px; font-size:13px; color:#555; line-height:1.5; margin-top:2px; position:relative;">
+                ${log.notes}
+                <div onclick="openEditNoteModal('${log.id}', '${log.notes.replace(/'/g, "\\'")}')" 
+                     style="position:absolute; bottom:5px; right:5px; cursor:pointer; color:#ccc; padding:2px;">
+                    <span class="material-symbols-rounded" style="font-size:14px;">edit</span>
+                </div>
+            </div>` : `
+            <div onclick="openEditNoteModal('${log.id}', '')" 
+                 style="text-align:right; font-size:11px; color:#ddd; cursor:pointer; margin-top:2px;">
+                <span class="material-symbols-rounded" style="font-size:14px;">edit</span>
+            </div>
+            `}
         `;
             container.appendChild(div);
         });
     };
 
-    window.openProgressFromDetail = function () {
-        if (!window.activeGoalDetailData) return;
-        window.closeGoalDetail();
-        if (window.openProgressModal) {
-            window.openProgressModal(window.activeGoalDetailData.id, window.activeGoalDetailData.metricCurrent, window.activeGoalDetailData.title);
-        } else {
-            console.error("openProgressModal not ready yet");
-        }
-    };
+    /* --- EDIT NOTE LOGIC --- */
+    function openEditNoteModal(id, currentText) {
+        document.getElementById('en-id').value = id;
+        document.getElementById('en-text').value = currentText; // Decode? It's raw text.
+
+        const modal = document.getElementById('edit-note-modal');
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+
+        setTimeout(() => document.getElementById('en-text').focus(), 100);
+    }
+
+    function closeEditNoteModal() {
+        const modal = document.getElementById('edit-note-modal');
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+
+    function saveEditedNote() {
+        const id = document.getElementById('en-id').value;
+        const text = document.getElementById('en-text').value;
+
+        closeEditNoteModal();
+
+        // Optimistic Update (Optional, but let's just reload history for simplicity)
+        const historyContainer = document.getElementById('gd-history-list');
+        historyContainer.innerHTML = '<div class="spinner"></div>';
+
+        google.script.run.withSuccessHandler((res) => {
+            // Reload History
+            google.script.run.withSuccessHandler(window.renderGoalHistory).getGoalHistory(window.activeGoalDetailId);
+        }).updateHistoryNote(id, text);
+    }
+
+    /* --- EDIT VISION LOGIC --- */
+    function openEditVisionModal(id, currentText) {
+        document.getElementById('ev-id').value = id;
+        document.getElementById('ev-text').value = currentText;
+
+        const modal = document.getElementById('edit-vision-modal');
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+
+        setTimeout(() => document.getElementById('ev-text').focus(), 100);
+    }
+
+    function closeEditVisionModal() {
+        const modal = document.getElementById('edit-vision-modal');
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+
+    function saveEditedVision() {
+        const id = document.getElementById('ev-id').value;
+        const text = document.getElementById('ev-text').value;
+
+        closeEditVisionModal();
+
+        // Optimistic Update?
+        // Let's just reload the page/view since it's the main data
+        // Or update DOM directly for speed
+        document.getElementById('gd-vision-card').innerHTML = `<div class="spinner">Updating...</div>`;
+
+        google.script.run.withSuccessHandler((res) => {
+            // Re-fetch everything to ensure sync, or just re-open
+            // Ideally we re-fetch goals to update global 'loadedGoals'
+            google.script.run.withSuccessHandler((goals) => {
+                window.loadedGoals = goals;
+                // Restore Detail View
+                window.openGoalDetail(id);
+            }).getGoalsV2();
+        }).updateGoalVision(id, text);
+    }
+
+    /* --- EXPOSE TO GLOBAL (Fix for Scope Issues) --- */
+    window.openGoalModal = openGoalModal;
+    window.closeGoalModal = closeGoalModal;
+    window.saveGoal = saveGoal;
+    window.openMeasurementModal = openMeasurementModal;
+    window.openEditNoteModal = openEditNoteModal; // Keep history edit
+    window.closeEditNoteModal = closeEditNoteModal;
+    window.saveEditedNote = saveEditedNote;
+    window.openEditVisionModal = openEditVisionModal; // New
+    window.closeEditVisionModal = closeEditVisionModal;
+    window.saveEditedVision = saveEditedVision;
 
     // --- NAVIGATION HELPERS (Global) ---
     window.showTab = function (id) {
@@ -237,8 +365,13 @@
         google.script.run.withSuccessHandler(renderTasks).getTasks();
     }
 
+    /* --- TASK LOGIC REFACTOR (Edit/Add) --- */
+
+    let tasksCache = []; // Global Cache
+
     function renderTasks(tasks) {
         console.log('Rendering Tasks:', tasks.length);
+        tasksCache = tasks; // Cache for editing
         try {
             // Clear
             const lists = ['high', 'med', 'low', 'none', 'done'];
@@ -277,6 +410,189 @@
         } catch (e) {
             console.error('Error rendering tasks:', e);
         }
+    }
+
+    // Updated Tap Handler
+    function handleTaskTap(e, taskObj) {
+        if (isHighlightMode) {
+            e.preventDefault();
+            e.stopPropagation();
+            const id = taskObj.dataset.id;
+            showHighlightConfirm(id);
+            return;
+        }
+
+        // Edit Mode
+        const id = taskObj.dataset.id;
+        const task = tasksCache.find(t => t.id === id);
+
+        console.log('Tap Task:', id, task); // Debug
+
+        if (task) {
+            openEditTaskModal(task);
+        } else {
+            console.warn('Task not found in cache:', id);
+            // Fallback: Try to fetch or just ignore?
+        }
+    }
+
+    function saveTask() {
+        const modal = document.getElementById('task-modal');
+        const mode = modal.dataset.mode || 'add';
+        const id = document.getElementById('t-id').value;
+        const name = document.getElementById('t-name').value;
+        const prio = document.getElementById('t-prio').value;
+
+        // Inputs
+        const durH = document.getElementById('t-duration-h').value || 0;
+        const durM = document.getElementById('t-duration-m').value || 0;
+        const date = document.getElementById('t-date').value;
+        const details = document.getElementById('t-details').value;
+
+        if (!name) return;
+
+        // Format Duration
+        let durStr = '';
+        if (durH > 0) durStr += durH + 'h ';
+        if (durM > 0 || durH > 0) durStr += durM + 'm';
+
+        // Construct Data
+        const taskData = {
+            id: id,
+            name: name,
+            importance: prio,
+            estTime: durStr.trim(),
+            dueDate: date,
+            description: details
+        };
+
+        console.log('Save Task | Mode:', mode, 'ID:', id, 'Data:', taskData);
+
+        if (mode === 'edit') {
+            if (!id) {
+                alert('エラー: 編集中のタスクIDが見つかりません。');
+                return;
+            }
+            closeTaskModal();
+
+            // Optimistic Update
+            const oldTaskIndex = tasksCache.findIndex(t => t.id === id);
+            if (oldTaskIndex >= 0) {
+                // Merge Data
+                const mergedTask = { ...tasksCache[oldTaskIndex], ...taskData };
+                tasksCache[oldTaskIndex] = mergedTask;
+
+                // Remove Old Element (To handle priority change which moves list)
+                const oldElWrapper = document.querySelector(`.task-wrapper[data-id="${id}"]`);
+                if (oldElWrapper) oldElWrapper.remove();
+
+                // Re-create Element in Correct List
+                // Priority logic from createTaskEl
+                const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+                // If status is done, it goes to done list (handled by createTaskEl checking status)
+                // BUT createTaskEl takes listId as arg.
+                // If status is '完了', we should pass 'list-done'.
+                let targetListId = 'list-' + map[mergedTask.importance];
+                if (mergedTask.status === '完了') targetListId = 'list-done';
+
+                createTaskEl(mergedTask, targetListId);
+
+                // Update Counts
+                updateTaskCounts();
+            }
+
+            // Update Backend
+            google.script.run.withSuccessHandler(() => {
+                // Optional: fetchTasks(); // Consistency check, maybe skip if confident
+                console.log('Backend Updated');
+            }).updateTaskDetails(taskData);
+
+        } else {
+            // Add
+            closeTaskModal();
+            const t = {
+                ...taskData,
+                status: '未完了',
+                row: 'temp-' + Date.now()
+            };
+            const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+            createTaskEl(t, 'list-' + map[prio]);
+            google.script.run.withSuccessHandler(fetchTasks).addTask(t);
+        }
+    }
+
+    function openAddTaskModal(p) {
+        const modal = document.getElementById('task-modal');
+        modal.dataset.mode = 'add';
+
+        // Explicitly Title
+        const titleEl = document.getElementById('modal-title-task');
+        if (titleEl) titleEl.innerText = 'タスク追加';
+
+        const btnEl = document.getElementById('btn-save-task');
+        if (btnEl) btnEl.innerText = '追加';
+
+        document.getElementById('t-id').value = '';
+
+        document.getElementById('t-prio').value = (p !== undefined) ? p : 1;
+
+        // Reset Fields
+        document.getElementById('t-name').value = '';
+        document.getElementById('t-duration-h').value = '';
+        document.getElementById('t-duration-m').value = '15';
+        document.getElementById('t-date').value = '';
+        document.getElementById('t-details').value = '';
+
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+
+        setTimeout(() => document.getElementById('t-name').focus(), 100);
+    }
+
+    function openEditTaskModal(task) {
+        const modal = document.getElementById('task-modal');
+        modal.dataset.mode = 'edit';
+
+        // Explicit title
+        const titleEl = document.getElementById('modal-title-task');
+        if (titleEl) titleEl.innerText = 'タスク編集';
+
+        const btnEl = document.getElementById('btn-save-task');
+        if (btnEl) btnEl.innerText = '保存';
+
+        console.log('Opening Edit Modal for:', task.id);
+        const idInput = document.getElementById('t-id');
+        idInput.value = task.id;
+
+        document.getElementById('t-name').value = task.name;
+        document.getElementById('t-prio').value = task.importance;
+        document.getElementById('t-date').value = task.dueDate ? task.dueDate.replace(/\//g, '-') : '';
+        document.getElementById('t-details').value = task.description || '';
+
+        let h = 0, m = 15;
+        if (task.estTime) {
+            const hMatch = task.estTime.match(/(\d+)h/);
+            const mMatch = task.estTime.match(/(\d+)m/);
+            if (hMatch) h = parseInt(hMatch[1]);
+            if (mMatch) m = parseInt(mMatch[1]);
+            else if (!hMatch && !mMatch && parseInt(task.estTime)) m = parseInt(task.estTime);
+        }
+        document.getElementById('t-duration-h').value = (h > 0) ? h : '';
+        document.getElementById('t-duration-m').value = m;
+
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+    }
+
+    // Wrapper for legacy calls if any
+    function openTaskModal(p) {
+        openAddTaskModal(p);
+    }
+
+    function closeTaskModal() {
+        const modal = document.getElementById('task-modal');
+        modal.classList.remove('open');
+        modal.style.display = 'none';
     }
 
     let taskSortables = [];
@@ -358,16 +674,20 @@
     }
 
     function handleTaskTap(e, taskObj) {
-        if (!isHighlightMode) return; // Normal click handled by checkbox
+        if (isHighlightMode) {
+            e.preventDefault();
+            e.stopPropagation();
+            const id = taskObj.dataset.id;
+            showHighlightConfirm(id);
+            return;
+        }
 
-        // Stop checking the box
-        e.preventDefault();
-        e.stopPropagation();
-
+        // Edit Mode
         const id = taskObj.dataset.id;
-        console.log('Task Tapped in Highlight Mode:', id);
-
-        showHighlightConfirm(id);
+        const task = tasksCache.find(t => t.id === id);
+        if (task) {
+            openEditTaskModal(task);
+        }
     }
 
     function showHighlightConfirm(id) {
@@ -649,56 +969,9 @@
         }, 350);
     }
 
-    function saveTask() {
-        const name = document.getElementById('t-name').value;
-        const prio = document.getElementById('t-prio').value;
-
-        // New Inputs
-        const durH = document.getElementById('t-duration-h').value || 0;
-        const durM = document.getElementById('t-duration-m').value || 0;
-        const date = document.getElementById('t-date').value;
-        const details = document.getElementById('t-details').value;
-
-        if (!name) return;
-
-        // Format Duration String (e.g. "2h 15m")
-        let durStr = '';
-        if (durH > 0) durStr += durH + 'h ';
-        if (durM > 0 || durH > 0) durStr += durM + 'm';
-
-        // Optimistic Add
-        const t = {
-            name: name,
-            importance: prio,
-            status: '未完了',
-            row: 'temp-' + Date.now(),
-            estTime: durStr.trim(),
-            dueDate: date,
-            description: details
-        };
-
-        const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
-        createTaskEl(t, 'list-' + map[prio]);
-
-        closeTaskModal();
-
-        google.script.run.withSuccessHandler(fetchTasks).addTask(t);
-    }
-
-    function openTaskModal(p) {
-        document.getElementById('t-prio').value = p;
-
-        // Reset Fields
-        document.getElementById('t-name').value = '';
-        document.getElementById('t-duration-h').value = '';
-        document.getElementById('t-duration-m').value = '15';
-        document.getElementById('t-date').value = '';
-        document.getElementById('t-details').value = '';
-
-        document.getElementById('task-modal').classList.add('open');
-        document.getElementById('t-name').focus();
-    }
-    function closeTaskModal() { document.getElementById('task-modal').classList.remove('open'); }
+    // START LEGACY CLEANUP (Removed duplicate saveTask/openTaskModal/closeTaskModal)
+    // The correct versions are defined above (approx line 439).
+    // END LEGACY CLEANUP
 
     function toggleArchiveView() {
         const v = document.getElementById('view-archive');
@@ -1633,77 +1906,84 @@
     function renderRoadmap() {
         const container = document.getElementById('goal-list-container');
         if (!container) return;
-        if (container.dataset.loading === 'true') return;
 
-        container.dataset.loading = 'true';
-        container.innerHTML = '<div class="loading-spinner"></div>';
+        // Show spinner only if empty
+        if (!container.hasChildNodes()) {
+            container.innerHTML = '<div class="loading-spinner"></div>';
+        }
 
         google.script.run.withSuccessHandler(goals => {
-            container.dataset.loading = 'false';
             window.loadedGoals = goals; // Keep global sync
-
-            if (!goals || goals.length === 0) {
-                container.innerHTML = `
-                    <div style="text-align:center; padding:40px; color:#aaa;">
-                        <div style="font-size:40px; margin-bottom:10px;">🗺️</div>
-                        <div>No goals found.</div>
-                    </div>
-                `;
-                return;
-            }
-
-            let html = '';
-            goals.forEach(g => {
-                if (g.id.startsWith('error')) return;
-
-                const current = Number(g.metricCurrent) || 0;
-                const target = Number(g.metricTarget) || 1;
-                const percent = Math.min(100, Math.max(0, (current / target) * 100));
-
-                // Calculate remaining days
-                let remaining = '';
-                if (g.endDate) {
-                    const today = new Date();
-                    const end = new Date(g.endDate);
-                    const diffTime = end - today;
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    if (diffDays >= 0) remaining = `残り ${diffDays} 日`;
-                    else remaining = '期限切れ';
-                }
-
-                html += `
-                    <div class="goal-card" onclick="openGoalDetail('${g.id}')" style="box-shadow: none; border: 1px solid #eee;">
-                        <div class="goal-header" style="margin-bottom:10px; display:block;">
-                             <div class="goal-title" style="font-size:20px; margin-bottom: 8px;">${g.title}</div>
-                        </div>
-
-                        ${g.vision ? `
-                        <div style="background:#f7f7f7; padding:10px 15px; border-radius:12px; font-size:14px; color:#555; font-style:italic; margin-bottom:15px; width:100%;">
-                            ${g.vision}
-                        </div>` : ''}
-
-                        <div style="display:flex; justify-content:space-between; font-size:12px; color:#666; margin-bottom:5px; font-weight:bold;">
-                            <div>現在: ${current} <span style="font-weight:normal; font-size:10px;">${g.metricLabel || ''}</span></div>
-                            <div>目標: ${target} <span style="font-weight:normal; font-size:10px;">${g.metricLabel || ''}</span></div>
-                        </div>
-
-                        <div class="progress-container" style="height:10px; background:#f0f0f0;">
-                            <div class="progress-bar" style="width:${percent}%; background:#2196F3;"></div>
-                        </div>
-                        
-                        <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:11px; color:#999;">
-                             <div>${g.endDate ? '🏁 ' + g.endDate : ''}</div>
-                             <div>${remaining}</div>
-                        </div>
-                    </div>
-                `;
-            });
-            container.innerHTML = html;
-
+            renderRoadmapFromData(goals);
         }).withFailureHandler(err => {
-            container.dataset.loading = 'false';
             container.innerHTML = `<div style="color:red; padding:20px;">Error: ${err}</div>`;
         }).getGoalsV2();
+    }
+
+    function renderRoadmapFromData(goals) {
+        const container = document.getElementById('goal-list-container');
+        if (!container) return;
+
+        if (!goals || goals.length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:40px; color:#aaa;">
+                    <div style="font-size:40px; margin-bottom:10px;">🗺️</div>
+                    <div>No goals found.</div>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        goals.forEach(g => {
+            if (g.id.startsWith('error')) return;
+
+            const current = Number(g.metricCurrent) || 0;
+            const target = Number(g.metricTarget) || 1;
+            const percent = Math.min(100, Math.max(0, (current / target) * 100));
+
+            // Calculate remaining days
+            let remaining = '';
+            if (g.endDate) {
+                const today = new Date();
+                const end = new Date(g.endDate);
+                const diffTime = end - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                if (diffDays >= 0) remaining = `残り ${diffDays} 日`;
+                else remaining = '期限切れ';
+            }
+
+            // Card HTML
+            html += `
+                <div class="card-glass goal-card" onclick="openGoalDetail('${g.id}')">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                        <div class="goal-title">${g.title}</div>
+                        <!-- Log Button (Stop Propagation) -->
+                        <div style="padding:5px; background:rgba(0,0,0,0.05); border-radius:50%;" 
+                             onclick="event.stopPropagation(); openProgressModal('${g.id}', ${current}, '${g.title}')">
+                            <span class="material-symbols-rounded" style="font-size:18px; color:#555;">add</span>
+                        </div>
+                    </div>
+                    
+                    <div class="goal-vision">${g.vision || ''}</div>
+                    
+                    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:15px; margin-bottom:5px;">
+                        <div style="font-size:12px; color:#666;">現在: <span style="font-weight:bold; color:#333;">${current}</span> <span style="font-size:10px;">${g.metricLabel || ''}</span></div>
+                        <div style="font-size:12px; color:#999;">目標: <span style="font-weight:bold;">${target}</span> <span style="font-size:10px;">${g.metricLabel || ''}</span></div>
+                    </div>
+                    
+                    <div class="progress-container" style="height:10px; background:#f0f0f0;">
+                        <div class="progress-bar" style="width:${percent}%; background:#2196F3;"></div>
+                    </div>
+                    
+                    <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:11px; color:#999;">
+                         <div>${g.endDate ? '🏁 ' + g.endDate : ''}</div>
+                         <div>${remaining}</div>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
     }
 
     /* --- GOAL MODAL LOGIC (New) --- */
@@ -1794,15 +2074,23 @@
         document.getElementById('pm-value').value = current; // Pre-fill current
         document.getElementById('pm-notes').value = '';
 
-        document.getElementById('progress-modal').classList.add('open');
+        const modal = document.getElementById('progress-modal');
+        modal.classList.add('open');
+        modal.style.display = 'flex'; // FORCE override any inline 'none'
+
         setTimeout(() => {
-            document.getElementById('pm-value').focus();
-            document.getElementById('pm-value').select();
+            const valInput = document.getElementById('pm-value');
+            if (valInput) {
+                valInput.focus();
+                valInput.select();
+            }
         }, 100);
     }
 
     function closeProgressModal() {
-        document.getElementById('progress-modal').classList.remove('open');
+        const modal = document.getElementById('progress-modal');
+        modal.classList.remove('open');
+        modal.style.display = 'none'; // FORCE hide
         currentProgressGoalId = null;
     }
 
@@ -1823,7 +2111,33 @@
             if (res !== 'Logged') {
                 alert('エラー: ' + res);
             }
-            fetchGoals(); // Refresh Roadmap
+
+            // 1. Refresh Roadmap Data (Silent)
+            google.script.run.withSuccessHandler((goals) => {
+                window.loadedGoals = goals;
+                renderRoadmapFromData(goals);
+
+                // 2. If Detail Page is open for this goal, refresh it
+                if (window.activeGoalDetailId === idToLog) {
+                    // Update Data Object
+                    const updatedGoal = goals.find(g => g.id === idToLog);
+                    if (updatedGoal) {
+                        window.activeGoalDetailData = updatedGoal;
+                        // Determine target calculation
+                        const cur = Number(updatedGoal.metricCurrent) || 0;
+                        const tgt = Number(updatedGoal.metricTarget) || 0;
+                        const pct = (tgt > 0) ? Math.min(100, Math.max(0, (cur / tgt) * 100)) : 0;
+
+                        // Direct DOM Update for Snapiness
+                        document.getElementById('gd-current-val').innerText = cur + (updatedGoal.metricLabel || '');
+                        document.getElementById('gd-progress-fill').style.width = pct + '%';
+
+                        // Reload History
+                        google.script.run.withSuccessHandler(window.renderGoalHistory).getGoalHistory(idToLog);
+                    }
+                }
+            }).getGoalsV2();
+
         }).logGoalProgress(idToLog, Number(val), notes, dateStr);
     }
 

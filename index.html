@@ -993,6 +993,60 @@
       </div>
     </div>
 
+    <!-- GOAL DETAIL VIEW (Full Screen) -->
+    <div id="view-goal-detail" class="view">
+      <!-- Header -->
+      <div class="glass-header" style="display:flex; align-items:center; gap:15px; padding-top:40px;">
+        <div class="nav-back-btn" onclick="closeGoalDetail()"
+          style="cursor:pointer; padding:5px; border-radius:50%; background:rgba(0,0,0,0.05);">
+          <span class="material-symbols-rounded" style="font-size:24px; color:#555;">arrow_back</span>
+        </div>
+        <div id="gd-page-title"
+          style="font-size:22px; font-weight:800; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; flex:1;">
+          Goal Title
+        </div>
+      </div>
+
+      <div id="gd-content" style="padding:20px 20px 100px;">
+        <!-- Vision -->
+        <div id="gd-vision-card"
+          style="background:#f9f9f9; padding:15px; border-radius:16px; margin-bottom:25px; color:#666; font-style:italic; line-height:1.6; border:1px solid #eee;">
+          Vision text...
+        </div>
+
+        <!-- Stats Card -->
+        <div
+          style="background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.05); padding:20px; margin-bottom:30px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:15px;">
+            <span style="font-size:12px; font-weight:700; color:#aaa; letter-spacing:1px;">PROGRESS</span>
+            <div>
+              <span id="gd-current-val" style="font-size:24px; font-weight:800; color:#333;">0</span>
+              <span id="gd-target-val" style="font-size:14px; color:#999; margin-left:2px;">/ 100</span>
+            </div>
+          </div>
+
+          <div class="progress-bar-bg"
+            style="height:14px; background:#f0f0f0; border-radius:7px; overflow:hidden; margin-bottom:20px;">
+            <div id="gd-progress-fill"
+              style="width:0%; height:100%; background:linear-gradient(90deg, #42a5f5, #2196f3); transition:width 0.5s ease;">
+            </div>
+          </div>
+
+          <button class="btn-main" onclick="openProgressFromDetailPage()"
+            style="width:100%; display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; background:var(--primary); color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer;">
+            <span class="material-symbols-rounded">edit_note</span>
+            <span>進捗を記録</span>
+          </button>
+        </div>
+
+        <!-- History -->
+        <h3 style="font-size:18px; font-weight:800; margin-bottom:15px; color:#444;">History</h3>
+        <div id="gd-history-list" style="display:flex; flex-direction:column; gap:10px;">
+          <!-- Items -->
+        </div>
+      </div>
+    </div>
+
   </div> <!-- Main -->
 
   <!-- NAV BAR -->
@@ -1043,7 +1097,8 @@
   <!-- TASK MODAL -->
   <div class="modal-overlay" id="task-modal" onclick="if(event.target===this) closeTaskModal()">
     <div class="modal-box">
-      <h3>タスク追加</h3>
+      <h3 id="modal-title-task">タスク追加</h3>
+      <input id="t-id" type="hidden">
       <input id="t-name" class="input-std" placeholder="タスク名を入力">
       <select id="t-prio" class="input-std">
         <option value="3">優先度: 高</option>
@@ -1066,7 +1121,7 @@
 
       <textarea id="t-details" class="input-std" placeholder="詳細..."
         style="margin-top:10px; height:60px; resize:none; padding:8px; font-family:inherit;"></textarea>
-      <button class="btn-save" onclick="saveTask()">追加</button>
+      <button id="btn-save-task" class="btn-save" onclick="saveTask()">追加</button>
     </div>
   </div>
   <!-- GOAL MODAL -->
@@ -1529,16 +1584,41 @@
 
       <label class="label-std">現在の到達値 (Snapshot)</label>
       <div style="display:flex; align-items:center;">
-        <input id="pm-value" type="number" class="input-std" placeholder="例: 55">
-      </div>
-      <div style="font-size:10px; color:#aaa; margin-top:-5px; margin-bottom:10px;">
-        ※ 増分ではなく、その時点の合計値を入力してください。
+        <input id="pm-value" type="number" class="input-std" placeholder="">
       </div>
 
       <label class="label-std">メモ (Notes)</label>
       <input id="pm-notes" class="input-std" placeholder="進捗のコメント...">
 
       <button class="btn-save" style="margin-top:20px;" onclick="saveGoalProgress()">記録を保存</button>
+    </div>
+  </div>
+
+  <!-- EDIT NOTE MODAL -->
+  <div class="modal-overlay" id="edit-note-modal" onclick="if(event.target===this) closeEditNoteModal()">
+    <div class="modal-box">
+      <h3>メモの編集</h3>
+      <input id="en-id" type="hidden">
+      <textarea id="en-text" class="input-std" style="height:100px; resize:none;" placeholder="メモを入力..."></textarea>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:15px;">
+        <button class="btn-sec" onclick="closeEditNoteModal()">キャンセル</button>
+        <button class="btn-save" style="width:auto; padding:0 20px;" onclick="saveEditedNote()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT VISION MODAL -->
+  <div class="modal-overlay" id="edit-vision-modal" onclick="if(event.target===this) closeEditVisionModal()">
+    <div class="modal-box">
+      <h3>ビジョンの編集</h3>
+      <input id="ev-id" type="hidden">
+      <textarea id="ev-text" class="input-std" style="height:120px; resize:none;" placeholder="ビジョンを入力..."></textarea>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:15px;">
+        <button class="btn-sec" onclick="closeEditVisionModal()">キャンセル</button>
+        <button class="btn-save" style="width:auto; padding:0 20px;" onclick="saveEditedVision()">保存</button>
+      </div>
     </div>
   </div>
 

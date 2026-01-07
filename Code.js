@@ -1742,17 +1742,65 @@ function getGoalHistory(goalId) {
   // Skip Header
   for (let i = 1; i < data.length; i++) {
     // id=0, goal_id=1, metric_then=2, notes=3, created_at=4
-    if (data[i][1] === goalId) {
+    const rowGoalId = String(data[i][1]).trim();
+    const queryGoalId = String(goalId).trim();
+
+    if (rowGoalId === queryGoalId) {
+      let d = data[i][4];
+      // Handle Google Sheet Date Objects or Strings
+      if (!(d instanceof Date)) {
+        d = new Date(d);
+      }
+      // Fail-safe for invalid dates
+      if (isNaN(d.getTime())) {
+        d = new Date(); // Fallback to now? Or skip? Let's use now for safety.
+      }
+
       history.push({
         id: data[i][0],
         value: data[i][2],
         notes: data[i][3],
-        date: data[i][4]
+        date: d.toISOString() // Send as ISO string to avoid TZ issues across boundary
       });
     }
   }
 
   // Sort by Date Descending
   return history.sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+function updateHistoryNote(logId, newNote) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
+  if (!sheet) return 'Error: Sheet not found';
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === String(logId).trim()) {
+      // Found the row. Update Column D (Index 3 + 1 = 4 in 1-based, but getRange is row, col)
+      // Row is i + 1
+      // Col is 4 (Notes)
+      sheet.getRange(i + 1, 4).setValue(newNote);
+      return 'Updated';
+    }
+  }
+  return 'Error: Log not found';
+}
+
+function updateGoalVision(goalId, newVision) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!sheet) return 'Error: Sheet not found';
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    // id column is 0
+    if (String(data[i][0]).trim() === String(goalId).trim()) {
+      // Vision column is index 2, so getRange col is 3
+      sheet.getRange(i + 1, 3).setValue(newVision);
+      return 'Updated';
+    }
+  }
+  return 'Error: Goal not found';
 }
 
