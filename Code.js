@@ -773,6 +773,117 @@ function logHabitText(dateStr, habitName, text) {
   return 'Logged Text';
 }
 
+function getHabitCalendar(habitName, year, month) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_LOG);
+
+  // Header Check
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const colIndex = headers.indexOf(habitName);
+
+  if (colIndex === -1) return {};
+
+  // 1. Initialize Result Keys (Ensure Cache Hits even for empty months)
+  const result = {};
+
+  // Helper to get Year/Month from offset
+  const getYM = (y, m, offset) => {
+    let ty = y, tm = m + offset;
+    while (tm > 12) { tm -= 12; ty++; }
+    while (tm < 1) { tm += 12; ty--; }
+    return { y: ty, m: tm };
+  };
+
+  // Pre-fill M-1, M, M+1
+  [-1, 0, 1].forEach(offset => {
+    const { y, m } = getYM(year, month, offset);
+    result[`${y}-${m}`] = {};
+  });
+
+  // 2. Robust Search Strategy
+  // We want to read ~90-100 rows starting from M-1.
+  // If M-1 missing, try M. If M missing, try M+1.
+
+  let startRow = -1;
+  const searchOrder = [-1, 0, 1]; // Order of priority to find "Anchor"
+
+  // Search Helper: Tries "yyyy/MM" AND "yyyy-MM"
+  const findStartRowForMonth = (y, m) => {
+    const slash = `${y}/${String(m).padStart(2, '0')}`;
+    const hyphen = `${y}-${String(m).padStart(2, '0')}`;
+
+    // Try Slash
+    let finder = sheet.getRange("A:A").createTextFinder(slash);
+    let found = finder.findNext();
+    if (found) return found.getRow();
+
+    // Try Hyphen
+    finder = sheet.getRange("A:A").createTextFinder(hyphen);
+    found = finder.findNext();
+    if (found) return found.getRow();
+
+    return null;
+  };
+
+  for (const offset of searchOrder) {
+    const { y, m } = getYM(year, month, offset);
+    const row = findStartRowForMonth(y, m);
+    if (row) {
+      startRow = row;
+      // If we found M or M+1 (but missed M-1), we still read from there.
+      // But to be safe, if we found M, we *could* try to read 30 rows back?
+      // No, safer to just read forward from what we found. 
+      // If M-1 is empty, data starts at M. Reading from M covers M and M+1.
+      break;
+    }
+  }
+
+  // If absolutely no logs found for M-1, M, M+1 range
+  if (startRow === -1) {
+    // Return the empty initialized result. 
+    // This is CRITICAL: Frontend will cache these as "empty" and stop spinning.
+    return result;
+  }
+
+  // 3. Read Data (Approx 100 rows -> ~3 months)
+  const maxRows = sheet.getLastRow();
+  const numRows = Math.min(100, maxRows - startRow + 1);
+
+  if (numRows <= 0) return result;
+
+  const dates = sheet.getRange(startRow, 1, numRows, 1).getValues();
+  const values = sheet.getRange(startRow, colIndex + 1, numRows, 1).getValues();
+
+  for (let i = 0; i < numRows; i++) {
+    const rawDate = dates[i][0];
+    const val = values[i][0];
+
+    // Parse Date Robustly
+    let d;
+    if (rawDate instanceof Date) {
+      d = rawDate;
+    } else if (typeof rawDate === 'string') {
+      // Try standard parse
+      d = new Date(rawDate);
+    }
+
+    if (d && !isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      const key = `${y}-${m}`;
+
+      // Only populate if within our interest window? 
+      // No, populate everything found in the buffer.
+      // But ensure we initialized the key if it wasn't there (e.g. M+2 read by accident)
+      if (!result[key]) result[key] = {};
+
+      result[key][d.getDate()] = (val === 1 || val === true || val === 'TRUE') ? 1 : 0;
+    }
+  }
+
+  return result;
+}
+
 function getHabitTextLogs(habitName) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const logName = '日記記録'; // Matrix Sheet
@@ -819,29 +930,6 @@ function getHabitTextLogs(habitName) {
   // Sort DESC
   results.sort((a, b) => new Date(b.date) - new Date(a.date));
   return results;
-}
-
-function getHabitCalendar(habitName, year, month) {
-  // Use getHabitStatus logic but for specific month?
-  // User wants optimized load.
-  // We can reuse the logic in getHabitStatus or just do a quick scan.
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const sheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_LOG);
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const colIndex = headers.indexOf(habitName);
-
-  if (colIndex === -1) return {};
-
-  const result = {};
-  for (let i = 1; i < data.length; i++) {
-    const d = new Date(data[i][0]);
-    if (d.getFullYear() === year && (d.getMonth() + 1) === month) {
-      const val = data[i][colIndex];
-      result[d.getDate()] = (val === 1 || val === true || val === 'TRUE') ? 1 : 0;
-    }
-  }
-  return result;
 }
 
 // -----------------------------------------------------------------------------

@@ -1466,19 +1466,17 @@
         if (logContainer) {
             logContainer.innerHTML = ''; // Clear previous
 
-            if (habit.name.endsWith('日記')) {
-                logContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">読み込み中...</div>';
+            if (habit.name.endsWith('日記') || habit.name === '睡眠時間記録') {
+                logContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">Loading...</div>';
                 google.script.run.withSuccessHandler(renderJournalLogs).getHabitTextLogs(habit.name);
             }
         }
 
         document.getElementById('habit-detail-modal').classList.add('open');
 
-        renderDetailCalendar();
-        preloadPastMonths(habit.name, currentDetailYear, currentDetailMonth);
+        // Initial Calendar Render with Prefetch (New Logic)
+        changeDetailMonth(0);
     }
-
-    function renderCalendar() { console.log('Calendar view not implemented'); }
 
     function renderJournalLogs(logs) {
         const container = document.getElementById('detail-journal-logs-container');
@@ -1505,128 +1503,116 @@
         document.getElementById('habit-detail-modal').classList.remove('open');
     }
 
-    function preloadPastMonths(habitName, year, month) {
-        loadMonthInBackground(habitName, year, month - 1, 3);
-    }
+    // --- New Calendar Prefetching Logic ---
 
-    function loadMonthInBackground(habitName, year, month, depth) {
-        if (depth <= 0) return;
-        let y = year, m = month;
+    function changeDetailMonth(offset) {
+        let y = currentDetailYear;
+        let m = currentDetailMonth + offset;
+
+        // Handle wrapping
+        if (m > 12) { m = 1; y++; }
         if (m < 1) { m = 12; y--; }
-        const key = `${y} -${m} `;
 
-        if (habitCalendarCache[habitName] && habitCalendarCache[habitName][key]) {
-            loadMonthInBackground(habitName, y, m - 1, depth - 1);
-            return;
-        }
+        // Future Restriction? (Optional: Allow viewing next month if pre-planning?)
+        // Keeping strict restriction to not go beyond M+1 or Today?
+        // User requested "adjacent months". Let's allow freely for now, or clamp to reasonable future.
+        // Let's stick to simple wrapping.
 
-        google.script.run.withSuccessHandler(data => {
-            if (!habitCalendarCache[habitName]) habitCalendarCache[habitName] = {};
-            habitCalendarCache[habitName][key] = data;
-            loadMonthInBackground(habitName, y, m - 1, depth - 1);
-        }).getHabitCalendar(habitName, y, m);
-    }
+        currentDetailYear = y;
+        currentDetailMonth = m;
 
-    function changeDetailMonth(delta) {
-        let newM = currentDetailMonth + delta;
-        let newY = currentDetailYear;
+        document.getElementById('cal-month-label').innerText = `${y}年 ${m}月`;
 
-        // Fix Overflow
-        if (newM > 12) { newM = 1; newY++; }
-        else if (newM < 1) { newM = 12; newY--; }
-
-        // Restrict Future
-        // todayMonth is 1-12. newM is 1-12.
-        if (newY > todayYear || (newY === todayYear && newM > todayMonth)) {
-            return;
-        }
-
-        currentDetailYear = newY;
-        currentDetailMonth = newM;
-        renderDetailCalendar();
-    }
-
-    function renderDetailCalendar() {
-        if (!currentDetailHabit) return;
-        const year = currentDetailYear;
-        const month = currentDetailMonth;
-        document.getElementById('cal-month-label').innerText = `${year}年 ${month} 月`;
-
-        // Arrow Style
+        // Update Arrow Styles
         const btnNext = document.getElementById('btn-next-month');
         if (btnNext) {
-            let isAtLimit = (year > todayYear) || (year === todayYear && month >= todayMonth);
-            btnNext.style.opacity = isAtLimit ? '0.2' : '1';
-            btnNext.classList.toggle('disabled', isAtLimit); // pointer-events:none via css
-            // but keeping inline style logic for sureness
-            btnNext.style.pointerEvents = isAtLimit ? 'none' : 'auto';
+            // Let's disable if > today? Or > today+1?
+            // For now, simple standard arrows.
         }
 
-        const container = document.getElementById('detail-cal-grid');
-        container.innerHTML = 'Loading...';
+        // Cache Check & Render
+        const key = `${y}-${m}`;
+        if (habitCalendarCache[currentDetailHabit.name] && habitCalendarCache[currentDetailHabit.name][key]) {
+            renderGrid(habitCalendarCache[currentDetailHabit.name][key]);
 
-        const key = `${year} -${month} `;
-        const cache = habitCalendarCache[currentDetailHabit.name];
+            // Background Fetch (Prefetch neighbors)
+            fetchCalendarData(y, m, false);
+        } else {
+            document.getElementById('detail-cal-grid').innerHTML = '<div style="padding:20px; text-align:center; color:#999;">Loading...</div>';
+            fetchCalendarData(y, m, true);
+        }
+    }
 
-        const renderGrid = (map) => {
-            container.innerHTML = '';
-            // Headers
-            ['日', '月', '火', '水', '木', '金', '土'].forEach(d => {
-                const c = document.createElement('div');
-                c.className = 'cal-header-cell'; c.innerText = d;
-                container.appendChild(c);
+    function fetchCalendarData(year, month, doRender) {
+        google.script.run.withSuccessHandler(data => {
+            // Merge Data (Multi-Month Response)
+            const hName = currentDetailHabit.name;
+            if (!habitCalendarCache[hName]) habitCalendarCache[hName] = {};
+
+            Object.keys(data).forEach(k => {
+                habitCalendarCache[hName][k] = data[k];
             });
 
-            const daysInMonth = new Date(year, month, 0).getDate();
-            const firstDay = new Date(year, month - 1, 1).getDay();
-
-            for (let i = 0; i < firstDay; i++) container.appendChild(document.createElement('div'));
-
-            const today = new Date();
-            // Reset time for accurate comparison
-            today.setHours(0, 0, 0, 0);
-
-            const start = currentDetailHabit.startDate ? new Date(currentDetailHabit.startDate) : new Date('2024-01-01');
-            start.setHours(0, 0, 0, 0);
-
-            for (let d = 1; d <= daysInMonth; d++) {
-                const cell = document.createElement('div');
-                cell.className = 'cal-cell';
-                cell.innerText = d;
-
-                const current = new Date(year, month - 1, d);
-
-                if (current > today) {
-                    // Futur: Faint text
-                    cell.style.opacity = '0.3';
-                } else if (current < start) {
-                    // Before Start
-                } else { // Active Range
-                    const status = map[d];
-                    if (status === 1) {
-                        cell.classList.add('status-done');
-                    } else if (current.getTime() === today.getTime()) {
-                        // Today & Not Done
-                        cell.classList.add('status-today-incomplete');
-                    } else {
-                        // Failed (0 or undefined) -> Gray Ring
-                        cell.classList.add('status-failed');
-                    }
+            if (doRender) {
+                const key = `${currentDetailYear}-${currentDetailMonth}`;
+                // Render only if strictly matching the request, OR if the current view is covered by the response keys.
+                // Best to check if the *currently viewing* month is in the cache now.
+                if (habitCalendarCache[hName][key]) {
+                    renderGrid(habitCalendarCache[hName][key]);
+                } else {
+                    renderGrid({});
                 }
-                container.appendChild(cell);
             }
-        };
+        }).getHabitCalendar(currentDetailHabit.name, year, month);
+    }
 
-        if (cache && cache[key]) {
-            renderGrid(cache[key]);
-        } else {
-            google.script.run.withSuccessHandler(data => {
-                if (!habitCalendarCache[currentDetailHabit.name]) habitCalendarCache[currentDetailHabit.name] = {};
-                habitCalendarCache[currentDetailHabit.name][key] = data;
-                if (currentDetailYear === year && currentDetailMonth === month) {
-                    renderGrid(data);
+    function renderGrid(map) {
+        const container = document.getElementById('detail-cal-grid');
+        container.innerHTML = '';
+
+        const year = currentDetailYear;
+        const month = currentDetailMonth;
+
+        // Headers
+        ['日', '月', '火', '水', '木', '金', '土'].forEach(d => {
+            const c = document.createElement('div');
+            c.className = 'cal-header-cell'; c.innerText = d;
+            container.appendChild(c);
+        });
+
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const firstDay = new Date(year, month - 1, 1).getDay();
+
+        for (let i = 0; i < firstDay; i++) container.appendChild(document.createElement('div'));
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const start = currentDetailHabit.startDate ? new Date(currentDetailHabit.startDate) : new Date('2024-01-01');
+        start.setHours(0, 0, 0, 0);
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const cell = document.createElement('div');
+            cell.className = 'cal-cell';
+            cell.innerText = d;
+
+            const current = new Date(year, month - 1, d);
+
+            if (current > today) {
+                cell.style.opacity = '0.3';
+            } else if (current < start) {
+                // Before Start
+            } else {
+                const status = map[d];
+                if (status === 1) {
+                    cell.classList.add('status-done');
+                } else if (current.getTime() === today.getTime()) {
+                    cell.classList.add('status-today-incomplete');
+                } else {
+                    cell.classList.add('status-failed');
                 }
-            }).getHabitCalendar(currentDetailHabit.name, year, month);
+            }
+            container.appendChild(cell);
         }
     }
 
@@ -2021,10 +2007,12 @@
         document.getElementById('g-end-date').value = '';
 
         document.getElementById('goal-modal').classList.add('open');
+        document.getElementById('goal-modal').style.display = 'flex'; // Force visibility
     }
 
     function closeGoalModal() {
         document.getElementById('goal-modal').classList.remove('open');
+        document.getElementById('goal-modal').style.display = 'none'; // Force hide
     }
 
     function saveGoal() {
