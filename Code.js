@@ -1942,6 +1942,39 @@ function updateGoalVision(goalId, newVision) {
 
 
 /**
+ * Repair Tool: Fix corrupted Habit IDs (e.g. names in ID column)
+ */
+function repairHabitIds() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('DB_Habits');
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0].map(h => String(h).trim().toLowerCase());
+
+  const idIdx = headers.indexOf('id');
+  const titleIdx = headers.indexOf('title');
+
+  if (idIdx === -1) return 'Error: No ID column found';
+
+  const updates = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const currentId = String(data[i][idIdx]);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentId);
+
+    // If not UUID (e.g. empty or is a name), replace it
+    if (!isUuid) {
+      const newId = Utilities.getUuid();
+      console.log(`Reparing row ${i + 1}: "${currentId}" -> ${newId}`);
+      // Set value immediately or batch? Bath is better but simple set is fine here.
+      sheet.getRange(i + 1, idIdx + 1).setValue(newId);
+      updates.push({ old: currentId, new: newId, name: data[i][titleIdx] });
+    }
+  }
+
+  return updates;
+}
+
+/**
  * Helper to map headers to column indices
  * @param {Array} headers - Row of headers
  * @returns {Object} Map of lowercase header name to index

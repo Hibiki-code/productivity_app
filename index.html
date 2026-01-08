@@ -598,10 +598,26 @@
     }
 
     .cal-cell.status-failed {
-      background: transparent;
-      color: #555;
-      border: 3px solid #D0D0D0;
-      /* Visible Gray Ring */
+      /* existing styles... */
+    }
+
+    /* Completed Habit Styling */
+    #list-habit-checked .task-item {
+      opacity: 0.5;
+      filter: grayscale(100%);
+      transition: opacity 0.3s, filter 0.3s;
+    }
+
+    /* Ensure opacity is full when not in checked list */
+    .task-item {
+      opacity: 1;
+      transition: opacity 0.3s, filter 0.3s;
+    }
+
+    background: transparent;
+    color: #555;
+    border: 3px solid #D0D0D0;
+    /* Visible Gray Ring */
     }
 
     /* Gray for missed */
