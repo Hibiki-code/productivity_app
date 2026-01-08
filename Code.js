@@ -458,12 +458,7 @@ function getHabitStatus(dateStr) {
   const defData = defSheet.getDataRange().getValues();
   const rawHeaders = defData.shift();
 
-  // Headers: [id, title, icon, section, benefit, isActive, createdAt, text_input, time_needed]
-  const hMap = {};
-  rawHeaders.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
-
-  // Fallback Indices (Safety Net based on Screenshot)
-  // A=0: id, B=1: title, C=2: icon, D=3: section, E=4: benefit, F=5: isActive, G=6: createdAt, H=7: text_input, I=8: time_needed
+  // Headers: [id, title, icon, section, benefit, isActive, createdAt, text_input, time_needed, title_offense]
   const FALLBACK = {
     id: 0,
     title: 1,
@@ -472,8 +467,11 @@ function getHabitStatus(dateStr) {
     benefit: 4,
     isactive: 5,
     text_input: 7,
-    time_needed: 8
+    time_needed: 8,
+    title_offense: 9
   };
+
+  const hMap = createHeaderMap(rawHeaders);
 
   const getVal = (r, key, def) => {
     let idx = hMap[key.toLowerCase()];
@@ -498,7 +496,9 @@ function getHabitStatus(dateStr) {
       sectionId: getVal(r, 'section', 'sec_morning'),
       benefit: getVal(r, 'benefit', ''),
       hasTextInput: (getVal(r, 'text_input', false) === true),
-      time: getVal(r, 'time_needed', '')
+      time: getVal(r, 'time_needed', ''),
+      offenseTitle: getVal(r, 'title_offense', ''),
+      offenseTime: getVal(r, 'time_offense', '')
     };
   }).filter(h => h);
 
@@ -547,41 +547,38 @@ function getHabitStatus(dateStr) {
       continue;
     }
 
-    // Check Date Match
     // Check Date Match (Numeric)
     const rDate = new Date(rowRaw);
-    if (rDate.getFullYear() === targetYear && rDate.getMonth() === targetMonth && rDate.getDate() === targetDateNum) {
-      console.log('Match found (numeric) for:', dateStr);
+    const rYear = rDate.getFullYear();
+    const rMonth = rDate.getMonth();
+    const rDay = rDate.getDate();
+
+    if (rYear === targetYear && rMonth === targetMonth && rDay === targetDateNum) {
+      // console.log('Match found (numeric) for:', dateStr);
       for (let c = 1; c < logHeaders.length; c++) {
         const hName = logHeaders[c];
         const val = logData[i][c];
-        const isDone = (val == 1 || val === true || val === 'TRUE');
-        todaysLog[hName] = isDone ? 1 : 0;
+        // 2-level System: Return raw value 0, 1, 2
+        // Legacy check for boolean true replaced by 1
+        let status = 0;
+        if (val == 2) status = 2;
+        else if (val == 1 || val === true || val === 'TRUE') status = 1;
+
+        todaysLog[hName] = status;
       }
     }
 
-    // Collect Month Data (Legacy logic optimization)
-    // If we want monthly calendar for *current* month view? 
-    // Actually the frontend cache handles the calendar mostly. 
-    // getHabitStatus is mainly for the List View (Target Date).
-    // The previous code collected monthlyLogs for the target month too.
-    // We can keep that if valid, but string comparison is safer for the "Target Day".
-
-    // (Optional) Retain monthly collection?
-    // The previous logic used 'normalizeDate' for monthly buckets.
-    // I will skip monthlyLogs collection in this pass for simplicity unless required?
-    // Frontend uses data.monthlyLogs to update calendar cache (Line 1179).
-    // So I MUST populate monthlyLogs.
-
-    const dObj = new Date(rowRaw);
-    if (dObj.getFullYear() === targetYear && dObj.getMonth() === targetMonth) {
-      const day = dObj.getDate();
+    // Collect Month Data
+    if (rYear === targetYear && rMonth === targetMonth) {
       for (let c = 1; c < logHeaders.length; c++) {
         const hName = logHeaders[c];
         const val = logData[i][c];
-        const isDone = (val == 1 || val === true || val === 'TRUE');
+        let status = 0;
+        if (val == 2) status = 2;
+        else if (val == 1 || val === true || val === 'TRUE') status = 1;
+
         if (!monthlyLogs[hName]) monthlyLogs[hName] = {};
-        monthlyLogs[hName][day] = isDone ? 1 : 0;
+        monthlyLogs[hName][rDay] = status;
       }
     }
   }
@@ -652,8 +649,12 @@ function logHabit(dateStr, habitName, status) {
 
   // Prepare Row
   const logId = Utilities.getUuid();
-  const value = status ? 1 : 0;
-  const statusStr = status ? 'DONE' : 'SKIPPED'; // Or 'NONE'? Matrix uses 1/0. Let's use 'DONE' for consistency with schema.
+
+  const value = Number(status) || 0;
+  // Status check: 2 = ADVANCED, 1 = DONE, 0 = SKIPPED/NONE
+  let statusStr = 'SKIPPED';
+  if (value === 2) statusStr = 'ADVANCED';
+  else if (value === 1) statusStr = 'DONE';
 
   dbSheet.appendRow([logId, dateStr, habitId, statusStr, value, new Date()]);
 
@@ -694,7 +695,7 @@ function logHabit(dateStr, habitName, status) {
     rowIndex = sheet.getLastRow();
   }
 
-  sheet.getRange(rowIndex, colIndex + 1).setValue(status ? 1 : 0);
+  sheet.getRange(rowIndex, colIndex + 1).setValue(Number(status) || 0);
 
   // 3. STATS UPDATE (Lightweight)
   updateSingleHabitStreak(habitName);
@@ -1046,7 +1047,7 @@ function calculateSingleStreak(habitName) {
   const timeZone = CONFIG.TIMEZONE;
   for (let i = 1; i < data.length; i++) {
     const val = data[i][colIndex];
-    if (val === 1 || val === true || val === 'TRUE') {
+    if (Number(val) >= 1 || val === true || val === 'TRUE') {
       const d = new Date(data[i][0]);
       if (!isNaN(d.getTime())) {
         dates.push(Utilities.formatDate(d, timeZone, 'yyyy-MM-dd'));
@@ -1086,7 +1087,7 @@ function calculateStats() {
     const hName = headers[c];
     const dates = [];
     for (let i = 1; i < data.length; i++) {
-      if (data[i][c] == 1) {
+      if (data[i][c] >= 1 || data[i][c] === true || data[i][c] === 'TRUE') {
         const d = new Date(data[i][0]);
         if (!isNaN(d.getTime())) dates.push(Utilities.formatDate(d, CONFIG.TIMEZONE, 'yyyy-MM-dd'));
       }
@@ -1262,16 +1263,14 @@ function reorderSections(idList) {
   return getHabitSections();
 }
 
-function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit) {
+
+function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = ss.getSheetByName('DB_Habits');
   const data = sheet.getDataRange().getValues();
   if (data.length === 0) return;
 
   let headers = data[0];
-  // Map headers: name, category (section), icon
-  // Headers: [id, title, icon, section, benefit, isActive, createdAt, text_input, time_needed]
-
   const hMap = {};
   headers.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
 
@@ -1279,6 +1278,19 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
   if (hMap['title'] === undefined) hMap['title'] = 1;
   if (hMap['section'] === undefined) hMap['section'] = 3;
   if (hMap['icon'] === undefined) hMap['icon'] = 2;
+
+  // Robustness: Ensure new columns exist
+  const ensureColumn = (key) => {
+    if (hMap[key] === undefined) {
+      const newColIdx = headers.length;
+      sheet.getRange(1, newColIdx + 1).setValue(key);
+      hMap[key] = newColIdx;
+      headers.push(key); // Local update
+    }
+  };
+
+  if (newOffenseTitle !== undefined) ensureColumn('title_offense');
+  if (newOffenseTime !== undefined) ensureColumn('time_offense');
 
   let found = false;
   for (let i = 1; i < data.length; i++) {
@@ -1296,6 +1308,15 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
         sheet.getRange(row, hMap['time_needed'] + 1).setValue(newTime);
       }
 
+      // Expanding for Offense Title
+      if (hMap['title_offense'] !== undefined && newOffenseTitle !== undefined) {
+        sheet.getRange(row, hMap['title_offense'] + 1).setValue(newOffenseTitle);
+      }
+      // Expanding for Offense Time
+      if (hMap['time_offense'] !== undefined && newOffenseTime !== undefined) {
+        sheet.getRange(row, hMap['time_offense'] + 1).setValue(newOffenseTime);
+      }
+
       // Update At (Only if exists)
       if (hMap['updatedat'] !== undefined) {
         sheet.getRange(row, hMap['updatedat'] + 1).setValue(new Date());
@@ -1306,12 +1327,10 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
   }
 
   if (!found) {
-    // Create New? (Frontend calls this 'save', might imply create if not exists?)
-    // The UI currently only edits existing from Detail View.
-    // But eventually we need Add.
-    // For now, if not found, assume it is an Edit of a missing thing? Or ignore.
+    // Create New Logic (if we ever implement Create from here)
   }
 }
+
 
 
 // ========================================== 
@@ -1352,42 +1371,63 @@ function getGoalsV2() {
       }];
     }
 
-    const gList = [];
+    const headers = gData[0];
+    const hMap = {};
+    headers.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
 
-    // Add Verification Card
-    /*
-    gList.push({
-      id: 'debug_verified',
-      title: '✅ SYSTEM CONNECTED', 
-      status: 'Active'
-    });
-    */
+    // Helper to get val. Returns undefined if col missing.
+    const getVal = (row, field) => {
+      const idx = hMap[field];
+      return idx !== undefined ? row[idx] : undefined;
+    };
+
+    const gList = [];
 
     for (let i = 1; i < gData.length; i++) {
       const r = gData[i];
-      if (!r[0]) continue;
-      if (r[8] === 'DELETED') continue;
+      // ID check. Try 'id', fallback to 0.
+      const idVal = getVal(r, 'id') || r[0];
+      if (!idVal) continue;
 
-      // SANITIZE DATA
-      let sDate = r[6];
+      const statusVal = getVal(r, 'status');
+      // If status column missing, assume Active? Or r[8] legacy fallback?
+      // Let's rely on map.
+      if (statusVal === 'DELETED') continue;
+
+      // START DATE
+      // Try 'start_date', fallback to r[7] if map fail (legacy safety?) No, map is better.
+      let sDate = getVal(r, 'start_date');
+      if (sDate === undefined && hMap['metric_begining'] === undefined) {
+        // If no metric_begining col, maybe legacy order [6]? 
+        // But likely headers exist.
+      }
+
       if (sDate instanceof Date) sDate = Utilities.formatDate(sDate, CONFIG.TIMEZONE, 'yyyy-MM-dd');
-      else sDate = String(sDate);
+      else sDate = String(sDate || '');
 
-      let eDate = r[7];
+      // END DATE
+      let eDate = getVal(r, 'scheduled_end_date');
+      if (eDate === undefined) eDate = getVal(r, 'end_date');
+
       if (eDate instanceof Date) eDate = Utilities.formatDate(eDate, CONFIG.TIMEZONE, 'yyyy-MM-dd');
-      else eDate = String(eDate);
+      else eDate = String(eDate || '');
+
+      const title = getVal(r, 'title');
+      const vision = getVal(r, 'vision');
+      const metricLabel = getVal(r, 'metric_label');
+      const metricTarget = getVal(r, 'metric_target');
+      const metricCurrent = getVal(r, 'metric_current');
 
       gList.push({
-        id: String(r[0]),
-        title: String(r[1]),
-        vision: String(r[2]),
-        metricLabel: String(r[3]),
-        metricTarget: Number(r[4]) || 0,
-        metricCurrent: Number(r[5]) || 0,
+        id: String(idVal),
+        title: String(title || ''),
+        vision: String(vision || ''),
+        metricLabel: String(metricLabel || ''),
+        metricTarget: Number(metricTarget) || 0,
+        metricCurrent: Number(metricCurrent) || 0,
         startDate: sDate,
         endDate: eDate,
-        status: String(r[8]),
-        // milestones: [] // Skip for now
+        status: String(statusVal || 'Active')
       });
     }
 
@@ -1440,59 +1480,59 @@ function getGoalsV2() {
   }
 }
 
-function saveGoal(goal) {
+
+
+
+function createGoal(title, vision, metric, target, current, start, end) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  let sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS); // Use Safe Helper
+  let sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
 
   if (!sheet) {
     sheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS);
-    sheet.appendRow(['id', 'title', 'vision', 'metric_label', 'metric_target', 'metric_current', 'start_date', 'end_date', 'status', 'created_at']);
+    sheet.appendRow(['id', 'title', 'vision', 'metric_label', 'metric_target', 'metric_current', 'metric_begining', 'start_date', 'scheduled_end_date', 'status', 'created_at']);
   }
 
-  // id, title, vision, metric_label, metric_target, metric_current, start_date, end_date, status, created_at 
+  // Header-based mapping
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (!headers || headers.length === 0) return 'Error: No Headers';
 
+  const rowData = new Array(headers.length).fill('');
   const now = new Date();
+  const newId = Utilities.getUuid();
 
-  if (goal.id) {
-    // UPDATE 
-    const data = sheet.getDataRange().getValues();
-    let rowIdx = -1;
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === goal.id) {
-        rowIdx = i + 1;
-        break;
+  // Helper to find column index (case-insensitive)
+  const getCol = (name) => headers.findIndex(h => String(h).toLowerCase() === name.toLowerCase());
+
+  // Map fields
+  const map = {
+    'id': newId,
+    'title': title,
+    'vision': vision,
+    'metric_label': metric, // Column name: metric_label
+    'metric_target': target,
+    'metric_current': current,
+    'metric_begining': current, // Set initial value same as current
+    'start_date': start,
+    'scheduled_end_date': end, // Column name: scheduled_end_date
+    'status': 'Active',
+    'created_at': now
+  };
+
+  // Populate rowData
+  Object.keys(map).forEach(field => {
+    const idx = getCol(field);
+    if (idx !== -1) {
+      rowData[idx] = map[field];
+    } else {
+      // Fallback checks
+      if (field === 'scheduled_end_date') {
+        const idx2 = getCol('end_date');
+        if (idx2 !== -1) rowData[idx2] = map[field];
       }
     }
+  });
 
-    if (rowIdx > 0) {
-      // Update columns 2-9 
-      sheet.getRange(rowIdx, 2).setValue(goal.title);
-      sheet.getRange(rowIdx, 3).setValue(goal.vision);
-      sheet.getRange(rowIdx, 4).setValue(goal.metricLabel);
-      sheet.getRange(rowIdx, 5).setValue(goal.metricTarget);
-      sheet.getRange(rowIdx, 6).setValue(goal.metricCurrent);
-      sheet.getRange(rowIdx, 7).setValue(goal.startDate);
-      sheet.getRange(rowIdx, 8).setValue(goal.endDate);
-      sheet.getRange(rowIdx, 9).setValue(goal.status || 'Active');
-      return 'Updated';
-    }
-  }
-
-  // CREATE 
-  const newId = Utilities.getUuid();
-  sheet.appendRow([
-    newId,
-    goal.title,
-    goal.vision,
-    goal.metricLabel,
-    goal.metricTarget,
-    goal.metricCurrent,
-    goal.startDate,
-    goal.endDate,
-    goal.status || 'Active',
-    now
-  ]);
-
+  sheet.appendRow(rowData);
   return 'Created';
 }
 
@@ -1898,5 +1938,20 @@ function updateGoalVision(goalId, newVision) {
     }
   }
   return 'Error: Goal not found';
+}
+
+
+/**
+ * Helper to map headers to column indices
+ * @param {Array} headers - Row of headers
+ * @returns {Object} Map of lowercase header name to index
+ */
+function createHeaderMap(headers) {
+  const map = {};
+  if (!headers) return map;
+  headers.forEach((h, i) => {
+    if (h) map[String(h).toLowerCase()] = i;
+  });
+  return map;
 }
 

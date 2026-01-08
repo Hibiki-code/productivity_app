@@ -1235,6 +1235,24 @@
         <textarea id="hs-benefit" class="input-std" rows="2" placeholder="この習慣を行うメリットは？"></textarea>
       </div>
 
+      <!-- Advanced Toggle -->
+      <div class="toggle-switch-container">
+        <span class="toggle-label">2段階設定 (攻め・守り)</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="hs-advanced-toggle" onchange="toggleAdvancedSettings()">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- Advanced Fields -->
+      <div id="hs-advanced-settings">
+        <label style="font-size:12px; color:#999; display:block; margin-bottom:4px;">攻めの習慣タイトル</label>
+        <input id="hs-offense-title" class="input-std">
+
+        <label style="font-size:12px; color:#999; display:block; margin-top:10px; margin-bottom:4px;">攻めの所要時間</label>
+        <input id="hs-offense-time" class="input-std">
+      </div>
+
       <button class="btn-save" onclick="saveHabitDefinition()">保存</button>
     </div>
   </div>
@@ -1293,6 +1311,25 @@
       color: #555;
       border: none;
       /* No Ring */
+    }
+
+    /* 2-Level Habit Styles */
+    .habit-item.status-advanced .habit-icon {
+      background-color: #EF5350 !important;
+      /* Red */
+      color: white !important;
+    }
+
+    .habit-item.status-advanced .habit-name {
+      color: #B71C1C !important;
+      font-weight: 700;
+    }
+
+    .cal-cell.status-advanced {
+      background-color: #FFCDD2;
+      /* Light Red */
+      color: #B71C1C;
+      font-weight: bold;
     }
 
     /* Today Unfinished */
@@ -1373,6 +1410,78 @@
     .action-btn.delete {
       background-color: #EF5350;
       /* Red for Delete */
+    }
+
+    /* Toggle Switch */
+    .toggle-switch-container {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      /* Right aligned */
+      margin-top: 15px;
+      margin-bottom: 10px;
+    }
+
+    .toggle-label {
+      font-size: 12px;
+      color: #666;
+      margin-right: 8px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 36px;
+      height: 20px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 34px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+
+    input:checked+.slider {
+      background-color: #2196F3;
+    }
+
+    input:checked+.slider:before {
+      transform: translateX(16px);
+    }
+
+    /* Advanced Settings Container */
+    #hs-advanced-settings {
+      background: #f9f9f9;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 15px;
+      display: none;
+      /* Hidden by default */
+      border: 1px solid #eee;
     }
 
     /* Small Add Button in Header */

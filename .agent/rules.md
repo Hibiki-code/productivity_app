@@ -1,5 +1,4 @@
 # User Rules
 
-1. **Language Requirement**:
-   - ユーザーへの説明、報告、対話は**必ず日本語**で行ってください。
-   - Explain everything to the user in **Japanese**.
+1. **Deployment Strictness**: Never deploy to Stg or merge to Main without explicit user approval.
+2. **Language**: implementation_plan.md and other artifacts MUST be written in Japanese.

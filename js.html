@@ -1153,10 +1153,18 @@
         if (!data.habits) { updateHabitSectionCounts(); return; }
 
         data.habits.forEach(h => {
-            const isDone = (h.status === 1);
+            // 2-Level Logic: Only Status 2 (Offense Done) moves to "Completed" area.
+            // (Or if it's a normal habit without levels, Status 1 moves to "Completed"?)
+            // Plan says: "2回タップ（攻め達成）... 完了エリアへ移動".
+            // If normal habit (no levels), 1 tap -> Done.
+            // So: if has levels, Done = status 2. If no levels, Done = status 1.
+            // let's check `h.offenseTitle`.
+
+            const isAdvanced = !!h.offenseTitle;
+            const isDone = isAdvanced ? (h.status === 2) : (h.status >= 1);
 
             if (isDone) {
-                const div = createHabitCard(h, true);
+                const div = createHabitCard(h, isDone); // Pass resolved isDone state
                 const target = document.querySelector('#list-habit-checked > div');
                 if (target) target.appendChild(div);
                 checkedCount++;
@@ -1166,7 +1174,7 @@
                 // Verify section exists in DOM
                 if (!document.getElementById('list-habit-' + targetSecId)) targetSecId = 'sec_other';
 
-                const div = createHabitCard(h, false);
+                const div = createHabitCard(h, false); // Not "fully done" (might be status 1 but staying in list)
                 // Append to section
                 const container = document.querySelector(`#list-habit-${targetSecId} > div`);
                 if (container) container.appendChild(div);
@@ -1185,14 +1193,22 @@
             }
         }
     }
-    function createHabitCard(h, isDone) {
+
+    function createHabitCard(h, isMovedToDone) {
         const div = document.createElement('div');
-        div.className = 'habit-item' + (isDone ? ' done' : '');
+        // Status 1 (Offense Unlocked) gets special style
+        const isAdvancedActive = (h.status === 1 && h.offenseTitle);
+
+        div.className = 'habit-item' + (isMovedToDone ? ' done' : '') + (isAdvancedActive ? ' status-advanced' : '');
         div.onclick = () => openHabitDetail(h);
+
+        // Data attributes for Toggle Logic
+        div.dataset.status = h.status || 0;
+        div.dataset.offenseTitle = h.offenseTitle || '';
+        div.dataset.encourage = h.offenseTitle ? 'true' : 'false'; // Flag for logic
 
         let iconContent = '💧';
         if (h.icon) {
-            // Material icons are usually snake_case. Emojis are unicode.
             const isMaterial = /^[a-z0-9_]+$/.test(h.icon);
             if (isMaterial) {
                 iconContent = `<span class="material-symbols-rounded" style="font-size:24px;">${h.icon}</span>`;
@@ -1201,10 +1217,15 @@
             }
         }
 
+        // Title Logic: Status 1 shows Offense Title
+        const displayTitle = (isAdvancedActive && h.offenseTitle) ? h.offenseTitle : h.name;
+
+        // Effect for Offense? Red Icon BG? (Handled by CSS .status-advanced .habit-icon)
+
         div.innerHTML = `
         <div class="habit-icon">${iconContent}</div>
            <div class="habit-info">
-              <div class="habit-name">${h.name}</div>
+              <div class="habit-name">${displayTitle}</div>
            </div>
            <div class="habit-stats-right">
               <div style="font-size:16px; font-weight:bold; color:var(--primary)">${h.streak || 0}日</div>
@@ -1222,163 +1243,16 @@
     let pendingJournalItem = null;
     let pendingJournalName = '';
 
-    function toggleHabit(el, name) {
-        const item = el.closest('.habit-item');
-        const isDone = item.classList.toggle('done');
-
-        // Special Logic: Sleep Record
-        if (isDone && name === '睡眠時間記録') {
-            pendingJournalItem = item;
-            pendingJournalName = name;
-            document.getElementById('sleep-modal').classList.add('open');
-            return;
-        }
-
-        // Special Logic: Any "Journal" (XX日記) (Only on Check)
-        if (isDone && name.endsWith('日記')) {
-            pendingJournalItem = item;
-            pendingJournalName = name;
-
-
-            const pEl = document.getElementById('journal-prompt');
-            if (name === '感謝日記') {
-                pEl.innerText = '今日あった良いことや感謝したいことを書きましょう。';
-            } else {
-                pEl.innerText = name + ' の記録を入力してください。';
-            }
-
-            document.getElementById('journal-modal').classList.add('open');
-            document.getElementById('journal-input').value = '';
-            setTimeout(() => document.getElementById('journal-input').focus(), 100);
-            return;
-        }
-
-        processHabitToggle(item, name, isDone);
-    }
-
-    function closeSleepModal(isSaved) {
-        document.getElementById('sleep-modal').classList.remove('open');
-        // If canceled (not saved), revert check
-        if (!isSaved && pendingJournalItem) {
-            pendingJournalItem.classList.remove('done');
-        }
-        if (!isSaved) pendingJournalItem = null;
-        // Keep pendingJournalItem if saved? No, saveSleepLog needs it. 
-        // But saveSleepLog calls closeSleepModal FIRST. 
-        // So we should NOT null it if saved, OR capture it before closing.
-        // saveSleepLog already captures it: const item = pendingJournalItem;
-        // So we can null it here.
-        pendingJournalItem = null;
-    }
-
-    function saveSleepLog() {
-        const bedtime = document.getElementById('sleep-bedtime').value;
-        const wakeup = document.getElementById('sleep-wakeup').value;
-
-        const item = pendingJournalItem;
-        const name = pendingJournalName;
-
-        closeSleepModal(true); // Close first, pass true to keep checkmark
-
-        // Save to Backend
-        // We also need today's date context? 
-        // toggleHabit operates on "Today" usually. 
-        // If we support back-dating, we need the date from the column/header.
-        // But currently habits are "Today's View".
-        // We'll assume Today.
-        const dateStr = new Date();
-
-        google.script.run.withSuccessHandler(() => {
-            // Success
-            processHabitToggle(item, name, true);
-        }).logSleep(dateStr.toString(), bedtime, wakeup);
-    }
-
-    function processHabitToggle(item, name, isDone) {
-        // Sync Backend
-        google.script.run.logHabit(currentHabitDate, name, isDone);
-
-        // Streak Optimistic Update
-        const streakEl = item.querySelector('.habit-stats-right > div:first-child');
-        let currentStreak = parseInt(streakEl.innerText.replace('日', '')) || 0;
-
-        if (isDone) {
-            // --- CHECKING ---
-            streakEl.innerText = (currentStreak + 1) + '日'; // Optimistic Increment
-
-            item.classList.add('fade-collapse');
-            setTimeout(() => {
-                document.querySelector('#list-habit-checked > div').prepend(item);
-                document.getElementById('sec-wrapper-checked').style.display = 'block';
-
-                // Update counts
-                const countEl = document.getElementById('count-habit-checked');
-                const currentVal = parseInt(countEl.innerText.replace(/\D/g, '')) || 0;
-                countEl.innerText = '(' + (currentVal + 1) + ')';
-
-                item.classList.remove('fade-collapse');
-                updateHabitSectionCounts();
-            }, 500);
-
-        } else {
-            // --- UNCHECKING ---
-            streakEl.innerText = Math.max(0, currentStreak - 1) + '日'; // Optimistic Decrement
-
-            item.classList.add('fade-collapse');
-            setTimeout(() => {
-                const secId = item.dataset.sectionId || 'sec_other';
-                let container = document.querySelector('#list-habit-' + secId + ' > div');
-                if (!container) container = document.querySelector('#list-habit-sec_other > div');
-
-                container.appendChild(item);
-
-                // Update counts
-                const countEl = document.getElementById('count-habit-checked');
-                const currentVal = parseInt(countEl.innerText.replace(/\D/g, '')) || 0;
-                let c = currentVal - 1;
-                c = c > 0 ? c : 0;
-                countEl.innerText = '(' + c + ')';
-
-                if (c <= 0) document.getElementById('sec-wrapper-checked').style.display = 'none';
-
-                item.classList.remove('fade-collapse');
-                updateHabitSectionCounts();
-            }, 500);
-        }
-    }
-
     function closeJournalModal(saved) {
         document.getElementById('journal-modal').classList.remove('open');
         if (!saved && pendingJournalItem) {
             // Cancelled: Revert the checkbox visually
-            pendingJournalItem.classList.toggle('done');
+            // This logic is now handled by processHabitToggle if newStatus is 0
+            // For now, just clear pending item.
             pendingJournalItem = null;
+            // CSS Grid Transition
+            // list.classList.toggle('collapsed'); // Assuming list is global or querySelector needed
         }
-    }
-
-    function submitJournal() {
-        const text = document.getElementById('journal-input').value;
-        if (!text.trim()) {
-            alert('内容を入力してください');
-            return;
-        }
-        // Log Text
-        google.script.run.logHabitText(currentHabitDate, pendingJournalName, text);
-
-        // Proceed with completions
-        processHabitToggle(pendingJournalItem, pendingJournalName, true);
-
-        // Cleanup
-        pendingJournalItem = null;
-        document.getElementById('journal-modal').classList.remove('open');
-    }
-
-    function toggleHabitSection(id) {
-        const list = document.getElementById('list-habit-' + id);
-        if (!list) return;
-
-        // CSS Grid Transition
-        list.classList.toggle('collapsed');
     }
 
     function markSectionDirty(input) {
@@ -1604,8 +1478,12 @@
                 // Before Start
             } else {
                 const status = map[d];
-                if (status === 1) {
-                    cell.classList.add('status-done');
+                // Status 2 = Offense Done (Red in Calendar per plan)
+                // Status 1 = Defense Done (Green in Calendar)
+                if (status === 2) {
+                    cell.classList.add('status-advanced'); // Red
+                } else if (status === 1) {
+                    cell.classList.add('status-done'); // Green
                 } else if (current.getTime() === today.getTime()) {
                     cell.classList.add('status-today-incomplete');
                 } else {
@@ -1627,6 +1505,15 @@
         document.getElementById('hs-time').value = currentDetailHabit.time || '';
         document.getElementById('hs-benefit').value = currentDetailHabit.benefit || '';
 
+        // Advanced Fields
+        document.getElementById('hs-offense-title').value = currentDetailHabit.offenseTitle || '';
+        document.getElementById('hs-offense-time').value = currentDetailHabit.offenseTime || '';
+
+        // Toggle State
+        const hasAdvanced = !!(currentDetailHabit.offenseTitle || currentDetailHabit.offenseTime);
+        document.getElementById('hs-advanced-toggle').checked = hasAdvanced;
+        toggleAdvancedSettings(); // Update visibility
+
         // Icon Init
         hsCurrentIcon = currentDetailHabit.icon || '';
         updateIconPreview();
@@ -1642,6 +1529,12 @@
             if (s.id === currentDetailHabit.sectionId) opt.selected = true;
             sel.appendChild(opt);
         });
+    }
+
+    function toggleAdvancedSettings() {
+        const isChecked = document.getElementById('hs-advanced-toggle').checked;
+        const container = document.getElementById('hs-advanced-settings');
+        container.style.display = isChecked ? 'block' : 'none';
     }
 
     function updateIconPreview() {
@@ -1675,6 +1568,17 @@
         const newTime = document.getElementById('hs-time').value;
         const newBenefit = document.getElementById('hs-benefit').value;
 
+        // Logic: If toggle is OFF, should we clear the offense fields?
+        // Maybe? Or just ignore them? 
+        // Better to clear them if user explicitly disabled.
+        // But if user just hides and shows, they might want to keep.
+        // For now, save what is in the fields if toggle is ON?
+        // Actually, if toggle ID is unchecked, we should probably save empty strings for offense.
+
+        const isAdvanced = document.getElementById('hs-advanced-toggle').checked;
+        const newOffense = isAdvanced ? document.getElementById('hs-offense-title').value : '';
+        const newOffenseTime = isAdvanced ? document.getElementById('hs-offense-time').value : '';
+
         if (!newName) return;
 
         // Visual Feedback
@@ -1700,7 +1604,7 @@
                 btn.innerText = originalText;
                 btn.disabled = false;
             }
-        }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon, newTime, newBenefit);
+        }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon, newTime, newBenefit, newOffense, newOffenseTime);
     }
 
     // --- ICON PICKER ---
@@ -2031,11 +1935,29 @@
 
         closeGoalModal();
 
-        // Optimistic / Spinner
-        const container = document.getElementById('goal-list-container');
-        if (container) container.innerHTML = '<div class="loading-spinner"></div>';
+        // --- Optimistic UI Update ---
+        const tempId = 'temp-' + Date.now();
+        const tempGoal = {
+            id: tempId,
+            title: title,
+            vision: vision,
+            metricLabel: metric,
+            metricTarget: Number(target),
+            metricCurrent: Number(current) || 0,
+            startDate: start,
+            endDate: end,
+            isOptimistic: true // Marker for UI if needed (e.g. gray out delete btn)
+        };
 
+        if (!window.loadedGoals) window.loadedGoals = [];
+        // Add to top or bottom? Default seems to be appended or sorted. 
+        // Let's add to top for visibility.
+        window.loadedGoals.unshift(tempGoal);
+        renderRoadmapFromData(window.loadedGoals);
+
+        // --- Server Sync ---
         google.script.run.withSuccessHandler(() => {
+            // Re-fetch true data to get real ID and consistent sort
             renderRoadmap();
         }).createGoal(title, vision, metric, Number(target), Number(current), start, end);
     }
@@ -2176,5 +2098,4 @@
     window.renderRoadmap = renderRoadmap;
 
     console.log("Functions exposed to window.");
-
 </script>
