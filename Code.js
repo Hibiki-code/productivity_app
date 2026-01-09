@@ -699,11 +699,67 @@ function logHabit(dateStr, habitName, status) {
 
   // 3. STATS UPDATE (Lightweight)
   updateSingleHabitStreak(habitName);
-
   return 'Updated';
 }
 
+
+
+
 function logHabitText(dateStr, habitName, text) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const logName = '日記記録'; // Targets the Journal Sheet directly
+  let sheet = ss.getSheetByName(logName);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(logName);
+    sheet.appendRow(['日付', '夢日記', '感謝日記']); // Header Init matching likely Defaults
+  }
+
+  // 1. Ensure Column Exists (Habit Name)
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  let colIndex = headers.indexOf(habitName);
+
+  if (colIndex === -1) {
+    // Create new column if not found
+    sheet.getRange(1, lastCol + 1).setValue(habitName);
+    colIndex = lastCol; // The new index is the old length
+  }
+
+  // 2. Ensure Row Exists (Date)
+  const targetYMD = Utilities.formatDate(new Date(dateStr), CONFIG.TIMEZONE, 'yyyy/MM/dd'); // Use slash for this sheet as per screenshot
+
+  // Find Row
+  const data = sheet.getDataRange().getValues();
+  let rowIndex = -1;
+
+  // Search from bottom up for efficiency
+  for (let i = data.length - 1; i >= 1; i--) {
+    let dVal = data[i][0];
+    let dStr = '';
+    if (dVal instanceof Date) dStr = Utilities.formatDate(dVal, CONFIG.TIMEZONE, 'yyyy/MM/dd');
+    else dStr = String(dVal);
+
+    if (dStr === targetYMD) {
+      rowIndex = i + 1; // 1-based
+      break;
+    }
+  }
+
+  if (rowIndex === -1) {
+    sheet.appendRow([targetYMD]);
+    rowIndex = sheet.getLastRow();
+  }
+
+  // 3. Write Data
+  sheet.getRange(rowIndex, colIndex + 1).setValue(text);
+
+  return 'Logged Text';
+}
+
+
+function DEPRECATED_logHabitText(dateStr, habitName, text) {
+  return; // Disabled
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const logName = '日記記録'; // New Sheet Name
   let sheet = ss.getSheetByName(logName);
@@ -951,40 +1007,33 @@ function logSleep(dateStr, bedtime, wakeup) {
   // Find Row by Date (Column A)
   const targetYMD = Utilities.formatDate(new Date(dateStr), CONFIG.TIMEZONE, 'yyyy/MM/dd');
 
-  // Optimization: Check last row first
-  const lastRow = sheet.getLastRow();
+  // Search Method
+  const data = sheet.getDataRange().getValues();
   let rowIndex = -1;
 
-  if (lastRow > 1) {
-    const lastDateRaw = sheet.getRange(lastRow, 1).getValue();
-    let lastDateStr = '';
-    if (lastDateRaw instanceof Date) lastDateStr = Utilities.formatDate(lastDateRaw, CONFIG.TIMEZONE, 'yyyy/MM/dd');
-    else lastDateStr = String(lastDateRaw);
+  for (let i = data.length - 1; i >= 1; i--) {
+    let dVal = data[i][0];
+    let dStr = '';
+    if (dVal instanceof Date) dStr = Utilities.formatDate(dVal, CONFIG.TIMEZONE, 'yyyy/MM/dd');
+    else dStr = String(dVal);
 
-    if (lastDateStr === targetYMD) rowIndex = lastRow;
+    if (dStr === targetYMD) {
+      rowIndex = i + 1;
+      break;
+    }
   }
 
   if (rowIndex === -1) {
-    // Search whole column
-    const dates = sheet.getRange("A:A").getValues().map(r => {
-      if (r[0] instanceof Date) return Utilities.formatDate(r[0], CONFIG.TIMEZONE, 'yyyy/MM/dd');
-      return String(r[0]);
-    });
-    // IndexOf + 1 (1-based)
-    rowIndex = dates.indexOf(targetYMD) + 1;
-  }
-
-  if (rowIndex === 0) { // Not found
     sheet.appendRow([targetYMD]);
     rowIndex = sheet.getLastRow();
   }
 
-  // Write Times (Col B and C)
-  // Bedtime -> Col 2, Wakeup -> Col 3
+  // Write Times (Col B=2 and C=3)
+  // Ensure we don't overwrite if null (though User provides both usually)
   if (bedtime) sheet.getRange(rowIndex, 2).setValue(bedtime);
   if (wakeup) sheet.getRange(rowIndex, 3).setValue(wakeup);
 
-  // Col 4 (Duration) is assumed to be a formula. We do not write to it.
+  // Col 4 is Formula, do not touch.
 
   return 'Logged Sleep';
 }

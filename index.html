@@ -6,6 +6,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Life OS</title>
+
   <link
     href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&family=Nunito:wght@600;700&display=swap"
     rel="stylesheet">
@@ -1076,24 +1077,7 @@
     </div>
   </div>
 
-  <!-- SLEEP MODAL -->
-  <div class="modal-overlay" id="sleep-modal" onclick="if(event.target===this) closeSleepModal()">
-    <div class="modal-box">
-      <h3>睡眠記録</h3>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#666;">就寝時刻</label>
-        <input type="time" id="sleep-bedtime" class="input-std" value="23:00">
-      </div>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#666;">起床時刻</label>
-        <input type="time" id="sleep-wakeup" class="input-std" value="07:00">
-      </div>
-      <div class="modal-actions">
-        <button class="btn-sec" onclick="closeSleepModal()">キャンセル</button>
-        <button class="btn-pri" onclick="saveSleepLog()">記録する</button>
-      </div>
-    </div>
-  </div>
+
 
   <!-- TASK MODAL -->
   <div class="modal-overlay" id="task-modal" onclick="if(event.target===this) closeTaskModal()">
@@ -1340,6 +1324,14 @@
       color: #B71C1C !important;
       font-weight: 700;
     }
+
+    /* Dim Completed Items */
+    .habit-item.done {
+      opacity: 0.5;
+      /* filter: grayscale(100%); REMOVED per user request */
+      transition: all 0.3s ease;
+    }
+
 
     .cal-cell.status-advanced {
       background-color: #FFCDD2;
@@ -1716,6 +1708,21 @@
     </div>
   </div>
 
+  <!-- JOURNAL MODAL (Restored) -->
+  <div class="modal-overlay" id="journal-modal" onclick="if(event.target===this) closeJournalModal()">
+    <div class="modal-box">
+      <h3 id="journal-title">振り返り</h3>
+      <div style="font-size:12px; color:#999; margin-bottom:15px;" id="journal-subtitle"></div>
+
+      <textarea id="journal-input" class="input-std" rows="4" placeholder="一言メモ..."></textarea>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+        <button class="btn-sec" onclick="closeJournalModal()">キャンセル</button>
+        <button class="btn-save" onclick="submitJournal()">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- EDIT NOTE MODAL -->
   <div class="modal-overlay" id="edit-note-modal" onclick="if(event.target===this) closeEditNoteModal()">
     <div class="modal-box">
@@ -1726,6 +1733,26 @@
       <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:15px;">
         <button class="btn-sec" onclick="closeEditNoteModal()">キャンセル</button>
         <button class="btn-save" style="width:auto; padding:0 20px;" onclick="saveEditedNote()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLEEP MODAL (Restored) -->
+  <div class="modal-overlay" id="sleep-modal" onclick="if(event.target===this) closeSleepModal()">
+    <div class="modal-box">
+      <h3>睡眠記録</h3>
+      <div style="margin-bottom:20px;">
+        <label style="display:block; font-size:12px; color:#666; margin-bottom:5px;">就寝 or 開始時刻 (Bedtime)</label>
+        <input type="time" id="slp-time-start" class="input-std" value="23:00" style="font-size:16px;">
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="display:block; font-size:12px; color:#666; margin-bottom:5px;">起床 or 終了時刻 (Wakeup)</label>
+        <input type="time" id="slp-time-end" class="input-std" value="07:00" style="font-size:16px;">
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn-sec" onclick="closeSleepModal()">キャンセル</button>
+        <button class="btn-save" onclick="commitSleepLog()">保存</button>
       </div>
     </div>
   </div>

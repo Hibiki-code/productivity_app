@@ -1154,17 +1154,21 @@
 
         data.habits.forEach(h => {
             // 2-Level Logic: Only Status 2 (Offense Done) moves to "Completed" area.
-            // (Or if it's a normal habit without levels, Status 1 moves to "Completed"?)
-            // Plan says: "2回タップ（攻め達成）... 完了エリアへ移動".
-            // If normal habit (no levels), 1 tap -> Done.
-            // So: if has levels, Done = status 2. If no levels, Done = status 1.
-            // let's check `h.offenseTitle`.
 
             const isAdvanced = !!h.offenseTitle;
-            const isDone = isAdvanced ? (h.status === 2) : (h.status >= 1);
+            // Robust Status Check (Handle string 'DONE' or number)
+            let s = h.status;
+            if (s === 'DONE') s = (isAdvanced ? 2 : 1); // Infer numeric status if string
+            else s = parseInt(s || 0);
+
+            // Re-assign sanitized status to h for createHabitCard usage
+            h.status = s;
+
+            const isDone = isAdvanced ? (s === 2) : (s >= 1);
 
             if (isDone) {
-                const div = createHabitCard(h, isDone); // Pass resolved isDone state
+                const div = createHabitCard(h, true); // Pass resolved isDone state
+                div.classList.add('done'); // FORCE ADD CLASS
                 const target = document.querySelector('#list-habit-checked > div');
                 if (target) target.appendChild(div);
                 checkedCount++;
@@ -1297,44 +1301,44 @@
         }
         // --- Optimistic Move Logic ---
         const isDone = isAdvanced ? (newStatus === 2) : (newStatus >= 1);
-        
+
         let targetListId;
         if (isDone) {
             targetListId = 'list-habit-checked';
-            item.classList.add('done'); 
+            item.classList.add('done');
         } else {
             const secId = item.dataset.sectionId || 'sec_other';
             targetListId = 'list-habit-' + secId;
         }
 
         const currentParentId = item.parentElement.parentElement ? item.parentElement.parentElement.id : '';
-        
-        if (currentParentId && currentParentId !== targetListId) {
-             const targetContainer = document.querySelector('#' + targetListId + ' > div');
 
-             if (targetContainer) {
-                 // Animation
-                 item.style.transition = 'all 0.3s ease';
-                 item.style.opacity = '0';
-                 item.style.transform = 'scale(0.9)';
-                 
-                 setTimeout(() => {
-                     targetContainer.appendChild(item);
-                     updateHabitSectionCounts();
-                     
-                     requestAnimationFrame(() => {
+        if (currentParentId && currentParentId !== targetListId) {
+            const targetContainer = document.querySelector('#' + targetListId + ' > div');
+
+            if (targetContainer) {
+                // Animation
+                item.style.transition = 'all 0.3s ease';
+                item.style.opacity = '0';
+                item.style.transform = 'scale(0.9)';
+
+                setTimeout(() => {
+                    targetContainer.appendChild(item);
+                    updateHabitSectionCounts();
+
+                    requestAnimationFrame(() => {
                         item.style.opacity = '1';
                         item.style.transform = 'scale(1)';
-                     });
-                 }, 300);
-             } else {
-                 updateHabitSectionCounts();
-             }
+                    });
+                }, 300);
+            } else {
+                updateHabitSectionCounts();
+            }
         } else {
-             updateHabitSectionCounts();
+            updateHabitSectionCounts();
         }
 
-// Immediate Count Update
+        // Immediate Count Update
         updateHabitSectionCounts();
 
 
@@ -2223,4 +2227,201 @@
     window.renderRoadmap = renderRoadmap;
 
     console.log("Functions exposed to window.");
+    /* --- FIXED HABIT LOGIC (Overrides previous definitions) --- */
+
+    function processHabitToggle(item, habitName, newStatus, isAdvanced, force) {
+        // Journal Logic (Blocking)
+        if (!force && newStatus > 0) {
+            if (habitName === '睡眠時間記録') {
+                openSleepModal(habitName, item);
+                return;
+            }
+            if (habitName.endsWith('日記')) {
+                openJournalModal(habitName, item);
+                return;
+            }
+        }
+
+        const oldStatus = parseInt(item.dataset.status || 0);
+
+        // --- 1. Optimistic Streak Update ---
+        const wasDone = oldStatus >= 1;
+        const isDoneNow = newStatus >= 1;
+
+        if (wasDone !== isDoneNow) {
+            const streakEl = item.querySelector('.habit-stats-right > div:first-child');
+            if (streakEl) {
+                let currentStreak = parseInt(streakEl.innerText) || 0;
+                if (isDoneNow) currentStreak++;
+                else currentStreak = Math.max(0, currentStreak - 1);
+                streakEl.innerText = currentStreak + '日';
+            }
+        }
+
+        // 1. Optimistic Update
+        item.dataset.status = newStatus;
+
+        // Update Classes
+        item.classList.remove('status-advanced', 'done');
+        if (isAdvanced) {
+            if (newStatus === 1) item.classList.add('status-advanced');
+            if (newStatus === 2) item.classList.add('done');
+        } else {
+            if (newStatus >= 1) item.classList.add('done');
+        }
+
+        // --- Optimistic Move Logic ---
+        const isDone = isAdvanced ? (newStatus === 2) : (newStatus >= 1);
+
+        let targetListId;
+        if (isDone) {
+            targetListId = 'list-habit-checked';
+            item.classList.add('done');
+        } else {
+            const secId = item.dataset.sectionId || 'sec_other';
+            targetListId = 'list-habit-' + secId;
+        }
+
+        const currentParentId = item.parentElement.parentElement ? item.parentElement.parentElement.id : '';
+
+        if (currentParentId && currentParentId !== targetListId) {
+            const targetContainer = document.querySelector('#' + targetListId + ' > div');
+            if (targetContainer) {
+                item.style.transition = 'all 0.3s ease';
+                item.style.opacity = '0';
+                item.style.transform = 'scale(0.9)';
+                setTimeout(() => {
+                    targetContainer.appendChild(item);
+                    updateHabitSectionCounts();
+                    requestAnimationFrame(() => {
+                        // FIX: Do not force opacity 1 if done. Let CSS handle it, or match target.
+                        // Best approach: clear inline opacity so CSS takes priority, 
+                        // BUT for transition we need explicit value? 
+                        // CSS transition handles it if we remove the inline style?
+                        // Let's try explicitly setting correct target.
+                        const isDoneClass = item.classList.contains('done');
+                        item.style.opacity = isDoneClass ? '0.5' : '1';
+                        item.style.transform = 'scale(1)';
+
+                        // Clean up inline styles after transition to allow CSS hover/etc to work?
+                        // If we leave it at 0.5, it overrides CSS 0.5 (same).
+                        // If we later toggle back, we need to update.
+                    });
+                }, 300);
+            } else {
+                updateHabitSectionCounts();
+            }
+        } else {
+            updateHabitSectionCounts();
+        }
+        updateHabitSectionCounts();
+
+        console.log(`Toggling ${habitName} to ${newStatus}`);
+        google.script.run.withSuccessHandler(() => {
+            // Success
+        }).logHabit(currentHabitDate, habitName, newStatus);
+    }
+
+    function openJournalModal(name, item) {
+        const modal = document.getElementById('journal-modal');
+        if (!modal) return;
+        pendingJournalItem = item;
+        pendingJournalName = name;
+        document.getElementById('journal-input').value = '';
+        const sub = document.getElementById('journal-subtitle');
+        if (sub) sub.innerText = '今日の記録を残しましょう';
+        const tit = document.getElementById('journal-title');
+        if (tit) tit.innerText = name;
+        const input = document.getElementById('journal-input');
+        input.placeholder = '一言メモ...';
+
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+    }
+
+    function closeJournalModal(saved) {
+        const modal = document.getElementById('journal-modal');
+        if (modal) {
+            modal.classList.remove('open');
+            modal.style.display = 'none';
+        }
+        if (!saved) {
+            pendingJournalItem = null;
+            pendingJournalName = '';
+        }
+    }
+
+    function submitJournal() {
+        if (!pendingJournalItem) return;
+        const text = document.getElementById('journal-input').value;
+        const name = pendingJournalName;
+        const item = pendingJournalItem;
+
+        closeJournalModal(true);
+        // Force update to Done (Level 1)
+        processHabitToggle(item, name, 1, false, true);
+
+        google.script.run.logHabitText(currentHabitDate, name, text);
+    }
+
+    /* --- SLEEP MODAL LOGIC (NUCLEAR FIX 3: CLOCK UI) --- */
+
+    function populateSleepTimes() {
+        // Logic removed: Using native <input type="time">
+    }
+
+    function openSleepModal(name, item) {
+        pendingJournalItem = item;
+        pendingJournalName = name;
+
+        // Default or Persisted values
+        // If empty, set defaults.
+        const s = document.getElementById('slp-time-start');
+        const e = document.getElementById('slp-time-end');
+        if (s && !s.value) s.value = '23:00';
+        if (e && !e.value) e.value = '07:00';
+
+        const modal = document.getElementById('sleep-modal');
+        if (modal) {
+            modal.classList.add('open');
+            modal.style.display = 'flex';
+        }
+    }
+
+    function closeSleepModal() {
+        const modal = document.getElementById('sleep-modal');
+        if (modal) {
+            modal.classList.remove('open');
+            modal.style.display = 'none';
+        }
+    }
+
+    function commitSleepLog() {
+        // Read Native Inputs
+        const bedtime = document.getElementById('slp-time-start').value;
+        const wakeup = document.getElementById('slp-time-end').value;
+
+        // Validation
+        if (!bedtime || !wakeup) {
+            alert('時間を入力してください');
+            return;
+        }
+
+        const item = pendingJournalItem;
+        const name = pendingJournalName;
+
+        closeSleepModal();
+        processHabitToggle(item, name, 1, false, true);
+
+        google.script.run.logSleep(currentHabitDate, bedtime, wakeup);
+    }
+
+    // Explicit global expose
+    window.submitJournal = submitJournal;
+    window.processHabitToggle = processHabitToggle;
+    window.openSleepModal = openSleepModal;
+    window.closeSleepModal = closeSleepModal;
+    window.saveSleep = commitSleepLog;
+    window.commitSleepLog = commitSleepLog;
+    window.saveSleepLog = commitSleepLog; 
 </script>
