@@ -1200,16 +1200,16 @@
 
     function createHabitCard(h, isMovedToDone) {
         const div = document.createElement('div');
-        // Status 1 (Offense Unlocked) gets special style
-        const isAdvancedActive = (h.status === 1 && h.offenseTitle);
+        const isAdvancedActive = (h.status >= 1 && h.offenseTitle);
 
         div.className = 'habit-item' + (isMovedToDone ? ' done' : '') + (isAdvancedActive ? ' status-advanced' : '');
         div.onclick = () => openHabitDetail(h);
 
-        // Data attributes for Toggle Logic
-        div.dataset.status = h.status || 0;
-        div.dataset.offenseTitle = h.offenseTitle || '';
-        div.dataset.encourage = h.offenseTitle ? 'true' : 'false'; // Flag for logic
+        // Data attributes
+        div.setAttribute('data-status', h.status || 0);
+        div.setAttribute('data-offense-title', h.offenseTitle || '');
+        div.setAttribute('data-def-title', h.name || '');
+        div.setAttribute('data-encourage', h.offenseTitle ? 'true' : 'false');
 
         let iconContent = '💧';
         if (h.icon) {
@@ -1221,25 +1221,25 @@
             }
         }
 
-        // Title Logic: Status 1 shows Offense Title
-        const displayTitle = (isAdvancedActive && h.offenseTitle) ? h.offenseTitle : h.name;
+        const displayTitle = (h.status >= 1 && h.offenseTitle) ? h.offenseTitle : h.name;
+        const nameElId = 'habit-name-' + h.id;
 
-        // Effect for Offense? Red Icon BG? (Handled by CSS .status-advanced .habit-icon)
+        // Escape single quotes in h.name for the onclick handler
+        const safeName = (h.name || '').replace(/'/g, "\\'");
 
         div.innerHTML = `
-        <div class="habit-icon">${iconContent}</div>
+           <div class="habit-icon">${iconContent}</div>
            <div class="habit-info">
-              <div class="habit-name">${displayTitle}</div>
+              <div class="habit-name" id="${nameElId}">${displayTitle}</div>
            </div>
            <div class="habit-stats-right">
               <div style="font-size:16px; font-weight:bold; color:var(--primary)">${h.streak || 0}日</div>
               <div style="font-size:10px; color:#999">現在の連続</div>
            </div>
-           <div class="habit-check-area" onclick="event.stopPropagation(); toggleHabit(this, '${h.name}')">
+           <div class="habit-check-area" onclick="event.stopPropagation(); toggleHabit(this, '${safeName}')">
               <div class="check-circle"></div>
            </div>
-      `;
-        // Store Section ID for return
+        `;
         div.dataset.sectionId = h.sectionId || 'sec_other';
         return div;
     }
@@ -1248,126 +1248,121 @@
         const item = checkEl.closest('.habit-item');
         if (!item) return;
 
-        const currentStatus = parseInt(item.dataset.status || 0);
-        const offenseTitle = item.dataset.offenseTitle || '';
+        const currentStatus = parseInt(item.getAttribute('data-status') || 0);
+        const offenseTitle = item.getAttribute('data-offense-title') || '';
+        const defTitle = item.getAttribute('data-def-title') || '';
         const hasLevels = !!offenseTitle;
 
         let newStatus = 0;
         if (hasLevels) {
-            // 0 (Undone) -> 1 (Defense Done / Offense Unlocked) -> 2 (All Done) -> 0
             if (currentStatus === 0) newStatus = 1;
             else if (currentStatus === 1) newStatus = 2;
             else newStatus = 0;
         } else {
-            // Simple: 0 -> 1 -> 0
             newStatus = (currentStatus === 0) ? 1 : 0;
         }
 
-        processHabitToggle(item, habitName, newStatus, hasLevels);
+        processHabitToggle(item, habitName, newStatus, hasLevels, offenseTitle, defTitle);
     }
 
-    function processHabitToggle(item, habitName, newStatus, isAdvanced) {
-        const oldStatus = parseInt(item.dataset.status || 0);
+    function processHabitToggle(item, habitName, newStatus, isAdvanced, offTitle, defTitle) {
+        try {
+            // 1. Optimistic Status
+            const oldStatus = parseInt(item.getAttribute('data-status') || 0);
+            item.setAttribute('data-status', newStatus);
 
-        // --- 1. Optimistic Streak Update ---
-        const wasDone = oldStatus >= 1;
-        const isDoneNow = newStatus >= 1;
+            // 2. Title Update (Prioritized)
+            const nameEl = item.querySelector('.habit-name');
+            if (nameEl) {
+                const resolvedOffTitle = offTitle || item.getAttribute('data-offense-title');
+                const resolvedDefTitle = defTitle || item.getAttribute('data-def-title');
 
-        if (wasDone !== isDoneNow) {
-            const streakEl = item.querySelector('.habit-stats-right > div:first-child');
-            if (streakEl) {
-                let currentStreak = parseInt(streakEl.innerText) || 0;
-                if (isDoneNow) currentStreak++;
-                else currentStreak = Math.max(0, currentStreak - 1);
-                streakEl.innerText = currentStreak + '日';
+                if (isAdvanced) {
+                    if (newStatus >= 1) {
+                        nameEl.innerText = resolvedOffTitle;
+                    } else {
+                        nameEl.innerText = resolvedDefTitle;
+                    }
+                }
             }
-        }
 
-        // 1. Optimistic Update
-        item.dataset.status = newStatus;
+            // 3. Streak Update
+            const wasDone = oldStatus >= 1;
+            const isDoneNow = newStatus >= 1;
+            if (wasDone !== isDoneNow) {
+                const streakEl = item.querySelector('.habit-stats-right > div:first-child');
+                if (streakEl) {
+                    let currentStreak = parseInt(streakEl.innerText) || 0;
+                    if (!wasDone && isDoneNow) currentStreak++;
+                    if (wasDone && !isDoneNow) currentStreak = Math.max(0, currentStreak - 1);
+                    streakEl.innerText = currentStreak + '日';
+                }
+            }
 
-        // Update Classes
-        item.classList.remove('status-advanced', 'done');
-        if (isAdvanced) {
-            if (newStatus === 1) item.classList.add('status-advanced');
-            if (newStatus === 2) item.classList.add('done');
-        } else {
-            if (newStatus >= 1) item.classList.add('done');
-        }
+            // 4. Classes
+            item.classList.remove('status-advanced', 'done');
+            if (isAdvanced) {
+                if (newStatus === 1) {
+                    item.classList.add('status-advanced');
+                } else if (newStatus === 2) {
+                    item.classList.add('status-advanced');
+                    item.classList.add('done');
+                }
+            } else {
+                if (newStatus >= 1) item.classList.add('done');
+            }
 
-        // 2. Journal Logic (if turning ON)
-        if (newStatus > 0 && (habitName.endsWith('日記') || habitName === '睡眠時間記録')) {
-            openJournalModal(habitName, item);
-        }
-        // --- Optimistic Move Logic ---
-        const isDone = isAdvanced ? (newStatus === 2) : (newStatus >= 1);
+            // 5. Journal Logic
+            if (newStatus > 0 && newStatus !== oldStatus && (habitName.endsWith('日記') || habitName === '睡眠時間記録')) {
+                if (oldStatus === 0) openJournalModal(habitName, item);
+            }
 
-        let targetListId;
-        if (isDone) {
-            targetListId = 'list-habit-checked';
-            item.classList.add('done');
-        } else {
-            const secId = item.dataset.sectionId || 'sec_other';
-            targetListId = 'list-habit-' + secId;
-        }
+            // 6. Move Logic
+            const isDone = isAdvanced ? (newStatus === 2) : (newStatus >= 1);
+            const targetListId = isDone ? 'list-habit-checked' : ('list-habit-' + (item.dataset.sectionId || 'sec_other'));
 
-        const currentParentId = item.parentElement.parentElement ? item.parentElement.parentElement.id : '';
-
-        if (currentParentId && currentParentId !== targetListId) {
-            const targetContainer = document.querySelector('#' + targetListId + ' > div');
-
-            if (targetContainer) {
-                // Animation
-                item.style.transition = 'all 0.3s ease';
-                item.style.opacity = '0';
-                item.style.transform = 'scale(0.9)';
-
-                setTimeout(() => {
-                    targetContainer.appendChild(item);
+            const currentParentId = item.parentElement.parentElement ? item.parentElement.parentElement.id : '';
+            if (currentParentId && currentParentId !== targetListId) {
+                const targetContainer = document.querySelector('#' + targetListId + ' > div');
+                if (targetContainer) {
+                    item.style.transition = 'all 0.3s ease';
+                    item.style.opacity = '0';
+                    item.style.transform = 'scale(0.9)';
+                    setTimeout(() => {
+                        targetContainer.appendChild(item);
+                        updateHabitSectionCounts();
+                        requestAnimationFrame(() => {
+                            item.style.opacity = '1';
+                            item.style.transform = 'scale(1)';
+                        });
+                    }, 300);
+                } else {
                     updateHabitSectionCounts();
-
-                    requestAnimationFrame(() => {
-                        item.style.opacity = '1';
-                        item.style.transform = 'scale(1)';
-                    });
-                }, 300);
+                }
             } else {
                 updateHabitSectionCounts();
             }
-        } else {
             updateHabitSectionCounts();
+
+            // 7. Server Call
+            google.script.run.withSuccessHandler(() => { }).logHabit(currentHabitDate, habitName, newStatus);
+
+        } catch (e) {
+            console.error('Error in Toggle:', e);
+            alert('Error: ' + e.message);
         }
-
-        // Immediate Count Update
-        updateHabitSectionCounts();
-
-
-        // 4. Server Call
-        console.log(`Toggling ${habitName} to ${newStatus}`);
-        google.script.run.withSuccessHandler(() => {
-            // Success
-        }).logHabit(currentHabitDate, habitName, newStatus);
     }
 
     function openJournalModal(name, item) {
-        // Simple stub if missing, or use existing if defined (check later)
-        // I recall openJournalModal being discussed/used.
-        // If it's not defined, this will error. 
-        // Let's assume it IS defined or I need to find it.
-        // Actually, Step 12649 view didn't show it in 1100-1600.
-        // Step 12501 fixed `closeJournalModal`, so `openJournalModal` must be nearby or missing too.
-        // I will search for it first? No, risk of delay.
-        // I'll define a basic one if not found later.
-
         const modal = document.getElementById('journal-modal');
         if (modal) {
             pendingJournalItem = item;
             pendingJournalName = name;
-            document.getElementById('journal-input').value = '';
+            const input = document.getElementById('journal-input');
+            if (input) input.value = '';
             modal.classList.add('open');
         }
     }
-
 
     let pendingJournalItem = null;
     let pendingJournalName = '';
@@ -1495,9 +1490,9 @@
             const card = document.createElement('div');
             card.style.cssText = 'background:rgba(255,255,255,0.8); border-radius:12px; padding:15px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);';
             card.innerHTML = `
-        <div style="font-size:12px; color:#888; margin-bottom:5px;">${log.date}</div>
-          <div style="font-size:14px; color:#333; white-space:pre-wrap;">${log.text}</div>
-      `;
+                    < div style = "font-size:12px; color:#888; margin-bottom:5px;" > ${log.date}</div >
+                        <div style="font-size:14px; color:#333; white-space:pre-wrap;">${log.text}</div>
+                `;
             container.appendChild(card);
         });
     }
@@ -1524,7 +1519,7 @@
         currentDetailYear = y;
         currentDetailMonth = m;
 
-        document.getElementById('cal-month-label').innerText = `${y}年 ${m}月`;
+        document.getElementById('cal-month-label').innerText = `${y}年 ${m} 月`;
 
         // Update Arrow Styles
         const btnNext = document.getElementById('btn-next-month');
@@ -1534,7 +1529,7 @@
         }
 
         // Cache Check & Render
-        const key = `${y}-${m}`;
+        const key = `${y} -${m} `;
         if (habitCalendarCache[currentDetailHabit.name] && habitCalendarCache[currentDetailHabit.name][key]) {
             renderGrid(habitCalendarCache[currentDetailHabit.name][key]);
 
@@ -1557,7 +1552,7 @@
             });
 
             if (doRender) {
-                const key = `${currentDetailYear}-${currentDetailMonth}`;
+                const key = `${currentDetailYear} -${currentDetailMonth} `;
                 // Render only if strictly matching the request, OR if the current view is covered by the response keys.
                 // Best to check if the *currently viewing* month is in the cache now.
                 if (habitCalendarCache[hName][key]) {
@@ -1868,10 +1863,10 @@
             row.dataset.id = s.id;
 
             row.innerHTML = `
-        <div class="section-handle" style = "cursor:move; padding-top:5px; padding-right:5px; color:#aaa;" >☰</div >
-          <input value="${s.name}" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
-            <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
-            `;
+                    < div class="section-handle" style = "cursor:move; padding-top:5px; padding-right:5px; color:#aaa;" >☰</div >
+                        <input value="${s.name}" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
+                            <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
+                            `;
             root.appendChild(row);
         });
     }
@@ -1899,10 +1894,10 @@
         row.dataset.id = 'new-' + Date.now();
 
         row.innerHTML = `
-    <div class="section-handle" style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
-    <input value="" placeholder="新しいセクション" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
-    <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
-  `;
+                            <div class="section-handle" style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
+                            <input value="" placeholder="新しいセクション" class="input-std" style="margin:0; flex:1;" onchange="markSectionDirty(this)">
+                                <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕</div>
+                                `;
         root.appendChild(row);
     }
 
@@ -1997,33 +1992,33 @@
 
             // Card HTML
             html += `
-                <div class="card-glass goal-card" onclick="openGoalDetail('${g.id}')">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
-                        <div class="goal-title">${g.title}</div>
-                        <!-- Log Button (Stop Propagation) -->
-                        <div style="padding:5px; background:rgba(0,0,0,0.05); border-radius:50%;" 
-                             onclick="event.stopPropagation(); openProgressModal('${g.id}', ${current}, '${g.title}')">
-                            <span class="material-symbols-rounded" style="font-size:18px; color:#555;">add</span>
-                        </div>
-                    </div>
-                    
-                    <div class="goal-vision">${g.vision || ''}</div>
-                    
-                    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:15px; margin-bottom:5px;">
-                        <div style="font-size:12px; color:#666;">現在: <span style="font-weight:bold; color:#333;">${current}</span> <span style="font-size:10px;">${g.metricLabel || ''}</span></div>
-                        <div style="font-size:12px; color:#999;">目標: <span style="font-weight:bold;">${target}</span> <span style="font-size:10px;">${g.metricLabel || ''}</span></div>
-                    </div>
-                    
-                    <div class="progress-container" style="height:10px; background:#f0f0f0;">
-                        <div class="progress-bar" style="width:${percent}%; background:#2196F3;"></div>
-                    </div>
-                    
-                    <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:11px; color:#999;">
-                         <div>${g.endDate ? '🏁 ' + g.endDate : ''}</div>
-                         <div>${remaining}</div>
-                    </div>
-                </div>
-            `;
+                                <div class="card-glass goal-card" onclick="openGoalDetail('${g.id}')">
+                                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                                        <div class="goal-title">${g.title}</div>
+                                        <!-- Log Button (Stop Propagation) -->
+                                        <div style="padding:5px; background:rgba(0,0,0,0.05); border-radius:50%;"
+                                            onclick="event.stopPropagation(); openProgressModal('${g.id}', ${current}, '${g.title}')">
+                                            <span class="material-symbols-rounded" style="font-size:18px; color:#555;">add</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="goal-vision">${g.vision || ''}</div>
+
+                                    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:15px; margin-bottom:5px;">
+                                        <div style="font-size:12px; color:#666;">現在: <span style="font-weight:bold; color:#333;">${current}</span> <span style="font-size:10px;">${g.metricLabel || ''}</span></div>
+                                        <div style="font-size:12px; color:#999;">目標: <span style="font-weight:bold;">${target}</span> <span style="font-size:10px;">${g.metricLabel || ''}</span></div>
+                                    </div>
+
+                                    <div class="progress-container" style="height:10px; background:#f0f0f0;">
+                                        <div class="progress-bar" style="width:${percent}%; background:#2196F3;"></div>
+                                    </div>
+
+                                    <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:11px; color:#999;">
+                                        <div>${g.endDate ? '🏁 ' + g.endDate : ''}</div>
+                                        <div>${remaining}</div>
+                                    </div>
+                                </div>
+                                `;
         });
         container.innerHTML = html;
     }
@@ -2227,116 +2222,42 @@
     window.renderRoadmap = renderRoadmap;
 
     console.log("Functions exposed to window.");
-    /* --- FIXED HABIT LOGIC (Overrides previous definitions) --- */
 
-    function processHabitToggle(item, habitName, newStatus, isAdvanced, force) {
-        // Journal Logic (Blocking)
-        if (!force && newStatus > 0) {
-            if (habitName === '睡眠時間記録') {
-                openSleepModal(habitName, item);
-                return;
-            }
-            if (habitName.endsWith('日記')) {
-                openJournalModal(habitName, item);
-                return;
-            }
-        }
-
-        const oldStatus = parseInt(item.dataset.status || 0);
-
-        // --- 1. Optimistic Streak Update ---
-        const wasDone = oldStatus >= 1;
-        const isDoneNow = newStatus >= 1;
-
-        if (wasDone !== isDoneNow) {
-            const streakEl = item.querySelector('.habit-stats-right > div:first-child');
-            if (streakEl) {
-                let currentStreak = parseInt(streakEl.innerText) || 0;
-                if (isDoneNow) currentStreak++;
-                else currentStreak = Math.max(0, currentStreak - 1);
-                streakEl.innerText = currentStreak + '日';
-            }
-        }
-
-        // 1. Optimistic Update
-        item.dataset.status = newStatus;
-
-        // Update Classes
-        item.classList.remove('status-advanced', 'done');
-        if (isAdvanced) {
-            if (newStatus === 1) item.classList.add('status-advanced');
-            if (newStatus === 2) item.classList.add('done');
-        } else {
-            if (newStatus >= 1) item.classList.add('done');
-        }
-
-        // --- Optimistic Move Logic ---
-        const isDone = isAdvanced ? (newStatus === 2) : (newStatus >= 1);
-
-        let targetListId;
-        if (isDone) {
-            targetListId = 'list-habit-checked';
-            item.classList.add('done');
-        } else {
-            const secId = item.dataset.sectionId || 'sec_other';
-            targetListId = 'list-habit-' + secId;
-        }
-
-        const currentParentId = item.parentElement.parentElement ? item.parentElement.parentElement.id : '';
-
-        if (currentParentId && currentParentId !== targetListId) {
-            const targetContainer = document.querySelector('#' + targetListId + ' > div');
-            if (targetContainer) {
-                item.style.transition = 'all 0.3s ease';
-                item.style.opacity = '0';
-                item.style.transform = 'scale(0.9)';
-                setTimeout(() => {
-                    targetContainer.appendChild(item);
-                    updateHabitSectionCounts();
-                    requestAnimationFrame(() => {
-                        // FIX: Do not force opacity 1 if done. Let CSS handle it, or match target.
-                        // Best approach: clear inline opacity so CSS takes priority, 
-                        // BUT for transition we need explicit value? 
-                        // CSS transition handles it if we remove the inline style?
-                        // Let's try explicitly setting correct target.
-                        const isDoneClass = item.classList.contains('done');
-                        item.style.opacity = isDoneClass ? '0.5' : '1';
-                        item.style.transform = 'scale(1)';
-
-                        // Clean up inline styles after transition to allow CSS hover/etc to work?
-                        // If we leave it at 0.5, it overrides CSS 0.5 (same).
-                        // If we later toggle back, we need to update.
-                    });
-                }, 300);
-            } else {
-                updateHabitSectionCounts();
-            }
-        } else {
-            updateHabitSectionCounts();
-        }
-        updateHabitSectionCounts();
-
-        console.log(`Toggling ${habitName} to ${newStatus}`);
-        google.script.run.withSuccessHandler(() => {
-            // Success
-        }).logHabit(currentHabitDate, habitName, newStatus);
-    }
 
     function openJournalModal(name, item) {
         const modal = document.getElementById('journal-modal');
         if (!modal) return;
         pendingJournalItem = item;
         pendingJournalName = name;
-        document.getElementById('journal-input').value = '';
-        const sub = document.getElementById('journal-subtitle');
-        if (sub) sub.innerText = '今日の記録を残しましょう';
-        const tit = document.getElementById('journal-title');
-        if (tit) tit.innerText = name;
+
+        // Reset Inputs
         const input = document.getElementById('journal-input');
-        input.placeholder = '一言メモ...';
+        if (input) input.value = '';
+
+        // Dynamic Text Logic
+        const sub = document.getElementById('journal-subtitle');
+        const tit = document.getElementById('journal-title');
+
+        if (tit) tit.innerText = name;
+
+        if (sub && input) {
+            if (name.includes('感謝日記')) {
+                sub.innerText = 'どんなに些細なこと、即物的（物理的）なことでも構いません。「今、ありがたいと思えること」あるいは「問題なく機能していること」を3つ、書き出してください。';
+                input.placeholder = '例：椅子が座りやすい、指が問題なく動く、雨風をしのげる部屋がある…など';
+            } else if (name.includes('夢日記')) {
+                sub.innerText = '覚えている範囲で、夢のあらすじやキーワードを記録しましょう。';
+                input.placeholder = '例：空を飛ぶ夢を見た、懐かしい友人に会った...';
+            } else {
+                sub.innerText = '今日の記録を残しましょう';
+                input.placeholder = '一言メモ...';
+            }
+        }
 
         modal.classList.add('open');
         modal.style.display = 'flex';
+
+        // Auto-focus
+        if (input) setTimeout(() => input.focus(), 100);
     }
 
     function closeJournalModal(saved) {
@@ -2414,6 +2335,37 @@
         processHabitToggle(item, name, 1, false, true);
 
         google.script.run.logSleep(currentHabitDate, bedtime, wakeup);
+    }
+
+    function updateHabitSectionCounts() {
+        const sections = document.querySelectorAll('.habit-list-container');
+        let totalCheked = 0;
+
+        sections.forEach(sec => {
+            const id = sec.id.replace('list-habit-', '');
+            const countEl = document.getElementById('count-' + id);
+            const children = sec.querySelectorAll('.habit-item').length;
+
+            // Universal Hiding Logic: If section has no habits, hide its wrapper.
+            // ID pattern: list-habit-{id} -> sec-wrapper-{id}
+            const wrapper = document.getElementById('sec-wrapper-' + id);
+            if (wrapper) {
+                // block for Checked, what about others? Usually block is fine.
+                wrapper.style.display = (children > 0) ? 'block' : 'none';
+            }
+
+            if (id === 'checked') {
+                totalCheked = children;
+            }
+
+            if (countEl) {
+                countEl.innerText = (children > 0) ? `(${children})` : '';
+            }
+        });
+
+        // Also update the header count for checked if separate
+        const checkedCountEl = document.getElementById('count-habit-checked');
+        if (checkedCountEl) checkedCountEl.innerText = (totalCheked > 0) ? `(${totalCheked})` : '';
     }
 
     // Explicit global expose

@@ -1,15 +1,9 @@
-
-function logSheetHeaders() {
-  const ss = SpreadsheetApp.openById('1-5unPqh1vhRY1thP7iWIasBy-OVh6iAB2yHaljzxL0Q');
-  const sheets = ss.getSheets();
-  const report = {};
-  sheets.forEach(s => {
-    const r = s.getLastRow();
-    const c = s.getLastColumn();
-    const headers = r > 0 ? s.getRange(1, 1, 1, c).getValues()[0] : [];
-    const sample = r > 1 ? s.getRange(r, 1, 1, c).getValues()[0] : [];
-    report[s.getName()] = { headers: headers, lastRowSample: sample };
-  });
-  console.log(JSON.stringify(report, null, 2));
+function debugHeaders() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('DB_Habits');
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  console.log('DB_Habits Headers:', headers);
+  // Also check sample row
+  const firstRow = sheet.getRange(2, 1, 1, sheet.getLastColumn()).getValues()[0];
+  console.log('Row 1 Data:', firstRow);
 }
-

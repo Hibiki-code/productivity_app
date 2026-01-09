@@ -1149,19 +1149,7 @@
     </div>
   </div>
 
-  <div class="modal-overlay" id="journal-modal" onclick="if(event.target===this) closeJournalModal(false)">
-    <div class="modal-box">
-      <h3 id="journal-title">習慣の記録</h3>
-      <p id="journal-prompt" style="font-size:12px; color:#666; margin-bottom:10px;">今日あった良いことや感謝したいことを書きましょう。</p>
-      <textarea id="journal-input" class="input-std"
-        style="height:120px; resize:none; font-family:sans-serif; line-height:1.5;"
-        placeholder="・天気が良かった&#10;・同僚に助けられた&#10;..."></textarea>
-      <div style="display:flex; justify-content:flex-end; gap:20px; margin-top:20px; align-items:center;">
-        <div style="color:#888; font-size:14px; cursor:pointer;" onclick="closeJournalModal(false)">キャンセル</div>
-        <button class="btn-save" onclick="submitJournal()">記録する</button>
-      </div>
-    </div>
-  </div>
+
   <!-- HABIT DETAIL MODAL -->
   <div id="habit-detail-modal" class="modal-fullscreen">
     <div class="detail-header">
@@ -1321,7 +1309,8 @@
     }
 
     .habit-item.status-advanced .habit-name {
-      color: #B71C1C !important;
+      /* color: #B71C1C !important; REMOVED per user request (Keep Black) */
+      color: var(--text) !important;
       font-weight: 700;
     }
 

@@ -457,6 +457,8 @@ function getHabitStatus(dateStr) {
 
   const defData = defSheet.getDataRange().getValues();
   const rawHeaders = defData.shift();
+  console.log('Habit Headers:', rawHeaders); // SERVER LOG
+
 
   // Headers: [id, title, icon, section, benefit, isActive, createdAt, text_input, time_needed, title_offense]
   const FALLBACK = {
@@ -474,10 +476,13 @@ function getHabitStatus(dateStr) {
   const hMap = createHeaderMap(rawHeaders);
 
   const getVal = (r, key, def) => {
-    let idx = hMap[key.toLowerCase()];
-    if (idx === undefined) idx = FALLBACK[key.toLowerCase()];
+    const idx = hMap[key.toLowerCase()]
+      || hMap[key.toLowerCase().replace('offense', 'offence')] // Try British spelling
+      || FALLBACK[key.toLowerCase()]
+      || FALLBACK[key.toLowerCase().replace('offense', 'offence')];
     return (idx !== undefined && r[idx] !== undefined) ? r[idx] : def;
   };
+
 
   const habits = defData.map(r => {
     // Correctly map DB_Habits columns to App keys
