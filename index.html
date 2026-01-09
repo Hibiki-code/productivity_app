@@ -996,6 +996,38 @@
     </div>
 
     <!-- GOAL DETAIL VIEW (Full Screen) -->
+    <!-- PROJECT VIEW -->
+    <div id="view-projects" class="view">
+      <div class="glass-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>Projects</div>
+        <!-- Future: Add Project <div class="add-btn-small" onclick="openProjectModal()">+</div> -->
+      </div>
+      <div id="project-list-container"></div>
+    </div>
+
+    <!-- PROJECT DETAIL VIEW -->
+    <div id="view-project-detail" class="view">
+      <div class="glass-header" style="display:flex; align-items:center; gap:15px; padding-top:40px;">
+        <div class="nav-back-btn" onclick="closeProjectDetail()"
+          style="cursor:pointer; padding:5px; border-radius:50%; background:rgba(0,0,0,0.05);">
+          <span class="material-symbols-rounded" style="font-size:24px; color:#555;">arrow_back</span>
+        </div>
+        <div id="pd-page-title"
+          style="font-size:22px; font-weight:800; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; flex:1;">
+          Project Title
+        </div>
+      </div>
+
+      <div id="pd-content" style="padding:20px 20px 100px;">
+        <div id="pd-vision-card"
+          style="background:#f9f9f9; padding:15px; border-radius:16px; margin-bottom:25px; color:#666; font-style:italic; line-height:1.6; border:1px solid #eee;">
+        </div>
+        <h3 style="font-size:18px; font-weight:800; margin-bottom:15px; color:#444;">Roadmaps</h3>
+        <div id="pd-roadmap-list"></div>
+      </div>
+    </div>
+
+    <!-- GOAL DETAIL VIEW (Full Screen) -->
     <div id="view-goal-detail" class="view">
       <!-- Header -->
       <div class="glass-header" style="display:flex; align-items:center; gap:15px; padding-top:40px;">
@@ -1062,6 +1094,12 @@
     <div class="nav-item" onclick="switchTab('roadmap', this)">
       <div class="nav-icon"><span class="material-symbols-rounded">map</span></div>
       Roadmap
+    </div>
+
+    <!-- Project (New) -->
+    <div class="nav-item" onclick="switchTab('projects', this)">
+      <div class="nav-icon"><span class="material-symbols-rounded">rocket_launch</span></div>
+      Project
     </div>
 
     <!-- Schedule (Cal) -->
@@ -1585,6 +1623,51 @@
     .m-dot.done {
       background: #81C784;
     }
+
+    .m-dot.done {
+      background: #81C784;
+    }
+
+    /* Project Cards */
+    .project-card {
+      background: white;
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+      position: relative;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .project-card:active {
+      transform: scale(0.98);
+    }
+
+    .project-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .project-vision {
+      font-size: 13px;
+      color: #777;
+      margin-bottom: 15px;
+      line-height: 1.4;
+    }
+
+    .current-roadmap-tag {
+      background: #E3F2FD;
+      color: #1565C0;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      display: inline-block;
+    }
+
 
     /* Fix Bottom Nav for 5 items (Robust Flex) */
     .bottom-nav {

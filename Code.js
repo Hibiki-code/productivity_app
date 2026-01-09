@@ -14,7 +14,8 @@ const CONFIG = {
     DB_MILESTONES: 'DB_Milestones',
     DB_WEEKLY_GOALS: 'DB_WeeklyGoals',
     DB_DAILY_MEASUREMENTS: 'DB_DailyMeasurements',
-    DB_GOALS_PROGRESS: 'DB_GoalsProgress'
+    DB_GOALS_PROGRESS: 'DB_GoalsProgress',
+    DB_PROJECT: 'DB_Project'
   },
   GEMINI_API_KEY: 'Pending',
   TIMEZONE: 'Asia/Tokyo'
@@ -1481,6 +1482,7 @@ function getGoalsV2() {
         metricCurrent: Number(metricCurrent) || 0,
         startDate: sDate,
         endDate: eDate,
+        projectId: String(getVal(r, 'project_id') || ''),
         status: String(statusVal || 'Active')
       });
     }
@@ -1530,6 +1532,49 @@ function getGoalsV2() {
       title: 'FATAL ERROR',
       vision: e.toString() + e.stack,
       status: 'Error'
+    }
+
+function getProjects() {
+      const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+      let pSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_PROJECT);
+
+      if (!pSheet) {
+        // Auto-Create if missing (as per user request "DB_Goalsにproject_idの列を追加しておいたよ" implies DB_Goals was touched, but DB_Project might rely on me)
+        pSheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_PROJECT);
+        pSheet.appendRow(['id', 'title', 'vision']); // Minimal schema
+      }
+
+      const pData = pSheet.getDataRange().getValues();
+      if (pData.length < 2) return [];
+
+      const headers = pData[0];
+      const hMap = createHeaderMap(headers);
+      const getVal = (r, key) => {
+        const idx = hMap[key.toLowerCase()];
+        return idx !== undefined ? r[idx] : undefined;
+      };
+
+      const projectList = [];
+      for (let i = 1; i < pData.length; i++) {
+        const r = pData[i];
+        const id = getVal(r, 'id');
+        if (!id) continue;
+
+        projectList.push({
+          id: String(id),
+          title: String(getVal(r, 'title') || ''),
+          vision: String(getVal(r, 'vision') || '')
+        });
+      }
+
+      return projectList;
+    }
+
+// Helper for Header Mapping (Reusable)
+function createHeaderMap(headers) {
+      const hMap = {};
+      headers.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
+      return hMap;
     }];
   }
 }

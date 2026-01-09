@@ -232,6 +232,9 @@
         if (id === 'roadmap' && window.renderRoadmap) {
             window.renderRoadmap();
         }
+        if (id === 'projects' && window.renderProjects) {
+            window.renderProjects();
+        }
     };
 
     // --- STATE ---
@@ -246,6 +249,7 @@
     let activeGoalDetailId = null;
     let activeGoalDetailData = null;
     let habitDataCache = null; // { habits: [], sections: [] } for re-rendering
+    let loadedProjects = []; // New
 
     // --- INIT ---
     window.onload = function () {
@@ -300,6 +304,9 @@
             fetchTasks();
             fetchHabits(new Date().toLocaleDateString('en-CA'));
         }
+
+        // Preload Projects
+        google.script.run.withSuccessHandler(p => { window.loadedProjects = p; }).getProjects();
 
         setupModal();
         showTab('tasks');
@@ -2375,5 +2382,122 @@
     window.closeSleepModal = closeSleepModal;
     window.saveSleep = commitSleepLog;
     window.commitSleepLog = commitSleepLog;
-    window.saveSleepLog = commitSleepLog; 
+    window.saveSleepLog = commitSleepLog;
+
+    // --- PROJECT LOGIC ---
+    function renderProjects() {
+        const container = document.getElementById('project-list-container');
+        if (!container) return;
+
+        // Fetch Goals if not loaded (needed for "Active Roadmap" tag)
+        if (!window.loadedGoals) {
+            google.script.run.withSuccessHandler(goals => {
+                window.loadedGoals = goals;
+                if (!window.loadedProjects || window.loadedProjects.length === 0) {
+                    fetchProjects();
+                } else {
+                    renderProjectsFromData(window.loadedProjects);
+                }
+            }).getGoalsV2();
+            container.innerHTML = '<div class="spinner"></div>';
+            return;
+        }
+
+        if (!window.loadedProjects || window.loadedProjects.length === 0) {
+            fetchProjects();
+        } else {
+            renderProjectsFromData(window.loadedProjects);
+        }
+    }
+
+    function fetchProjects() {
+        const container = document.getElementById('project-list-container');
+        if (container) container.innerHTML = '<div class="spinner"></div>';
+
+        google.script.run.withSuccessHandler(projects => {
+            window.loadedProjects = projects;
+            renderProjectsFromData(projects);
+        }).getProjects();
+    }
+
+    function renderProjectsFromData(projects) {
+        const container = document.getElementById('project-list-container');
+        if (!container) return;
+
+        if (!projects || projects.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:30px; color:#aaa;">No projects found</div>';
+            return;
+        }
+
+        let html = '';
+        projects.forEach(p => {
+            // Find Active Roadmap
+            let activeTag = '';
+            if (window.loadedGoals) {
+                // Find goal where projectId matches p.id and status is active
+                const activeGoal = window.loadedGoals.find(g => String(g.projectId) === String(p.id) && g.status === 'Active');
+                if (activeGoal) {
+                    activeTag = `<div class="current-roadmap-tag">Running: ${activeGoal.title}</div>`;
+                } else {
+                    activeTag = `<div class="current-roadmap-tag" style="background:#f0f0f0; color:#aaa;">No Active Roadmap</div>`;
+                }
+            }
+
+            html += `
+            <div class="project-card" onclick="openProjectDetail('${p.id}')">
+                <div class="project-title">${p.title}</div>
+                <div class="project-vision">${p.vision || 'No Vision'}</div>
+                ${activeTag}
+            </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    function openProjectDetail(id) {
+        const p = window.loadedProjects.find(x => String(x.id) === String(id));
+        if (!p) return;
+
+        document.getElementById('pd-page-title').innerText = p.title;
+        document.getElementById('pd-vision-card').innerText = p.vision || 'No vision';
+
+        // Filter Roadmaps
+        const goals = window.loadedGoals ? window.loadedGoals.filter(g => String(g.projectId) === String(id)) : [];
+        const listContainer = document.getElementById('pd-roadmap-list');
+
+        if (goals.length === 0) {
+            listContainer.innerHTML = '<div style="color:#999;">No roadmaps linked.</div>';
+        } else {
+            let html = '';
+            goals.forEach(g => {
+                // reuse simplified card
+                const current = Number(g.metricCurrent) || 0;
+                const target = Number(g.metricTarget) || 1;
+                const percent = Math.min(100, Math.max(0, (current / target) * 100));
+
+                html += `
+                   <div class="goal-card" style="margin-bottom:10px; padding:15px; border-radius:12px;" onclick="openGoalDetail('${g.id}')">
+                      <div style="font-weight:bold; color:#333; font-size:15px;">${g.title}</div>
+                      <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
+                          <div class="progress-container" style="flex:1; height:6px; margin-top:0;">
+                              <div class="progress-bar" style="width:${percent}%"></div>
+                          </div>
+                          <div style="font-size:11px; color:#666;">${current} / ${target}</div>
+                      </div>
+                   </div>
+                 `;
+            });
+            listContainer.innerHTML = html;
+        }
+
+        // Switch
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-project-detail').classList.add('active');
+    }
+
+    function closeProjectDetail() {
+        document.getElementById('view-project-detail').classList.remove('active');
+        document.getElementById('view-projects').classList.add('active');
+    }
+
 </script>
