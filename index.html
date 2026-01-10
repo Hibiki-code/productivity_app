@@ -1000,7 +1000,7 @@
     <div id="view-projects" class="view">
       <div class="glass-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>Projects</div>
-        <!-- Future: Add Project <div class="add-btn-small" onclick="openProjectModal()">+</div> -->
+        <div class="add-btn-small" onclick="openProjectModal()">+</div>
       </div>
       <div id="project-list-container"></div>
     </div>
@@ -1016,6 +1016,7 @@
           style="font-size:22px; font-weight:800; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; flex:1;">
           Project Title
         </div>
+        <div class="add-btn-small" onclick="openRoadmapSelectionModal()">+</div>
       </div>
 
       <div id="pd-content" style="padding:20px 20px 100px;">
@@ -1187,6 +1188,43 @@
     </div>
   </div>
 
+
+  <!-- PROJECT MODAL -->
+  <div id="project-modal" class="modal-overlay" onclick="if(event.target===this) closeProjectModal()">
+    <div class="modal-box">
+      <h3>プロジェクト作成</h3>
+      <input type="hidden" id="p-id">
+
+      <label style="font-size:12px; color:#999;">タイトル</label>
+      <input type="text" id="p-title" class="input-std" placeholder="例: キャリアアップ, 健康管理">
+
+      <label style="font-size:12px; color:#999;">ビジョン (ありたい姿)</label>
+      <textarea id="p-vision" class="input-std" style="height:120px;" placeholder="このプロジェクトで何を実現したいですか？"></textarea>
+
+      <button class="btn-save" id="btn-save-project" onclick="saveProject()">保存</button>
+    </div>
+  </div>
+
+
+  <!-- ROADMAP SELECTION MODAL -->
+  <div id="roadmap-selection-modal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">ロードマップを選択</div>
+        <div class="modal-close" onclick="closeRoadmapSelectionModal()">✕</div>
+      </div>
+      <div class="modal-body">
+        <div id="roadmap-selection-list"
+          style="display:flex; flex-direction:column; gap:10px; max-height:300px; overflow-y:auto;">
+          <!-- Generated dynamically -->
+        </div>
+        <div class="btn-secondary" onclick="closeRoadmapSelectionModal(); openGoalModal(null, window.activeProjectId)"
+          style="margin-top:20px; text-align:center;">
+          + 新しいロードマップを作成
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- HABIT DETAIL MODAL -->
   <div id="habit-detail-modal" class="modal-fullscreen">

@@ -351,6 +351,14 @@
                 if (e.target === taskModal) closeTaskModal();
             });
         }
+
+        // Project Modal
+        const projectModal = document.getElementById('project-modal');
+        if (projectModal) {
+            projectModal.addEventListener('click', e => {
+                if (e.target === projectModal) closeProjectModal();
+            });
+        }
     }
 
     function switchTab(id, el) {
@@ -2031,7 +2039,10 @@
     }
 
     /* --- GOAL MODAL LOGIC (New) --- */
-    function openGoalModal() {
+    let pendingGoalProjectId = null;
+
+    function openGoalModal(id = null, projectId = null) {
+        pendingGoalProjectId = projectId;
         // Clear inputs
         document.getElementById('g-title').value = '';
         document.getElementById('g-vision').value = '';
@@ -2086,11 +2097,26 @@
         window.loadedGoals.unshift(tempGoal);
         renderRoadmapFromData(window.loadedGoals);
 
+        // If created from Project Detail, update Project Detail UI too
+        if (pendingGoalProjectId) {
+            // Wait for server response to reload project detail? Or just wait.
+            // Simplified: re-render project detail after sync.
+        }
+
         // --- Server Sync ---
-        google.script.run.withSuccessHandler(() => {
+        google.script.run.withSuccessHandler((res) => {
             // Re-fetch true data to get real ID and consistent sort
             renderRoadmap();
-        }).createGoal(title, vision, metric, Number(target), Number(current), start, end);
+
+            // If in Project view, reload project roadmaps
+            if (pendingGoalProjectId && typeof openProjectDetail === 'function' && typeof renderProjectRoadmaps === 'function') {
+                // We need valid ID to re-open detail, or just refresh data.
+                // Since we are creating a NEW goal, we might need to fetch goals again to see it in project.
+                // renderRoadmap() above updates loadedGoals.
+                // We can then re-render project detail.
+                if (window.activeProjectId) openProjectDetail(window.activeProjectId);
+            }
+        }).createGoal(title, vision, metric, Number(target), Number(current), start, end, pendingGoalProjectId);
     }
 
     let currentMeasurementGoalId = null;
@@ -2383,6 +2409,12 @@
     window.saveSleep = commitSleepLog;
     window.commitSleepLog = commitSleepLog;
     window.saveSleepLog = commitSleepLog;
+    window.openRoadmapSelectionModal = openRoadmapSelectionModal;
+    window.closeRoadmapSelectionModal = closeRoadmapSelectionModal;
+    window.selectRoadmap = selectRoadmap;
+    window.openRoadmapSelectionModal = openRoadmapSelectionModal;
+    window.closeRoadmapSelectionModal = closeRoadmapSelectionModal;
+    window.selectRoadmap = selectRoadmap;
 
     // --- PROJECT LOGIC ---
     function renderProjects() {
@@ -2444,7 +2476,7 @@
             }
 
             html += `
-            <div class="project-card" onclick="openProjectDetail('${p.id}')">
+            <div class="card-glass project-card" onclick="openProjectDetail('${p.id}')">
                 <div class="project-title">${p.title}</div>
                 <div class="project-vision">${p.vision || 'No Vision'}</div>
                 ${activeTag}
@@ -2457,6 +2489,8 @@
     function openProjectDetail(id) {
         const p = window.loadedProjects.find(x => String(x.id) === String(id));
         if (!p) return;
+
+        window.activeProjectId = id; // Set active project ID for roadmap linking
 
         document.getElementById('pd-page-title').innerText = p.title;
         document.getElementById('pd-vision-card').innerText = p.vision || 'No vision';
@@ -2495,9 +2529,116 @@
         document.getElementById('view-project-detail').classList.add('active');
     }
 
+    // --- Roadmap Selection Logic ---
+    function openRoadmapSelectionModal() {
+        const modal = document.getElementById('roadmap-selection-modal');
+        if (!modal) return;
+
+        const listContainer = document.getElementById('roadmap-selection-list');
+        listContainer.innerHTML = '';
+
+        // Filter goals: not error, and NOT already in this project
+        // Note: activeProjectId global should be set by openProjectDetail
+        const candidates = (window.loadedGoals || []).filter(g => {
+            return !g.id.startsWith('error') && g.projectId !== window.activeProjectId;
+        });
+
+        if (candidates.length === 0) {
+            listContainer.innerHTML = '<div style="padding:10px; color:#aaa;">追加できるロードマップがありません</div>';
+        } else {
+            candidates.forEach(g => {
+                const div = document.createElement('div');
+                div.className = 'card-glass';
+                div.style.padding = '10px';
+                div.style.cursor = 'pointer';
+                div.style.display = 'flex';
+                div.style.justifyContent = 'space-between';
+                div.onclick = () => selectRoadmap(g.id);
+                div.innerHTML = `
+                   <div style="font-weight:bold;">${g.title}</div>
+                   <div style="font-size:12px; color:#aaa;">${g.metricLabel || ''}</div>
+                 `;
+                listContainer.appendChild(div);
+            });
+        }
+
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+    }
+
+    function closeRoadmapSelectionModal() {
+        const modal = document.getElementById('roadmap-selection-modal');
+        if (modal) {
+            modal.classList.remove('open');
+            modal.style.display = 'none';
+        }
+    }
+
+    function selectRoadmap(goalId) {
+        if (!window.activeProjectId) return;
+        closeRoadmapSelectionModal();
+
+        // Optimistic update
+        const g = window.loadedGoals.find(x => x.id === goalId);
+        if (g) {
+            g.projectId = window.activeProjectId;
+            openProjectDetail(window.activeProjectId); // Re-render detail view
+        }
+
+        google.script.run.withSuccessHandler(() => {
+            // Silent success or re-fetch
+        }).updateGoalProject(goalId, window.activeProjectId);
+    }
+
     function closeProjectDetail() {
         document.getElementById('view-project-detail').classList.remove('active');
         document.getElementById('view-projects').classList.add('active');
     }
+
+    function openProjectModal() {
+        document.getElementById('p-title').value = '';
+        document.getElementById('p-vision').value = '';
+        document.getElementById('project-modal').classList.add('open');
+        document.getElementById('project-modal').style.display = 'flex';
+        setTimeout(() => document.getElementById('p-title').focus(), 100);
+    }
+
+    function closeProjectModal() {
+        document.getElementById('project-modal').classList.remove('open');
+        document.getElementById('project-modal').style.display = 'none';
+    }
+
+    function saveProject() {
+        const title = document.getElementById('p-title').value;
+        const vision = document.getElementById('p-vision').value;
+
+        if (!title) {
+            alert('タイトルを入力してください');
+            return;
+        }
+
+        closeProjectModal();
+
+        // Optimistic UI
+        const tempId = 'temp-' + Date.now();
+        const newProj = { id: tempId, title: title, vision: vision };
+
+        if (!window.loadedProjects) window.loadedProjects = [];
+        window.loadedProjects.push(newProj);
+        renderProjectsFromData(window.loadedProjects);
+
+        google.script.run.withSuccessHandler(serverProj => {
+            // Replace temp details logic handled by full re-render on next fetch, 
+            // or just update local ID if possible. 
+            // For now, simple re-fetch or manual replace.
+            // Let's replace the entry in loadedProjects and re-render.
+            const idx = window.loadedProjects.findIndex(p => p.id === tempId);
+            if (idx >= 0 && serverProj) {
+                window.loadedProjects[idx] = serverProj;
+                renderProjectsFromData(window.loadedProjects);
+            }
+        }).createProject(title, vision);
+    }
+
 
 </script>

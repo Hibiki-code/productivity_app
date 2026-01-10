@@ -1572,518 +1572,558 @@ function getProjects() {
   return projectList;
 }
 
+function createProject(title, vision) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  let sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_PROJECT);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_PROJECT);
+    sheet.appendRow(['id', 'title', 'vision']);
+  }
+
+  const newId = Utilities.getUuid();
+  sheet.appendRow([newId, title, vision]);
+
+  return {
+    id: newId,
+    title: title,
+    vision: vision
+  };
+}
+
 // Helper for Header Mapping (Reusable)
 function createHeaderMap(headers) {
   const hMap = {};
   headers.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
   return hMap;
+}
 
 
 
+function createGoal(title, vision, metric, target, current, start, end, projectId) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  let sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
 
 
-  function createGoal(title, vision, metric, target, current, start, end) {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    let sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
-
-    if (!sheet) {
-      sheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS);
-      sheet.appendRow(['id', 'title', 'vision', 'metric_label', 'metric_target', 'metric_current', 'metric_begining', 'start_date', 'scheduled_end_date', 'status', 'created_at']);
-    }
-
-    // Header-based mapping
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    if (!headers || headers.length === 0) return 'Error: No Headers';
-
-    const rowData = new Array(headers.length).fill('');
-    const now = new Date();
-    const newId = Utilities.getUuid();
-
-    // Helper to find column index (case-insensitive)
-    const getCol = (name) => headers.findIndex(h => String(h).toLowerCase() === name.toLowerCase());
-
-    // Map fields
-    const map = {
-      'id': newId,
-      'title': title,
-      'vision': vision,
-      'metric_label': metric, // Column name: metric_label
-      'metric_target': target,
-      'metric_current': current,
-      'metric_begining': current, // Set initial value same as current
-      'start_date': start,
-      'scheduled_end_date': end, // Column name: scheduled_end_date
-      'status': 'Active',
-      'created_at': now
-    };
-
-    // Populate rowData
-    Object.keys(map).forEach(field => {
-      const idx = getCol(field);
-      if (idx !== -1) {
-        rowData[idx] = map[field];
-      } else {
-        // Fallback checks
-        if (field === 'scheduled_end_date') {
-          const idx2 = getCol('end_date');
-          if (idx2 !== -1) rowData[idx2] = map[field];
-        }
-      }
-    });
-
-    sheet.appendRow(rowData);
-    return 'Created';
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS);
+    sheet.appendRow(['id', 'title', 'vision', 'metric_label', 'metric_target', 'metric_current', 'metric_begining', 'start_date', 'scheduled_end_date', 'status', 'created_at', 'project_id']);
   }
 
-  function deleteGoal(id) {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
-    if (!sheet) return 'Not Found (DB Missing)';
-    const data = sheet.getDataRange().getValues();
+  // Header-based mapping
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (!headers || headers.length === 0) return 'Error: No Headers';
 
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === id) {
-        // Soft delete or Hard delete? Using Status 'DELETED' 
-        sheet.getRange(i + 1, 9).setValue('DELETED');
-        return 'Deleted';
-      }
+  const rowData = new Array(headers.length).fill('');
+  const now = new Date();
+  const newId = Utilities.getUuid();
+
+  // Helper to find column index (case-insensitive)
+  const getCol = (name) => headers.findIndex(h => String(h).toLowerCase() === name.toLowerCase());
+
+  // Map fields
+  const map = {
+    'id': newId,
+    'title': title,
+    'vision': vision,
+    'metric_label': metric,
+    'metric_target': target,
+    'metric_current': current,
+    'metric_begining': current,
+    'start_date': start,
+    'scheduled_end_date': end,
+    'status': 'Active',
+    'created_at': now,
+    'project_id': projectId || '' // Handle optional projectId
+  };
+
+  for (const [key, val] of Object.entries(map)) {
+    const idx = getCol(key);
+    if (idx !== -1) {
+      rowData[idx] = val;
     }
-    return 'Not Found';
   }
 
-  /**
-   * WEEKLY GOAL SYSTEM API
-   */
+  sheet.appendRow(rowData);
+  return 'Success';
+}
 
-  function ensureWeeklyGoalSheets() {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+function updateGoalProject(goalId, projectId) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!sheet) return 'No DB';
 
-    // DB_WeeklyGoals
-    let sheetWG = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
-    if (!sheetWG) {
-      sheetWG = ss.insertSheet(CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
-      // id, start_date, end_date, goal_id, target_metric, target_value, status, review_score, review_text, created_at
-      sheetWG.appendRow(['id', 'start_date', 'end_date', 'goal_id', 'target_metric', 'target_value', 'status', 'review_score', 'review_text', 'created_at']);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const hMap = createHeaderMap(headers);
+  const idCol = hMap['id'];
+  const pIdCol = hMap['project_id'];
+
+  if (idCol === undefined || pIdCol === undefined) return 'Cols Missing';
+
+  const data = sheet.getDataRange().getValues();
+  // Find row
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idCol]) === String(goalId)) {
+      sheet.getRange(i + 1, pIdCol + 1).setValue(projectId);
+      return 'Updated';
     }
+  }
+  return 'Not Found';
+}
 
-    // DB_DailyMeasurements
-    let sheetDM = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
-    if (!sheetDM) {
-      sheetDM = ss.insertSheet(CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
-      // id, date, weekly_goal_id, value, comment, created_at
-      sheetDM.appendRow(['id', 'date', 'weekly_goal_id', 'value', 'comment', 'created_at']);
+
+
+
+
+function deleteGoal(id) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!sheet) return 'Not Found (DB Missing)';
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === id) {
+      // Soft delete or Hard delete? Using Status 'DELETED' 
+      sheet.getRange(i + 1, 9).setValue('DELETED');
+      return 'Deleted';
     }
+  }
+  return 'Not Found';
+}
 
-    return 'Ensured';
+/**
+ * WEEKLY GOAL SYSTEM API
+ */
+
+function ensureWeeklyGoalSheets() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+
+  // DB_WeeklyGoals
+  let sheetWG = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+  if (!sheetWG) {
+    sheetWG = ss.insertSheet(CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+    // id, start_date, end_date, goal_id, target_metric, target_value, status, review_score, review_text, created_at
+    sheetWG.appendRow(['id', 'start_date', 'end_date', 'goal_id', 'target_metric', 'target_value', 'status', 'review_score', 'review_text', 'created_at']);
   }
 
-  function getWeeklyGoals(currentDateStr) {
-    // Returns active weekly goals for the date, WITH aggregated measurements
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheetWG = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
-    const sheetDM = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
-    // Also need Goal Titles
-    const sheetGoals = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  // DB_DailyMeasurements
+  let sheetDM = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
+  if (!sheetDM) {
+    sheetDM = ss.insertSheet(CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
+    // id, date, weekly_goal_id, value, comment, created_at
+    sheetDM.appendRow(['id', 'date', 'weekly_goal_id', 'value', 'comment', 'created_at']);
+  }
 
-    // DB Auto-Init
-    if (!sheetWG || !sheetDM) {
-      ensureWeeklyGoalSheets();
-      sheetWG = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
-      sheetDM = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
-    }
+  return 'Ensured';
+}
 
-    if (!sheetWG || !sheetDM) return [];
+function getWeeklyGoals(currentDateStr) {
+  // Returns active weekly goals for the date, WITH aggregated measurements
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheetWG = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+  const sheetDM = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
+  // Also need Goal Titles
+  const sheetGoals = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
 
-    const targetDate = new Date(currentDateStr);
-    const wgData = sheetWG.getDataRange().getValues();
-    const dmData = sheetDM.getDataRange().getValues();
+  // DB Auto-Init
+  if (!sheetWG || !sheetDM) {
+    ensureWeeklyGoalSheets();
+    sheetWG = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+    sheetDM = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
+  }
 
-    let goalMap = {}; // goal_id -> Title logic if needed, but for now we just pass goal_id
+  if (!sheetWG || !sheetDM) return [];
 
-    // 1. Find Weekly Goals covering targetDate
-    let activeWeeklyGoals = [];
-    // Skip Header
-    for (let i = 1; i < wgData.length; i++) {
-      const row = wgData[i];
-      const startDate = new Date(row[1]);
-      const endDate = new Date(row[2]);
+  const targetDate = new Date(currentDateStr);
+  const wgData = sheetWG.getDataRange().getValues();
+  const dmData = sheetDM.getDataRange().getValues();
 
-      // Simple Date Check (Inclusive)
-      // Normalize times to midnight for comparison?
-      // Assuming row dates are stored as Date objects or YYYY-MM-DD
+  let goalMap = {}; // goal_id -> Title logic if needed, but for now we just pass goal_id
 
-      if (targetDate >= startDate && targetDate <= endDate && row[6] !== 'DELETED') {
-        const id = row[0];
-        activeWeeklyGoals.push({
-          id: id,
-          start_date: row[1],
-          end_date: row[2],
-          goal_id: row[3],
-          target_metric: row[4],
-          target_value: row[5],
-          status: row[6],
-          review_score: row[7],
-          review_text: row[8],
-          current_value: 0 // To be aggregated
-        });
-      }
-    }
+  // 1. Find Weekly Goals covering targetDate
+  let activeWeeklyGoals = [];
+  // Skip Header
+  for (let i = 1; i < wgData.length; i++) {
+    const row = wgData[i];
+    const startDate = new Date(row[1]);
+    const endDate = new Date(row[2]);
 
-    // 2. Aggregate Measurements
-    // Optimize: Filter dmData once? or Loop?
-    // dmData size might grow.
-    for (let i = 1; i < dmData.length; i++) {
-      const row = dmData[i];
-      const wgId = row[2];
-      const val = Number(row[3]);
+    // Simple Date Check (Inclusive)
+    // Normalize times to midnight for comparison?
+    // Assuming row dates are stored as Date objects or YYYY-MM-DD
 
-      const targetWG = activeWeeklyGoals.find(g => g.id === wgId);
-      if (targetWG) {
-        targetWG.current_value += val;
-      }
-    }
-
-    // 3. Enrich with Parent Vision Title (Optional but helpful for UI)
-    if (sheetGoals) {
-      const gData = sheetGoals.getDataRange().getValues();
-      // Create Map
-      const titleMap = {};
-      for (let i = 1; i < gData.length; i++) {
-        titleMap[gData[i][0]] = gData[i][1]; // id -> title
-      }
-      activeWeeklyGoals.forEach(g => {
-        g.goal_title = titleMap[g.goal_id] || 'Unknown Goal';
+    if (targetDate >= startDate && targetDate <= endDate && row[6] !== 'DELETED') {
+      const id = row[0];
+      activeWeeklyGoals.push({
+        id: id,
+        start_date: row[1],
+        end_date: row[2],
+        goal_id: row[3],
+        target_metric: row[4],
+        target_value: row[5],
+        status: row[6],
+        review_score: row[7],
+        review_text: row[8],
+        current_value: 0 // To be aggregated
       });
     }
-
-    return activeWeeklyGoals;
   }
 
-  function createGoal(title, vision, metricLabel, metricTarget, metricCurrent, startDateStr, endDateStr) {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
-    if (!sheet) return 'DB_GOALS Missing';
+  // 2. Aggregate Measurements
+  // Optimize: Filter dmData once? or Loop?
+  // dmData size might grow.
+  for (let i = 1; i < dmData.length; i++) {
+    const row = dmData[i];
+    const wgId = row[2];
+    const val = Number(row[3]);
 
-    const newId = Utilities.getUuid();
-    const now = new Date();
-
-    // Scema: id, title, vision, metric_beginning, metric_target, metric_current, start_date, scheduled_end_date, status, created_at
-    sheet.appendRow([
-      newId,
-      title,
-      vision,
-      metricCurrent || 0, // beginning
-      metricTarget,
-      metricCurrent || 0, // current
-      startDateStr,
-      endDateStr,
-      'Active',
-      now
-    ]);
-
-    return 'Created';
-  }
-
-  function setWeeklyGoal(goalId, metric, target, notes, startDateStr, endDateStr, newGoalTitle) {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
-    if (!sheet) return 'DB_WEEKLY_GOALS Missing';
-
-    // Handle New Goal Creation Ad-hoc
-    if (goalId === 'new' && newGoalTitle) {
-      const goalSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
-      if (goalSheet) {
-        const newGId = Utilities.getUuid();
-        const now = new Date();
-        // id, title, vision, metric_label, metric_target, metric_current, start_date, end_date, status, created_at
-        goalSheet.appendRow([
-          newGId,
-          newGoalTitle,
-          '', // Vision
-          metric, // Metric Label (matches weekly)
-          target, // Target (matches weekly)
-          0,
-          startDateStr,
-          endDateStr, // Short term?
-          'Active',
-          now
-        ]);
-        goalId = newGId; // Link to new goal
-      }
+    const targetWG = activeWeeklyGoals.find(g => g.id === wgId);
+    if (targetWG) {
+      targetWG.current_value += val;
     }
-
-    const newId = Utilities.getUuid();
-    // id, start_date, end_date, goal_id, target_metric, target_value, status, review_score, review_text, created_at
-    sheet.appendRow([
-      newId,
-      startDateStr,
-      endDateStr,
-      goalId,
-      metric,
-      target,
-      'Active',
-      '', // score
-      notes || '', // text 
-      new Date()
-    ]);
-    return 'Created';
   }
 
-  function logDailyMeasurement(weeklyGoalId, value, comment, dateStr) {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
-    if (!sheet) return 'DB Missing';
-
-    const newId = Utilities.getUuid();
-    // id, date, weekly_goal_id, value, comment, created_at
-    sheet.appendRow([
-      newId,
-      dateStr,
-      weeklyGoalId,
-      value,
-      comment,
-      new Date()
-    ]);
-    return 'Logged';
-  }
-
-  function saveWeeklyReview(weeklyGoalId, score, text) {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
-    if (!sheet) return 'DB Missing';
-
-    const data = sheet.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === weeklyGoalId) {
-        // review_score = Col 8 (Index 7 + 1 = 8)
-        // review_text = Col 9
-        sheet.getRange(i + 1, 8).setValue(score);
-        sheet.getRange(i + 1, 9).setValue(text);
-        sheet.getRange(i + 1, 7).setValue('Done'); // Status -> Done
-        return 'Saved';
-      }
-    }
-    return 'Not Found';
-  }
-
-  function getActiveGoalsSimple() {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
-    if (!sheet) return [];
-
-    const data = sheet.getDataRange().getValues();
-    const list = [];
-
-    // Skip Header
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      // id=0, title=1, status=8
-      const status = row[8] || 'Active';
-      if (status !== 'DELETED' && status !== 'Done') {
-        list.push({
-          id: row[0],
-          title: row[1]
-        });
-      }
-    }
-    return list;
-  }
-
-  /**
-   * ROADMAP / GOALS PROGRESS API
-   */
-
-  function ensureGoalProgressSheet() {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-
-    // 1. Ensure DB_GoalsProgress
-    let pSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
-    if (!pSheet) {
-      pSheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
-      // Headers: id, goal_id, metric_then, notes, created_at
-      pSheet.appendRow(['id', 'goal_id', 'metric_then', 'notes', 'created_at']);
-    }
-
-    // 2. Ensure DB_Goals (Basic check for missing columns or sheet)
-    let gSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
-    if (!gSheet) {
-      gSheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS);
-      // id, title, vision, metric_beginning, metric_target, metric_current, start_date, scheduled_end_date, status, created_at
-      gSheet.appendRow(['id', 'title', 'vision', 'metric_beginning', 'metric_target', 'metric_current', 'start_date', 'scheduled_end_date', 'status', 'created_at']);
-    }
-
-    return pSheet;
-  }
-
-  function logGoalProgress(goalId, value, notes, dateStr) {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-
-    // 1. Update Parent Goal (DB_Goals)
-    const gSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
-    if (!gSheet) return 'DB_Goals Missing';
-
-    const gData = gSheet.getDataRange().getValues();
-    let goalFound = false;
-
-    // Search for Goal ID
+  // 3. Enrich with Parent Vision Title (Optional but helpful for UI)
+  if (sheetGoals) {
+    const gData = sheetGoals.getDataRange().getValues();
+    // Create Map
+    const titleMap = {};
     for (let i = 1; i < gData.length; i++) {
-      if (String(gData[i][0]) === String(goalId)) { // Robust string comparison
-        // Assuming Schema: id(0), title(1), vision(2), metric_beginning(3), metric_target(4), metric_current(5)...
-        // Update metric_current (Col 6 / Index 5)
-        gSheet.getRange(i + 1, 6).setValue(value);
-        goalFound = true;
-        break;
-      }
+      titleMap[gData[i][0]] = gData[i][1]; // id -> title
     }
-
-    if (!goalFound) return 'Goal Not Found: ' + goalId;
-
-    // 2. Append Log (DB_GoalsProgress)
-    // Use explicit ensure to get sheet
-    let pSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
-    if (!pSheet) {
-      pSheet = ensureGoalProgressSheet();
-    }
-
-    if (!pSheet) return 'DB_GoalsProgress Creation Failed';
-
-    const newId = Utilities.getUuid();
-    // id, goal_id, metric_then, notes, created_at
-    try {
-      pSheet.appendRow([
-        newId,
-        String(goalId),
-        value,      // Snapshot value
-        notes || '',
-        new Date()  // Timestamp
-      ]);
-    } catch (e) {
-      console.error('Append Error:', e);
-      return 'Append Failed: ' + e.message;
-    }
-
-    SpreadsheetApp.flush(); // FORCE UPDATE
-    return 'Logged';
-  }
-
-  function getGoalHistory(goalId) {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
-    if (!sheet) return [];
-
-    const data = sheet.getDataRange().getValues();
-    const history = [];
-
-    // Skip Header
-    for (let i = 1; i < data.length; i++) {
-      // id=0, goal_id=1, metric_then=2, notes=3, created_at=4
-      const rowGoalId = String(data[i][1]).trim();
-      const queryGoalId = String(goalId).trim();
-
-      if (rowGoalId === queryGoalId) {
-        let d = data[i][4];
-        // Handle Google Sheet Date Objects or Strings
-        if (!(d instanceof Date)) {
-          d = new Date(d);
-        }
-        // Fail-safe for invalid dates
-        if (isNaN(d.getTime())) {
-          d = new Date(); // Fallback to now? Or skip? Let's use now for safety.
-        }
-
-        history.push({
-          id: data[i][0],
-          value: data[i][2],
-          notes: data[i][3],
-          date: d.toISOString() // Send as ISO string to avoid TZ issues across boundary
-        });
-      }
-    }
-
-    // Sort by Date Descending
-    return history.sort((a, b) => new Date(b.date) - new Date(a.date));
-  }
-
-  function updateHistoryNote(logId, newNote) {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
-    if (!sheet) return 'Error: Sheet not found';
-
-    const data = sheet.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][0]).trim() === String(logId).trim()) {
-        // Found the row. Update Column D (Index 3 + 1 = 4 in 1-based, but getRange is row, col)
-        // Row is i + 1
-        // Col is 4 (Notes)
-        sheet.getRange(i + 1, 4).setValue(newNote);
-        return 'Updated';
-      }
-    }
-    return 'Error: Log not found';
-  }
-
-  function updateGoalVision(goalId, newVision) {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
-    if (!sheet) return 'Error: Sheet not found';
-
-    const data = sheet.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      // id column is 0
-      if (String(data[i][0]).trim() === String(goalId).trim()) {
-        // Vision column is index 2, so getRange col is 3
-        sheet.getRange(i + 1, 3).setValue(newVision);
-        return 'Updated';
-      }
-    }
-    return 'Error: Goal not found';
-  }
-
-
-  /**
-   * Repair Tool: Fix corrupted Habit IDs (e.g. names in ID column)
-   */
-  function repairHabitIds() {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = ss.getSheetByName('DB_Habits');
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0].map(h => String(h).trim().toLowerCase());
-
-    const idIdx = headers.indexOf('id');
-    const titleIdx = headers.indexOf('title');
-
-    if (idIdx === -1) return 'Error: No ID column found';
-
-    const updates = [];
-
-    for (let i = 1; i < data.length; i++) {
-      const currentId = String(data[i][idIdx]);
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentId);
-
-      // If not UUID (e.g. empty or is a name), replace it
-      if (!isUuid) {
-        const newId = Utilities.getUuid();
-        console.log(`Reparing row ${i + 1}: "${currentId}" -> ${newId}`);
-        // Set value immediately or batch? Bath is better but simple set is fine here.
-        sheet.getRange(i + 1, idIdx + 1).setValue(newId);
-        updates.push({ old: currentId, new: newId, name: data[i][titleIdx] });
-      }
-    }
-
-    return updates;
-  }
-
-  /**
-   * Helper to map headers to column indices
-   * @param {Array} headers - Row of headers
-   * @returns {Object} Map of lowercase header name to index
-   */
-  function createHeaderMap(headers) {
-    const map = {};
-    if (!headers) return map;
-    headers.forEach((h, i) => {
-      if (h) map[String(h).toLowerCase()] = i;
+    activeWeeklyGoals.forEach(g => {
+      g.goal_title = titleMap[g.goal_id] || 'Unknown Goal';
     });
-    return map;
   }
+
+  return activeWeeklyGoals;
+}
+
+function createGoal(title, vision, metricLabel, metricTarget, metricCurrent, startDateStr, endDateStr) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!sheet) return 'DB_GOALS Missing';
+
+  const newId = Utilities.getUuid();
+  const now = new Date();
+
+  // Scema: id, title, vision, metric_beginning, metric_target, metric_current, start_date, scheduled_end_date, status, created_at
+  sheet.appendRow([
+    newId,
+    title,
+    vision,
+    metricCurrent || 0, // beginning
+    metricTarget,
+    metricCurrent || 0, // current
+    startDateStr,
+    endDateStr,
+    'Active',
+    now
+  ]);
+
+  return 'Created';
+}
+
+function setWeeklyGoal(goalId, metric, target, notes, startDateStr, endDateStr, newGoalTitle) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+  if (!sheet) return 'DB_WEEKLY_GOALS Missing';
+
+  // Handle New Goal Creation Ad-hoc
+  if (goalId === 'new' && newGoalTitle) {
+    const goalSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+    if (goalSheet) {
+      const newGId = Utilities.getUuid();
+      const now = new Date();
+      // id, title, vision, metric_label, metric_target, metric_current, start_date, end_date, status, created_at
+      goalSheet.appendRow([
+        newGId,
+        newGoalTitle,
+        '', // Vision
+        metric, // Metric Label (matches weekly)
+        target, // Target (matches weekly)
+        0,
+        startDateStr,
+        endDateStr, // Short term?
+        'Active',
+        now
+      ]);
+      goalId = newGId; // Link to new goal
+    }
+  }
+
+  const newId = Utilities.getUuid();
+  // id, start_date, end_date, goal_id, target_metric, target_value, status, review_score, review_text, created_at
+  sheet.appendRow([
+    newId,
+    startDateStr,
+    endDateStr,
+    goalId,
+    metric,
+    target,
+    'Active',
+    '', // score
+    notes || '', // text 
+    new Date()
+  ]);
+  return 'Created';
+}
+
+function logDailyMeasurement(weeklyGoalId, value, comment, dateStr) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_DAILY_MEASUREMENTS);
+  if (!sheet) return 'DB Missing';
+
+  const newId = Utilities.getUuid();
+  // id, date, weekly_goal_id, value, comment, created_at
+  sheet.appendRow([
+    newId,
+    dateStr,
+    weeklyGoalId,
+    value,
+    comment,
+    new Date()
+  ]);
+  return 'Logged';
+}
+
+function saveWeeklyReview(weeklyGoalId, score, text) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_WEEKLY_GOALS);
+  if (!sheet) return 'DB Missing';
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === weeklyGoalId) {
+      // review_score = Col 8 (Index 7 + 1 = 8)
+      // review_text = Col 9
+      sheet.getRange(i + 1, 8).setValue(score);
+      sheet.getRange(i + 1, 9).setValue(text);
+      sheet.getRange(i + 1, 7).setValue('Done'); // Status -> Done
+      return 'Saved';
+    }
+  }
+  return 'Not Found';
+}
+
+function getActiveGoalsSimple() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!sheet) return [];
+
+  const data = sheet.getDataRange().getValues();
+  const list = [];
+
+  // Skip Header
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    // id=0, title=1, status=8
+    const status = row[8] || 'Active';
+    if (status !== 'DELETED' && status !== 'Done') {
+      list.push({
+        id: row[0],
+        title: row[1]
+      });
+    }
+  }
+  return list;
+}
+
+/**
+ * ROADMAP / GOALS PROGRESS API
+ */
+
+function ensureGoalProgressSheet() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+
+  // 1. Ensure DB_GoalsProgress
+  let pSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
+  if (!pSheet) {
+    pSheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
+    // Headers: id, goal_id, metric_then, notes, created_at
+    pSheet.appendRow(['id', 'goal_id', 'metric_then', 'notes', 'created_at']);
+  }
+
+  // 2. Ensure DB_Goals (Basic check for missing columns or sheet)
+  let gSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!gSheet) {
+    gSheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS);
+    // id, title, vision, metric_beginning, metric_target, metric_current, start_date, scheduled_end_date, status, created_at
+    gSheet.appendRow(['id', 'title', 'vision', 'metric_beginning', 'metric_target', 'metric_current', 'start_date', 'scheduled_end_date', 'status', 'created_at']);
+  }
+
+  return pSheet;
+}
+
+function logGoalProgress(goalId, value, notes, dateStr) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+
+  // 1. Update Parent Goal (DB_Goals)
+  const gSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!gSheet) return 'DB_Goals Missing';
+
+  const gData = gSheet.getDataRange().getValues();
+  let goalFound = false;
+
+  // Search for Goal ID
+  for (let i = 1; i < gData.length; i++) {
+    if (String(gData[i][0]) === String(goalId)) { // Robust string comparison
+      // Assuming Schema: id(0), title(1), vision(2), metric_beginning(3), metric_target(4), metric_current(5)...
+      // Update metric_current (Col 6 / Index 5)
+      gSheet.getRange(i + 1, 6).setValue(value);
+      goalFound = true;
+      break;
+    }
+  }
+
+  if (!goalFound) return 'Goal Not Found: ' + goalId;
+
+  // 2. Append Log (DB_GoalsProgress)
+  // Use explicit ensure to get sheet
+  let pSheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
+  if (!pSheet) {
+    pSheet = ensureGoalProgressSheet();
+  }
+
+  if (!pSheet) return 'DB_GoalsProgress Creation Failed';
+
+  const newId = Utilities.getUuid();
+  // id, goal_id, metric_then, notes, created_at
+  try {
+    pSheet.appendRow([
+      newId,
+      String(goalId),
+      value,      // Snapshot value
+      notes || '',
+      new Date()  // Timestamp
+    ]);
+  } catch (e) {
+    console.error('Append Error:', e);
+    return 'Append Failed: ' + e.message;
+  }
+
+  SpreadsheetApp.flush(); // FORCE UPDATE
+  return 'Logged';
+}
+
+function getGoalHistory(goalId) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
+  if (!sheet) return [];
+
+  const data = sheet.getDataRange().getValues();
+  const history = [];
+
+  // Skip Header
+  for (let i = 1; i < data.length; i++) {
+    // id=0, goal_id=1, metric_then=2, notes=3, created_at=4
+    const rowGoalId = String(data[i][1]).trim();
+    const queryGoalId = String(goalId).trim();
+
+    if (rowGoalId === queryGoalId) {
+      let d = data[i][4];
+      // Handle Google Sheet Date Objects or Strings
+      if (!(d instanceof Date)) {
+        d = new Date(d);
+      }
+      // Fail-safe for invalid dates
+      if (isNaN(d.getTime())) {
+        d = new Date(); // Fallback to now? Or skip? Let's use now for safety.
+      }
+
+      history.push({
+        id: data[i][0],
+        value: data[i][2],
+        notes: data[i][3],
+        date: d.toISOString() // Send as ISO string to avoid TZ issues across boundary
+      });
+    }
+  }
+
+  // Sort by Date Descending
+  return history.sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+function updateHistoryNote(logId, newNote) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS_PROGRESS);
+  if (!sheet) return 'Error: Sheet not found';
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === String(logId).trim()) {
+      // Found the row. Update Column D (Index 3 + 1 = 4 in 1-based, but getRange is row, col)
+      // Row is i + 1
+      // Col is 4 (Notes)
+      sheet.getRange(i + 1, 4).setValue(newNote);
+      return 'Updated';
+    }
+  }
+  return 'Error: Log not found';
+}
+
+function updateGoalVision(goalId, newVision) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!sheet) return 'Error: Sheet not found';
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    // id column is 0
+    if (String(data[i][0]).trim() === String(goalId).trim()) {
+      // Vision column is index 2, so getRange col is 3
+      sheet.getRange(i + 1, 3).setValue(newVision);
+      return 'Updated';
+    }
+  }
+  return 'Error: Goal not found';
+}
+
+
+/**
+ * Repair Tool: Fix corrupted Habit IDs (e.g. names in ID column)
+ */
+function repairHabitIds() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('DB_Habits');
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0].map(h => String(h).trim().toLowerCase());
+
+  const idIdx = headers.indexOf('id');
+  const titleIdx = headers.indexOf('title');
+
+  if (idIdx === -1) return 'Error: No ID column found';
+
+  const updates = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const currentId = String(data[i][idIdx]);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentId);
+
+    // If not UUID (e.g. empty or is a name), replace it
+    if (!isUuid) {
+      const newId = Utilities.getUuid();
+      console.log(`Reparing row ${i + 1}: "${currentId}" -> ${newId}`);
+      // Set value immediately or batch? Bath is better but simple set is fine here.
+      sheet.getRange(i + 1, idIdx + 1).setValue(newId);
+      updates.push({ old: currentId, new: newId, name: data[i][titleIdx] });
+    }
+  }
+
+  return updates;
+}
+
+/**
+ * Helper to map headers to column indices
+ * @param {Array} headers - Row of headers
+ * @returns {Object} Map of lowercase header name to index
+ */
+function createHeaderMap(headers) {
+  const map = {};
+  if (!headers) return map;
+  headers.forEach((h, i) => {
+    if (h) map[String(h).toLowerCase()] = i;
+  });
+  return map;
+}
 
