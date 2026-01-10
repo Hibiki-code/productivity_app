@@ -1472,6 +1472,10 @@ function getGoalsV2() {
       const metricLabel = getVal(r, 'metric_label');
       const metricTarget = getVal(r, 'metric_target');
       const metricCurrent = getVal(r, 'metric_current');
+      const reviewText = getVal(r, 'review'); // NEW: Reflection text
+
+      let finalStatus = String(statusVal || 'Active');
+      if (finalStatus === 'Inactive') finalStatus = 'Pending'; // Legacy mapping
 
       gList.push({
         id: String(idVal),
@@ -1483,7 +1487,8 @@ function getGoalsV2() {
         startDate: sDate,
         endDate: eDate,
         projectId: String(getVal(r, 'project_id') || ''),
-        status: String(statusVal || 'Active')
+        status: finalStatus,
+        review: String(reviewText || '')
       });
     }
 
@@ -1600,52 +1605,107 @@ function createHeaderMap(headers) {
 
 
 
-function createGoal(title, vision, metric, target, current, start, end, projectId) {
+// Unified Save Function (Create or Update)
+function saveGoalFull(id, title, vision, metric, target, current, start, end, status, projectId) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   let sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
-
 
   if (!sheet) {
     sheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS);
     sheet.appendRow(['id', 'title', 'vision', 'metric_label', 'metric_target', 'metric_current', 'metric_begining', 'start_date', 'scheduled_end_date', 'status', 'created_at', 'project_id']);
   }
 
-  // Header-based mapping
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  if (!headers || headers.length === 0) return 'Error: No Headers';
+  const hMap = createHeaderMap(headers);
+  const data = sheet.getDataRange().getValues();
 
-  const rowData = new Array(headers.length).fill('');
+  // Find Row if ID exists
+  let rowIndex = -1;
+  // If ID is empty or 'temp', we treat as new (generate new ID)
+  // BUT if 'id' is passed, we check if it exists in DB.
+  if (id && !id.startsWith('temp-')) {
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][hMap['id']]) === String(id)) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+  }
+
   const now = new Date();
-  const newId = Utilities.getUuid();
+  const finalId = (rowIndex === -1) ? Utilities.getUuid() : id;
+  const safeStatus = status || 'Active';
 
-  // Helper to find column index (case-insensitive)
-  const getCol = (name) => headers.findIndex(h => String(h).toLowerCase() === name.toLowerCase());
-
-  // Map fields
+  // Columns Mapping
   const map = {
-    'id': newId,
+    'id': finalId,
     'title': title,
     'vision': vision,
     'metric_label': metric,
     'metric_target': target,
     'metric_current': current,
-    'metric_begining': current,
+    // 'metric_begining': current, // Don't overwrite beginning on edit? Logic check needed. For new, yes.
     'start_date': start,
     'scheduled_end_date': end,
-    'status': 'Active',
-    'created_at': now,
-    'project_id': projectId || '' // Handle optional projectId
+    'status': safeStatus,
+    'project_id': projectId
   };
 
-  for (const [key, val] of Object.entries(map)) {
-    const idx = getCol(key);
-    if (idx !== -1) {
-      rowData[idx] = val;
+  // If New
+  if (rowIndex === -1) {
+    map['created_at'] = now;
+    map['metric_begining'] = current; // Set initial
+
+    const rowData = new Array(headers.length).fill('');
+    for (const [key, val] of Object.entries(map)) {
+      const idx = hMap[key];
+      if (idx !== undefined) rowData[idx] = val;
     }
+    // Ensure status/project_id cols exist? createHeaderMap doesn't create cols. 
+    // Assume standard schema.
+    sheet.appendRow(rowData);
+  } else {
+    // Update
+    // map keys to cols
+    for (const [key, val] of Object.entries(map)) {
+      const idx = hMap[key];
+      if (idx !== undefined) {
+        // Optimization: Only update if changed? 
+        sheet.getRange(rowIndex, idx + 1).setValue(val);
+      }
+    }
+    // Update 'updated_at' if exists?
   }
 
-  sheet.appendRow(rowData);
   return 'Success';
+}
+
+function updateGoalStatus(id, newStatus) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!sheet) return 'Error';
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const hMap = createHeaderMap(headers);
+
+  const idCol = hMap['id'];
+  const statusCol = hMap['status'];
+
+  if (idCol === undefined || statusCol === undefined) return 'Error';
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idCol]) === String(id)) {
+      sheet.getRange(i + 1, statusCol + 1).setValue(newStatus);
+      return 'Updated';
+    }
+  }
+  return 'Not Found';
+}
+
+// Wrapper to keep old signature if needed (optional)
+function createGoal(title, vision, metric, target, current, start, end, projectId) {
+  return saveGoalFull(null, title, vision, metric, target, current, start, end, 'Active', projectId);
 }
 
 function updateGoalProject(goalId, projectId) {
@@ -1964,14 +2024,30 @@ function logGoalProgress(goalId, value, notes, dateStr) {
 
   const gData = gSheet.getDataRange().getValues();
   let goalFound = false;
+  const headers = gData[0];
+  const hMap = createHeaderMap(headers);
 
   // Search for Goal ID
   for (let i = 1; i < gData.length; i++) {
-    if (String(gData[i][0]) === String(goalId)) { // Robust string comparison
-      // Assuming Schema: id(0), title(1), vision(2), metric_beginning(3), metric_target(4), metric_current(5)...
-      // Update metric_current (Col 6 / Index 5)
-      gSheet.getRange(i + 1, 6).setValue(value);
+    if (String(gData[i][hMap['id']]) === String(goalId)) {
+      // Update metric_current
+      const currentIdx = hMap['metric_current'];
+      if (currentIdx !== undefined) gSheet.getRange(i + 1, currentIdx + 1).setValue(value);
+
       goalFound = true;
+
+      // Auto-Done Logic
+      const targetIdx = hMap['metric_target'];
+      const statusIdx = hMap['status'];
+      if (targetIdx !== undefined && statusIdx !== undefined) {
+        const target = Number(gData[i][targetIdx]);
+        const currentStatus = gData[i][statusIdx];
+        // Only auto-complete if Active and reached target
+        if (currentStatus === 'Active' && target > 0 && value >= target) {
+          gSheet.getRange(i + 1, statusIdx + 1).setValue('Done');
+        }
+      }
+
       break;
     }
   }
@@ -2004,6 +2080,32 @@ function logGoalProgress(goalId, value, notes, dateStr) {
 
   SpreadsheetApp.flush(); // FORCE UPDATE
   return 'Logged';
+}
+
+function saveGoalReview(id, text) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
+  if (!sheet) return 'Sheet Missing';
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const hMap = createHeaderMap(headers);
+  const data = sheet.getDataRange().getValues();
+
+  // Check if 'review' column exists, if not, wait, user said they added it. 
+  // But safer to check.
+  if (hMap['review'] === undefined) {
+    // Lazy migration: add column
+    sheet.getRange(1, headers.length + 1).setValue('review');
+    hMap['review'] = headers.length; // New index
+  }
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][hMap['id']]) === String(id)) {
+      sheet.getRange(i + 1, hMap['review'] + 1).setValue(text);
+      return 'Saved';
+    }
+  }
+  return 'Goal Not Found';
 }
 
 function getGoalHistory(goalId) {

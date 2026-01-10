@@ -2,10 +2,12 @@
     // --- CRITICAL GLOBAL FUNCTIONS (Defined Early) ---
     window.activeGoalDetailId = null;
     window.activeGoalDetailData = null;
+    window.goalDetailFromView = 'roadmap'; // 'roadmap' or 'project'
 
-    window.openGoalDetail = function (goalId) {
-        console.log('Switching to Goal Detail Page:', goalId);
+    window.openGoalDetail = function (goalId, from = 'roadmap') {
+        console.log('Switching to Goal Detail Page:', goalId, 'From:', from);
         window.activeGoalDetailId = goalId;
+        window.goalDetailFromView = from; // Capture referrer
 
         const goal = (window.loadedGoals || []).find(g => g.id === goalId);
         if (!goal) {
@@ -16,6 +18,17 @@
 
         // Populate New View Elements
         document.getElementById('gd-page-title').innerText = goal.title;
+
+        // ACTIVATE BUTTON LOGIC
+        const btnActivate = document.getElementById('gd-btn-activate');
+        if (btnActivate) {
+            // Show if NOT Active
+            if (goal.status === 'Active') {
+                btnActivate.style.display = 'none';
+            } else {
+                btnActivate.style.display = 'block';
+            }
+        }
 
         // Vision with Edit Icon (In-Place)
         const visionText = goal.vision || 'No vision defined.';
@@ -39,6 +52,26 @@
         const percent = (target > 0) ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
         document.getElementById('gd-progress-fill').style.width = percent + '%';
 
+        // START/END DATE DISPLAY (New)
+        const sDate = goal.startDate ? new Date(goal.startDate).toLocaleDateString('ja-JP') : '--';
+        const eDate = goal.endDate ? new Date(goal.endDate).toLocaleDateString('ja-JP') : '--';
+        document.getElementById('gd-date-start').innerText = sDate;
+        document.getElementById('gd-date-end').innerText = eDate;
+
+        // REFLECTION LOGIC (New)
+        const reflectionSection = document.getElementById('gd-reflection-section');
+        const reflectionText = document.getElementById('gd-reflection-text');
+        const reflectionEditBtn = document.getElementById('gd-reflection-edit-btn');
+
+        if (goal.status === 'Done') {
+            reflectionSection.style.display = 'block';
+            reflectionText.value = goal.review || '';
+            reflectionText.disabled = true; // Read-only by default
+            reflectionEditBtn.style.display = 'block';
+        } else {
+            reflectionSection.style.display = 'none';
+        }
+
         // Load History
         document.getElementById('gd-history-list').innerHTML = '<div class="spinner"></div>';
         google.script.run.withSuccessHandler(window.renderGoalHistory).getGoalHistory(goalId);
@@ -48,13 +81,46 @@
         document.getElementById('view-goal-detail').classList.add('active');
     };
 
+    window.enableReflectionEdit = function () {
+        const txt = document.getElementById('gd-reflection-text');
+        txt.disabled = false;
+        txt.focus();
+        document.getElementById('gd-reflection-edit-btn').style.display = 'none';
+    };
+
+    window.saveReflection = function () {
+        const id = window.activeGoalDetailId;
+        const txtElement = document.getElementById('gd-reflection-text');
+        const txt = txtElement.value;
+
+        // Optimistic UI: Disable immediately
+        txtElement.disabled = true;
+        document.getElementById('gd-reflection-edit-btn').style.display = 'block';
+
+        google.script.run.withSuccessHandler((res) => {
+            // Re-fetch to sync
+            google.script.run.withSuccessHandler(goals => {
+                window.loadedGoals = goals;
+                // Update data in memory
+                const updated = goals.find(g => g.id === id);
+                if (updated) window.activeGoalDetailData = updated;
+            }).getGoalsV2();
+        }).saveGoalReview(id, txt);
+    };
+
     window.closeGoalDetail = function () {
         window.activeGoalDetailId = null;
         window.activeGoalDetailData = null;
 
-        // Hide detail, show roadmap
+        // Hide detail
         document.getElementById('view-goal-detail').classList.remove('active');
-        document.getElementById('view-roadmap').classList.add('active');
+
+        // Navigation Logic: Return to Referrer
+        if (window.goalDetailFromView === 'project' && window.activeProjectId) {
+            document.getElementById('view-project-detail').classList.add('active');
+        } else {
+            document.getElementById('view-roadmap').classList.add('active');
+        }
     };
 
     window.saveVisionInline = function (id, element) {
@@ -77,10 +143,28 @@
             return;
         }
 
-        history.forEach(log => {
+        // Sort Descending (Newest First)
+        history.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        history.forEach((log, index) => {
             const d = new Date(log.date);
             // Format: 2024/01/01 12:00
             const dateStr = `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+
+            // Calculate Delta
+            let deltaHtml = '';
+            if (index < history.length - 1) {
+                const prev = history[index + 1];
+                const diff = Number(log.value) - Number(prev.value);
+                const sign = diff >= 0 ? '+' : '';
+                const color = diff >= 0 ? '#4CAF50' : '#F44336';
+                if (diff !== 0) {
+                    deltaHtml = `<span style="font-size:12px; color:${color}; font-weight:bold; margin-left:8px;">(${sign}${diff})</span>`;
+                }
+            } else {
+                // First entry (oldest), maybe show (Start) or nothing
+                deltaHtml = `<span style="font-size:10px; color:#999; margin-left:5px;">(Start)</span>`;
+            }
 
             const div = document.createElement('div');
             div.className = 'history-card';
@@ -96,9 +180,10 @@
             div.innerHTML = `
             <div style="font-size:11px; color:#aaa; font-family:monospace;">${dateStr}</div>
             
-            <div style="display:flex; align-items:baseline; gap:6px;">
+            <div style="display:flex; align-items:center; gap:6px;">
                  <span style="font-size:12px; color:#666;">達成値:</span>
                  <span style="font-size:18px; font-weight:800; color:#333;">${log.value}</span>
+                 ${deltaHtml}
             </div>
             
             ${log.notes ? `
@@ -1955,41 +2040,89 @@
     }
 
     /* --- ROADMAP RENDERING (Updated UI) --- */
+    /* --- ROADMAP RENDERING (Updated UI) --- */
+    let currentRoadmapFilter = 'Active';
+    const ROADMAP_FILTERS = ['All', 'Pending', 'Active', 'Done'];
+
     function renderRoadmap() {
         const container = document.getElementById('goal-list-container');
         if (!container) return;
 
-        // Show spinner only if empty
-        if (!container.hasChildNodes()) {
+        // Fetch if needed
+        if (!window.loadedGoals) {
             container.innerHTML = '<div class="loading-spinner"></div>';
+            google.script.run.withSuccessHandler(goals => {
+                window.loadedGoals = goals;
+                renderRoadmapUI();
+            }).withFailureHandler(err => {
+                container.innerHTML = `<div style="color:red; padding:20px;">Error: ${err}</div>`;
+            }).getGoalsV2();
+            return;
         }
 
-        google.script.run.withSuccessHandler(goals => {
-            window.loadedGoals = goals; // Keep global sync
-            renderRoadmapFromData(goals);
-        }).withFailureHandler(err => {
-            container.innerHTML = `<div style="color:red; padding:20px;">Error: ${err}</div>`;
-        }).getGoalsV2();
+        renderRoadmapUI();
     }
 
-    function renderRoadmapFromData(goals) {
-        const container = document.getElementById('goal-list-container');
-        if (!container) return;
+    function renderRoadmapUI() {
+        const list = document.getElementById('goal-list-container');
+        const filterContainer = document.getElementById('roadmap-filter-container');
 
-        if (!goals || goals.length === 0) {
-            container.innerHTML = `
+        // Render Filters
+        if (filterContainer) {
+            filterContainer.innerHTML = '';
+            ROADMAP_FILTERS.forEach(f => {
+                const chip = document.createElement('div');
+                const labelMap = { 'All': 'すべて', 'Pending': '未着手', 'Active': '進行中', 'Done': '完了' };
+                chip.innerText = labelMap[f];
+                chip.style.padding = '6px 14px';
+                chip.style.borderRadius = '20px';
+                chip.style.fontSize = '12px';
+                chip.style.fontWeight = 'bold';
+                chip.style.cursor = 'pointer';
+                chip.style.whiteSpace = 'nowrap';
+
+                const isSelected = (f === currentRoadmapFilter);
+                if (isSelected) {
+                    chip.style.backgroundColor = '#5D4037';
+                    chip.style.color = '#fff';
+                } else {
+                    chip.style.backgroundColor = '#f0f0f0';
+                    chip.style.color = '#666';
+                }
+
+                chip.onclick = () => {
+                    currentRoadmapFilter = f;
+                    renderRoadmapUI(); // Re-render UI only
+                };
+                filterContainer.appendChild(chip);
+            });
+        }
+
+        // Filter Data
+        const filtered = window.loadedGoals.filter(g => {
+            if (g.id.startsWith('error')) return false;
+
+            // Normalize status (Handle case sensitivity and legacy Inactive)
+            let rawStatus = (g.status || 'Active').trim();
+            let s = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1).toLowerCase();
+            if (s === 'Inactive') s = 'Pending';
+
+            if (currentRoadmapFilter === 'All') return true;
+            return s === currentRoadmapFilter;
+        });
+
+        if (filtered.length === 0) {
+            list.innerHTML = `
                 <div style="text-align:center; padding:40px; color:#aaa;">
                     <div style="font-size:40px; margin-bottom:10px;">🗺️</div>
-                    <div>No goals found.</div>
+                    <div>No ${currentRoadmapFilter} roadmaps.</div>
                 </div>
             `;
             return;
         }
 
         let html = '';
-        goals.forEach(g => {
-            if (g.id.startsWith('error')) return;
-
+        filtered.forEach(g => {
             const current = Number(g.metricCurrent) || 0;
             const target = Number(g.metricTarget) || 1;
             const percent = Math.min(100, Math.max(0, (current / target) * 100));
@@ -2005,63 +2138,136 @@
                 else remaining = '期限切れ';
             }
 
-            // Card HTML
+            // Status Badge (Optional if filtering is active, but good for 'All' view)
+            let badgeFn = (st) => {
+                if (st === 'Done') return ' <span style="font-size:10px; background:#E8F5E9; color:#4CAF50; padding:2px 6px; border-radius:4px;">Done</span>';
+                if (st === 'Pending') return ' <span style="font-size:10px; background:#F5F5F5; color:#999; padding:2px 6px; border-radius:4px;">Pending</span>';
+                return '';
+            };
+            let statusRaw = (g.status || 'Active').trim();
+            let status = statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1).toLowerCase();
+            if (status === 'Inactive') status = 'Pending';
+            let badge = (currentRoadmapFilter === 'All') ? badgeFn(status) : '';
+
+            // Card HTML (Glassmorphism)
             html += `
-                                <div class="card-glass goal-card" onclick="openGoalDetail('${g.id}')">
-                                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
-                                        <div class="goal-title">${g.title}</div>
-                                        <!-- Log Button (Stop Propagation) -->
-                                        <div style="padding:5px; background:rgba(0,0,0,0.05); border-radius:50%;"
-                                            onclick="event.stopPropagation(); openProgressModal('${g.id}', ${current}, '${g.title}')">
-                                            <span class="material-symbols-rounded" style="font-size:18px; color:#555;">add</span>
-                                        </div>
-                                    </div>
+                <div class="card-glass goal-card" onclick="openGoalDetail('${g.id}')">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                        <div class="goal-title">${g.title}${badge}</div>
+                        <!-- Log Button (Stop Propagation) -->
+                        <div style="padding:5px; background:rgba(0,0,0,0.05); border-radius:50%;"
+                            onclick="event.stopPropagation(); openProgressModal('${g.id}', ${current}, '${g.title}')">
+                            <span class="material-symbols-rounded" style="font-size:18px; color:#555;">add</span>
+                        </div>
+                    </div>
 
-                                    <div class="goal-vision">${g.vision || ''}</div>
+                    <div class="goal-vision">${g.vision || ''}</div>
 
-                                    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:15px; margin-bottom:5px;">
-                                        <div style="font-size:12px; color:#666;">現在: <span style="font-weight:bold; color:#333;">${current}</span> <span style="font-size:10px;">${g.metricLabel || ''}</span></div>
-                                        <div style="font-size:12px; color:#999;">目標: <span style="font-weight:bold;">${target}</span> <span style="font-size:10px;">${g.metricLabel || ''}</span></div>
-                                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:15px; margin-bottom:5px;">
+                        <div style="font-size:12px; color:#666;">現在: <span style="font-weight:bold; color:#333;">${current}</span> <span style="font-size:10px;">${g.metricLabel || ''}</span></div>
+                        <div style="font-size:12px; color:#999;">目標: <span style="font-weight:bold;">${target}</span> <span style="font-size:10px;">${g.metricLabel || ''}</span></div>
+                    </div>
 
-                                    <div class="progress-container" style="height:10px; background:#f0f0f0;">
-                                        <div class="progress-bar" style="width:${percent}%; background:#2196F3;"></div>
-                                    </div>
+                    <div class="progress-container" style="height:10px; background:#f0f0f0;">
+                        <div class="progress-bar" style="width:${percent}%; background:#2196F3;"></div>
+                    </div>
 
-                                    <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:11px; color:#999;">
-                                        <div>${g.endDate ? '🏁 ' + g.endDate : ''}</div>
-                                        <div>${remaining}</div>
-                                    </div>
-                                </div>
-                                `;
+                    <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:11px; color:#999;">
+                        <div>${g.endDate ? '🏁 ' + g.endDate : ''}</div>
+                        <div>${remaining}</div>
+                    </div>
+                </div>
+            `;
         });
-        container.innerHTML = html;
+        list.innerHTML = html;
     }
 
-    /* --- GOAL MODAL LOGIC (New) --- */
-    let pendingGoalProjectId = null;
+    // --- STATUS SELECTOR LOGIC ---
+    let selectedStatus = 'Active';
 
+    function selectGoalStatus(status) {
+        selectedStatus = status;
+        // Update UI
+        document.querySelectorAll('.status-seg-btn').forEach(btn => {
+            btn.style.backgroundColor = 'transparent';
+            btn.style.color = '#666';
+            btn.style.boxShadow = 'none';
+        });
+
+        const activeBtn = document.getElementById('status-' + status.toLowerCase());
+        if (activeBtn) {
+            activeBtn.style.backgroundColor = '#fff';
+            activeBtn.style.color = '#5D4037';
+            activeBtn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+        }
+    }
+    window.selectGoalStatus = selectGoalStatus;
+
+    // --- MODAL & SAVE ---
     function openGoalModal(id = null, projectId = null) {
-        pendingGoalProjectId = projectId;
-        // Clear inputs
-        document.getElementById('g-title').value = '';
-        document.getElementById('g-vision').value = '';
-        document.getElementById('g-metric-label').value = '';
-        document.getElementById('g-metric-target').value = '';
-        document.getElementById('g-metric-current').value = '';
-        document.getElementById('g-start-date').value = new Date().toISOString().split('T')[0];
-        document.getElementById('g-end-date').value = '';
+        const modal = document.getElementById('goal-modal');
+        const titleEl = document.getElementById('g-title');
+        const visionEl = document.getElementById('g-vision');
+        const metricEl = document.getElementById('g-metric-label'); // Corrected ID
+        const targetEl = document.getElementById('g-metric-target'); // Corrected ID
+        const currentEl = document.getElementById('g-metric-current'); // Corrected ID
+        const startEl = document.getElementById('g-start-date'); // Corrected ID
+        const endEl = document.getElementById('g-end-date'); // Corrected ID
+        const projectEl = document.getElementById('g-project-id'); // Assuming this exists for project linking
 
-        document.getElementById('goal-modal').classList.add('open');
-        document.getElementById('goal-modal').style.display = 'flex'; // Force visibility
+        // Reset Validations
+        document.querySelectorAll('.error-msg').forEach(el => el.style.display = 'none');
+
+        if (id) {
+            // EDIT MODE
+            const g = window.loadedGoals.find(x => x.id === id);
+            if (!g) return;
+
+            window.editingGoalId = id;
+            titleEl.value = g.title;
+            visionEl.value = g.vision;
+            metricEl.value = g.metricLabel;
+            targetEl.value = g.metricTarget;
+            currentEl.value = g.metricCurrent;
+            startEl.value = g.startDate;
+            endEl.value = g.endDate;
+            projectEl.value = g.projectId || '';
+
+            // Status Selector Init
+            const s = g.status === 'Inactive' ? 'Pending' : (g.status || 'Active');
+            selectGoalStatus(s);
+
+        } else {
+            // CREATE MODE
+            window.editingGoalId = null;
+            titleEl.value = '';
+            visionEl.value = '';
+            metricEl.value = '';
+            targetEl.value = '';
+            currentEl.value = '';
+            startEl.value = new Date().toISOString().split('T')[0];
+            endEl.value = '';
+            projectEl.value = projectId || ''; // Default empty or pre-fill from project context
+
+            // Default Status = Active
+            selectGoalStatus('Active');
+        }
+
+        modal.classList.add('open');
+        modal.style.display = 'flex';
     }
+    window.openGoalModal = openGoalModal;
 
     function closeGoalModal() {
-        document.getElementById('goal-modal').classList.remove('open');
-        document.getElementById('goal-modal').style.display = 'none'; // Force hide
+        const modal = document.getElementById('goal-modal');
+        modal.classList.remove('open');
+        modal.style.display = 'none';
     }
+    window.closeGoalModal = closeGoalModal;
 
+    // Removed activateGoal logic as it's now handled by saveGoal status selector
     function saveGoal() {
+        const id = window.editingGoalId; // null if new
         const title = document.getElementById('g-title').value;
         const vision = document.getElementById('g-vision').value;
         const metric = document.getElementById('g-metric-label').value;
@@ -2069,55 +2275,59 @@
         const current = document.getElementById('g-metric-current').value;
         const start = document.getElementById('g-start-date').value;
         const end = document.getElementById('g-end-date').value;
+        const projectId = document.getElementById('g-project-id').value;
 
-        if (!title || !metric || !target) {
-            alert('タイトル、単位、目標値は必須です');
+        const status = selectedStatus;
+
+        // VALIDATION LOGIC
+        // VALIDATION LOGIC
+        // Pending: No restriction (allows partial or full data).
+        // Active/Done: Requires full fields (Target, End Date).
+
+        if (!title) {
+            alert('タイトルは必須です');
             return;
         }
 
-        closeGoalModal();
-
-        // --- Optimistic UI Update ---
-        const tempId = 'temp-' + Date.now();
-        const tempGoal = {
-            id: tempId,
-            title: title,
-            vision: vision,
-            metricLabel: metric,
-            metricTarget: Number(target),
-            metricCurrent: Number(current) || 0,
-            startDate: start,
-            endDate: end,
-            isOptimistic: true // Marker for UI if needed (e.g. gray out delete btn)
-        };
-
-        if (!window.loadedGoals) window.loadedGoals = [];
-        // Add to top or bottom? Default seems to be appended or sorted. 
-        // Let's add to top for visibility.
-        window.loadedGoals.unshift(tempGoal);
-        renderRoadmapFromData(window.loadedGoals);
-
-        // If created from Project Detail, update Project Detail UI too
-        if (pendingGoalProjectId) {
-            // Wait for server response to reload project detail? Or just wait.
-            // Simplified: re-render project detail after sync.
+        if (status !== 'Pending') {
+            if (!target || !end) {
+                alert('進行中または完了にするには、目標数値と終了日が必要です。(未着手の場合は省略可)');
+                return;
+            }
         }
 
-        // --- Server Sync ---
-        google.script.run.withSuccessHandler((res) => {
-            // Re-fetch true data to get real ID and consistent sort
-            renderRoadmap();
+        // Optimistic UI Update
+        const newGoal = {
+            id: id || 'temp-' + Date.now(),
+            title, vision, metricLabel: metric,
+            metricTarget: Number(target),
+            metricCurrent: Number(current),
+            startDate: start,
+            endDate: end,
+            projectId,
+            status: status,
+        };
 
-            // If in Project view, reload project roadmaps
-            if (pendingGoalProjectId && typeof openProjectDetail === 'function' && typeof renderProjectRoadmaps === 'function') {
-                // We need valid ID to re-open detail, or just refresh data.
-                // Since we are creating a NEW goal, we might need to fetch goals again to see it in project.
-                // renderRoadmap() above updates loadedGoals.
-                // We can then re-render project detail.
-                if (window.activeProjectId) openProjectDetail(window.activeProjectId);
-            }
-        }).createGoal(title, vision, metric, Number(target), Number(current), start, end, pendingGoalProjectId);
+        // Add to list immediately
+        if (id) {
+            const idx = window.loadedGoals.findIndex(x => x.id === id);
+            if (idx !== -1) window.loadedGoals[idx] = newGoal;
+        } else {
+            window.loadedGoals.push(newGoal);
+        }
+
+        renderRoadmap(); // re-render with filters
+        closeGoalModal();
+
+        google.script.run.withSuccessHandler(() => {
+            // Sync
+            google.script.run.withSuccessHandler(goals => {
+                window.loadedGoals = goals;
+                renderRoadmap();
+            }).getGoalsV2();
+        }).saveGoalFull(id, title, vision, metric, target, current, start, end, status, projectId);
     }
+    window.saveGoal = saveGoal;
 
     let currentMeasurementGoalId = null;
 
@@ -2156,13 +2366,25 @@
 
     /* --- PROGRESS LOGIC --- */
     let currentProgressGoalId = null;
+    let currentProgressBaseValue = 0; // Store the "previous" value to add increment to
 
     function openProgressModal(id, current, title) {
         currentProgressGoalId = id;
+        currentProgressBaseValue = Number(current) || 0;
+
         document.getElementById('pm-title').innerText = '進捗を記録';
         document.getElementById('pm-subtitle').innerText = title;
-        document.getElementById('pm-value').value = current; // Pre-fill current
         document.getElementById('pm-notes').value = '';
+
+        // Reset Toggle to Default (Snapshot)
+        const toggle = document.getElementById('pm-mode-toggle');
+        if (toggle) {
+            toggle.checked = false;
+            toggleProgressMode(); // UI Update
+        }
+
+        // Default Value: Current (Snapshot Mode)
+        document.getElementById('pm-value').value = currentProgressBaseValue;
 
         const modal = document.getElementById('progress-modal');
         modal.classList.add('open');
@@ -2177,6 +2399,24 @@
         }, 100);
     }
 
+    function toggleProgressMode() {
+        const isIncrement = document.getElementById('pm-mode-toggle').checked;
+        const label = document.getElementById('pm-label-value');
+        const input = document.getElementById('pm-value');
+
+        if (isIncrement) {
+            label.innerText = '今回の増分 (＋)';
+            label.style.color = '#2196F3';
+            input.placeholder = '例: 10';
+            input.value = ''; // Clear for fresh increment input
+        } else {
+            label.innerText = '現在の到達値 (Snapshot)';
+            label.style.color = '#333';
+            input.placeholder = '例: 150';
+            input.value = currentProgressBaseValue; // Restore current value
+        }
+    }
+    window.toggleProgressMode = toggleProgressMode;
 
     function openProgressFromDetailPage() {
         if (!window.activeGoalDetailId || !window.activeGoalDetailData) {
@@ -2196,10 +2436,18 @@
     }
 
     function saveGoalProgress() {
-        const val = document.getElementById('pm-value').value;
+        const valInput = document.getElementById('pm-value').value;
         const notes = document.getElementById('pm-notes').value;
+        const isIncrement = document.getElementById('pm-mode-toggle').checked;
 
-        if (val === '') { alert('数値を入力してください'); return; }
+        if (valInput === '') { alert('数値を入力してください'); return; }
+
+        let finalValue = Number(valInput);
+
+        // Increment Logic
+        if (isIncrement) {
+            finalValue = currentProgressBaseValue + finalValue;
+        }
 
         const idToLog = currentProgressGoalId; // Capture ID before nulling
 
@@ -2216,8 +2464,7 @@
             // 1. Refresh Roadmap Data (Silent)
             google.script.run.withSuccessHandler((goals) => {
                 window.loadedGoals = goals;
-                renderRoadmapFromData(goals);
-
+                renderRoadmap(); // Call the new renderRoadmap
                 // 2. If Detail Page is open for this goal, refresh it
                 if (window.activeGoalDetailId === idToLog) {
                     // Update Data Object
@@ -2239,7 +2486,7 @@
                 }
             }).getGoalsV2();
 
-        }).logGoalProgress(idToLog, Number(val), notes, dateStr);
+        }).logGoalProgress(idToLog, finalValue, notes, dateStr);
     }
 
     /* --- EXPOSE TO GLOBAL (Fix for Scope Issues) --- */
@@ -2253,6 +2500,11 @@
     window.saveGoalProgress = saveGoalProgress;
     window.renderGoalsTab = renderGoalsTab;
     window.renderRoadmap = renderRoadmap;
+    // window.openRoadmapArchive = openRoadmapArchive; // Removed
+    // window.closeRoadmapArchive = closeRoadmapArchive; // Removed
+    // window.activateGoal = activateGoal; // Removed
+    // window.openRoadmapArchive = openRoadmapArchive; // Removed
+    // window.closeRoadmapArchive = closeRoadmapArchive; // Removed
 
     console.log("Functions exposed to window.");
 
@@ -2415,6 +2667,7 @@
     window.openRoadmapSelectionModal = openRoadmapSelectionModal;
     window.closeRoadmapSelectionModal = closeRoadmapSelectionModal;
     window.selectRoadmap = selectRoadmap;
+    window.selectGoalStatus = selectGoalStatus; // Expose new function
 
     // --- PROJECT LOGIC ---
     function renderProjects() {
@@ -2492,8 +2745,12 @@
 
         window.activeProjectId = id; // Set active project ID for roadmap linking
 
-        document.getElementById('pd-page-title').innerText = p.title;
-        document.getElementById('pd-vision-card').innerText = p.vision || 'No vision';
+        // Update Title (Fix for "Project Title" bug)
+        const titleEl = document.getElementById('pd-page-title');
+        if (titleEl) titleEl.innerText = p.title;
+
+        // Vision text population
+        document.getElementById('pd-vision-card').innerHTML = p.vision || 'No vision';
 
         // Filter Roadmaps
         const goals = window.loadedGoals ? window.loadedGoals.filter(g => String(g.projectId) === String(id)) : [];
@@ -2509,9 +2766,28 @@
                 const target = Number(g.metricTarget) || 1;
                 const percent = Math.min(100, Math.max(0, (current / target) * 100));
 
+                // Determine badge style based on status
+                let statusBadge = '';
+                let badgeColor = '#999'; // Default for Pending/Inactive
+                let badgeText = '未着手';
+
+                if (g.status === 'Active') {
+                    badgeColor = '#2196F3'; // Blue for Active
+                    badgeText = '進行中';
+                } else if (g.status === 'Done') {
+                    badgeColor = '#4CAF50'; // Green for Done
+                    badgeText = '完了';
+                }
+
+                statusBadge = `<span style="background-color:${badgeColor}; color:white; padding:2px 8px; border-radius:10px; font-size:10px; margin-left:8px; white-space:nowrap;">${badgeText}</span>`;
+
+
                 html += `
-                   <div class="goal-card" style="margin-bottom:10px; padding:15px; border-radius:12px;" onclick="openGoalDetail('${g.id}')">
-                      <div style="font-weight:bold; color:#333; font-size:15px;">${g.title}</div>
+                   <div class="goal-card" style="margin-bottom:10px; padding:15px; border-radius:12px;" onclick="openGoalDetail('${g.id}', 'project')">
+                      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:5px;">
+                          <div style="font-weight:bold; color:#333; font-size:15px; padding-right:5px;">${g.title}</div>
+                          ${statusBadge}
+                      </div>
                       <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
                           <div class="progress-container" style="flex:1; height:6px; margin-top:0;">
                               <div class="progress-bar" style="width:${percent}%"></div>
