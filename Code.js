@@ -21,7 +21,7 @@ const CONFIG = {
   TIMEZONE: 'Asia/Tokyo'
 };
 
-// Force Sync 36
+// Force Sync 39
 // Force push cleanup
 function doGet() {
   const template = HtmlService.createTemplateFromFile('index');
@@ -2346,4 +2346,37 @@ function saveExperience(item) {
   }
 
   return { status: 'Saved', id: id };
+}
+
+/**
+ * Image Link Resolver
+ * Extracts og:image from shared links (Google Photos, iCloud, etc.)
+ */
+function resolveImage(url) {
+  if (!url) return null;
+  // If already an image file, return as is
+  if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) return url;
+
+  try {
+    const response = UrlFetchApp.fetch(url, {
+      muteHttpExceptions: true,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (response.getResponseCode() === 200) {
+      const content = response.getContentText();
+      // Look for og:image
+      const match = content.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+      if (match && match[1]) {
+        // Decode HTML entities if necessary (simple unescape)
+        let imgUrl = match[1].replace(/&amp;/g, '&');
+        return imgUrl;
+      }
+    }
+  } catch (e) {
+    console.error("Image Resolve Error", e);
+  }
+  return url; // Fallback to original
 }

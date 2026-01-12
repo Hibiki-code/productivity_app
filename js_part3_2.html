@@ -271,7 +271,7 @@
         let html = '';
         list.forEach(item => {
             const imgUrl = item.image ? item.image :
-                'https://via.placeholder.com/300x200?text=No+Image';
+                'https://placehold.co/300x200?text=No+Image';
 
             html += `
                             <div class="exp-card" onclick="openExperienceDetail('${item.id}')"
@@ -429,6 +429,42 @@
             window.open(mapUrl, '_blank');
         } else if (locationName) {
             window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}`, '_blank');
+        }
+    }
+
+    function handleImageInput(input) {
+        const val = input.value;
+        if (!val) {
+            document.getElementById('edm-img-container').style.backgroundImage = 'none';
+            autoSaveExperience();
+            return;
+        }
+
+        // Check if it looks like a share link (Google Photos, iCloud, Gemini)
+        if (val.includes('photos.app.goo.gl') || val.includes('icloud.com/share') || val.includes('share.icloud.com') ||
+            val.includes('gemini.google.com/share')) {
+            const statusLabel = document.getElementById('edm-save-status');
+            if (statusLabel) statusLabel.innerText = 'Resolving Image...';
+
+            google.script.run.withSuccessHandler(resolvedUrl => {
+                if (resolvedUrl && resolvedUrl !== val) {
+                    input.value = resolvedUrl;
+                    document.getElementById('edm-img-container').style.backgroundImage = `url('${resolvedUrl}')`;
+                    if (statusLabel) statusLabel.innerText = 'Resolved';
+                } else {
+                    // Fallback
+                    document.getElementById('edm-img-container').style.backgroundImage = `url('${val}')`;
+                }
+                autoSaveExperience();
+            }).withFailureHandler(e => {
+                console.warn('Image Resolve Failed', e);
+                document.getElementById('edm-img-container').style.backgroundImage = `url('${val}')`;
+                autoSaveExperience();
+            }).resolveImage(val);
+        } else {
+            // Standard URL
+            document.getElementById('edm-img-container').style.backgroundImage = `url('${val}')`;
+            autoSaveExperience();
         }
     }
 
