@@ -432,8 +432,23 @@
         }
     }
 
+    // --- Serialized AutoSave Logic ---
+    let isExSaving = false;
+    let isExSavePending = false;
+
     function autoSaveExperience() {
-        const id = document.getElementById('edm-id').value;
+        if (isExSaving) {
+            isExSavePending = true;
+            return;
+        }
+        executeExperienceSave();
+    }
+
+    function executeExperienceSave() {
+        const idObj = document.getElementById('edm-id');
+        if (!idObj) return;
+
+        const id = idObj.value;
         const title = document.getElementById('edm-title').value;
 
         if (!title) return;
@@ -444,9 +459,7 @@
         const location = document.getElementById('edm-location').value;
         const description = document.getElementById('edm-desc').value;
         const urlObj = document.getElementById('edm-url');
-
         const url = urlObj ? urlObj.value : (document.getElementById('edm-map-url') ? document.getElementById('edm-map-url').value : '');
-
         const imageObj = document.getElementById('edm-image-input');
         const image = imageObj ? imageObj.value : '';
 
@@ -465,22 +478,34 @@
         const statusLabel = document.getElementById('edm-save-status');
         if (statusLabel) statusLabel.innerText = 'Saving...';
 
-        console.log('Auto Saving Experience:', item.title);
+        isExSaving = true;
+        isExSavePending = false;
 
         google.script.run.withSuccessHandler(res => {
             if (statusLabel) statusLabel.innerText = 'Saved';
             setTimeout(() => { if (statusLabel.innerText === 'Saved') statusLabel.innerText = ''; }, 2000);
 
-            // Handle New ID
             if (res && res.id) {
-                // If it was a new item (no ID before), update the field
-                if (!item.id) {
-                    document.getElementById('edm-id').value = res.id;
-                    item.id = res.id; // Update local obj for cache update
+                if (!item.id || item.id === '') {
+                    const currentIdElement = document.getElementById('edm-id');
+                    if (currentIdElement) currentIdElement.value = res.id;
+                    item.id = res.id;
                 }
             }
 
             updateLocalExperience(item);
+            isExSaving = false;
+
+            if (isExSavePending) {
+                executeExperienceSave();
+            }
+        }).withFailureHandler(e => {
+            console.error(e);
+            if (statusLabel) statusLabel.innerText = 'Error';
+            isExSaving = false;
+            if (isExSavePending) {
+                setTimeout(executeExperienceSave, 1000);
+            }
         }).saveExperience(item);
     }
 
