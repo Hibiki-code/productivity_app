@@ -21,7 +21,7 @@ const CONFIG = {
   TIMEZONE: 'Asia/Tokyo'
 };
 
-// Force Sync 39
+// Force Sync 67
 // Force push cleanup
 function doGet() {
   const template = HtmlService.createTemplateFromFile('index');
@@ -2350,33 +2350,43 @@ function saveExperience(item) {
 
 /**
  * Image Link Resolver
- * Extracts og:image from shared links (Google Photos, iCloud, etc.)
+ * 1. Supports Generic OGP (Meta Tags) for public sites.
+ * 2. Works for public Google Drive links by extracting og:image.
+ * NOTE: No Authentication required for public links.
  */
 function resolveImage(url) {
   if (!url) return null;
-  // If already an image file, return as is
-  if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) return url;
 
+  // 1. Google Drive Links: Construct Direct 'lh3' Link
+  // For public images, 'https://lh3.googleusercontent.com/d/ID' works as a direct embed link.
+  // This bypasses the need for OGP scraping or DriveApp authorization.
+  if (url.includes('drive.google.com')) {
+    const match = url.match(/[-\w]{25,}/);
+    if (match) {
+      return `https://lh3.googleusercontent.com/d/${match[0]}`;
+    }
+  }
+
+  // 2. Generic OGP (Public Sites & Public Drive)
+  // Since Drive links are public, this will fetch the preview page 
+  // and extract the og:image URL (which works in <img> tags).
   try {
-    const response = UrlFetchApp.fetch(url, {
+    const response = UrlFetchApp.fetch(targetUrl, {
       muteHttpExceptions: true,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'
       }
     });
 
     if (response.getResponseCode() === 200) {
       const content = response.getContentText();
-      // Look for og:image
-      const match = content.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+      const match = content.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
       if (match && match[1]) {
-        // Decode HTML entities if necessary (simple unescape)
-        let imgUrl = match[1].replace(/&amp;/g, '&');
-        return imgUrl;
+        return match[1].replace(/&amp;/g, '&');
       }
     }
   } catch (e) {
-    console.error("Image Resolve Error", e);
+    console.warn("OGP Resolve Error", e);
   }
-  return url; // Fallback to original
+  return url;
 }

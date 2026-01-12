@@ -440,9 +440,9 @@
             return;
         }
 
-        // Check if it looks like a share link (Google Photos, iCloud, Gemini)
+        // Check if it looks like a share link or Drive link
         if (val.includes('photos.app.goo.gl') || val.includes('icloud.com/share') || val.includes('share.icloud.com') ||
-            val.includes('gemini.google.com/share')) {
+            val.includes('gemini.google.com/share') || val.includes('drive.google.com')) {
             const statusLabel = document.getElementById('edm-save-status');
             if (statusLabel) statusLabel.innerText = 'Resolving Image...';
 
