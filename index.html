@@ -896,7 +896,7 @@
   <div class="main-container">
 
     <!-- TASKS VIEW -->
-    <div id="view-tasks" class="view active">
+    <div id="view-tasks" class="view">
       <div class="glass-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>タスク</div>
         <div style="display:flex; gap:15px; align-items:center;">
@@ -978,7 +978,7 @@
     </div>
 
     <!-- HABITS VIEW -->
-    <div id="view-habits" class="view">
+    <div id="view-habits" class="view active">
       <div class="glass-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>習慣</div>
         <div id="habit-date-display" style="font-size:16px; font-weight:600; color:var(--text-sub);"></div>
@@ -1189,9 +1189,22 @@
 
   <!-- NAV BAR -->
   <div class="bottom-nav">
-    <div class="nav-item active" onclick="switchTab('tasks', this)">
+    <!-- Habits -->
+    <div class="nav-item active" onclick="switchTab('habits', this)">
+      <div class="nav-icon">⭕</div>
+      Habits
+    </div>
+
+    <!-- Tasks -->
+    <div class="nav-item" onclick="switchTab('tasks', this)">
       <div class="nav-icon">✓</div>
       Tasks
+    </div>
+
+    <!-- Schedule (Cal) -->
+    <div class="nav-item" onclick="switchTab('cal', this)">
+      <div class="nav-icon"><span class="material-symbols-rounded">calendar_month</span></div>
+      Schedule
     </div>
 
     <!-- Roadmap (New) -->
@@ -1204,18 +1217,6 @@
     <div class="nav-item" onclick="switchTab('projects', this)">
       <div class="nav-icon"><span class="material-symbols-rounded">rocket_launch</span></div>
       Project
-    </div>
-
-    <!-- Schedule (Cal) -->
-    <div class="nav-item" onclick="switchTab('cal', this)">
-      <div class="nav-icon"><span class="material-symbols-rounded">calendar_month</span></div>
-      Schedule
-    </div>
-
-    <!-- Habits -->
-    <div class="nav-item" onclick="switchTab('habits', this)">
-      <div class="nav-icon">⭕</div>
-      Habits
     </div>
 
     <!-- Experience -->

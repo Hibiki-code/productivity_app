@@ -21,7 +21,7 @@ const CONFIG = {
   TIMEZONE: 'Asia/Tokyo'
 };
 
-// Force Sync 26
+// Force Sync 27
 // Force push cleanup
 function doGet() {
   const template = HtmlService.createTemplateFromFile('index');
