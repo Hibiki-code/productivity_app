@@ -285,9 +285,9 @@
                                         ${item.title}</div>
                                     <div class="exp-meta"
                                         style="display:flex; flex-direction:column; gap:2px; font-size:11px; color:#666;">
-                                        <span style="display:flex; align-items:center; gap:3px;"><span
+                                            <span style="display:flex; align-items:center; gap:3px;"><span
                                                 class="material-symbols-rounded" style="font-size:12px;">payments</span>
-                                            ${item.budget ? '¥' + item.budget : '--'}</span>
+                                            ${(item.budget || item.budget === 0) ? '¥' + item.budget : '--'}</span>
                                         <span style="display:flex; align-items:center; gap:3px;"><span
                                                 class="material-symbols-rounded"
                                                 style="font-size:12px;">location_on</span> ${item.location ||
@@ -305,6 +305,39 @@
 
     window.fetchExperiences = fetchExperiences;
     window.renderExperiences = renderExperiences;
+
+    function openCreateExperienceModal() {
+        console.log('openCreateExperienceModal called');
+
+        // Clear Fields
+        document.getElementById('edm-id').value = '';
+        document.getElementById('edm-title').value = '';
+        document.getElementById('edm-status').value = 'List'; // Default
+        document.getElementById('edm-budget').value = '';
+        document.getElementById('edm-duration').value = '';
+        document.getElementById('edm-location').value = '';
+        document.getElementById('edm-desc').value = '';
+
+        // Clear Map/Img
+        const imgInput = document.getElementById('edm-image-input');
+        if (imgInput) imgInput.value = '';
+        document.getElementById('edm-img-container').style.backgroundImage = 'none';
+
+        const mapUrlField = document.getElementById('edm-map-url');
+        if (mapUrlField) mapUrlField.value = '';
+        const mapBtn = document.getElementById('edm-map-btn');
+        if (mapBtn) mapBtn.style.display = 'none';
+
+        const linkBtn = document.getElementById('edm-desc-link-btn');
+        if (linkBtn) linkBtn.style.display = 'none';
+
+        // Show Modal
+        const modal = document.getElementById('experience-detail-modal');
+        if (modal) {
+            modal.classList.add('open');
+            modal.style.display = 'flex';
+        }
+    }
 
     function openExperienceDetail(id) {
         console.log('openExperienceDetail called with ID:', id);
@@ -437,6 +470,16 @@
         google.script.run.withSuccessHandler(res => {
             if (statusLabel) statusLabel.innerText = 'Saved';
             setTimeout(() => { if (statusLabel.innerText === 'Saved') statusLabel.innerText = ''; }, 2000);
+
+            // Handle New ID
+            if (res && res.id) {
+                // If it was a new item (no ID before), update the field
+                if (!item.id) {
+                    document.getElementById('edm-id').value = res.id;
+                    item.id = res.id; // Update local obj for cache update
+                }
+            }
+
             updateLocalExperience(item);
         }).saveExperience(item);
     }

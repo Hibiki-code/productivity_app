@@ -42,6 +42,10 @@
       --radius: 18px;
     }
 
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       font-family: 'M PLUS Rounded 1c', 'Nunito', sans-serif;
       background-color: var(--bg-color);
@@ -1173,9 +1177,12 @@
 
     <!-- EXPERIENCE VIEW -->
     <div id="view-experience" class="view">
-      <div class="glass-header">
-        Experience
-        <div style="font-size:12px; font-weight:normal; opacity:0.7; margin-top:5px;">One-Day Experience</div>
+      <div class="glass-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          Experience
+          <div style="font-size:12px; font-weight:normal; opacity:0.7; margin-top:5px;">One-Day Experience</div>
+        </div>
+        <div class="add-btn-small" onclick="openCreateExperienceModal()">＋</div>
       </div>
 
       <div class="container" style="padding-bottom:100px;">
@@ -2063,13 +2070,14 @@
 
       <!-- Toolbar -->
       <div
-        style="display:flex; justify-content:space-between; align-items:center; padding:15px; border-bottom:1px solid #eee;">
+        style="display:flex; justify-content:space-between; align-items:center; padding:15px; border-bottom:1px solid #eee; background:white; z-index:10;">
         <button class="btn-icon" onclick="closeExperienceDetail()"><span
             class="material-symbols-rounded">arrow_back</span></button>
         <div style="font-size:12px; color:#aaa;" id="edm-save-status"></div>
       </div>
 
-      <div class="scroll-content" style="padding:20px; overflow-y:auto; height:calc(100vh - 60px);">
+      <div class="scroll-content"
+        style="padding:20px; overflow-y:auto; height:calc(100% - 60px); box-sizing:border-box;">
 
         <!-- Image Cover -->
         <div id="edm-img-container"
@@ -2109,7 +2117,7 @@
             <div style="display:flex; align-items:center; border-bottom:1px solid #eee;">
               <span class="material-symbols-rounded"
                 style="color:#aaa; font-size:18px; margin-right:5px;">payments</span>
-              <input type="number" id="edm-budget" placeholder="0" onblur="autoSaveExperience()"
+              <input type="text" id="edm-budget" placeholder="e.g. 12000 or Formula" onblur="autoSaveExperience()"
                 style="width:100%; padding:8px 0; border:none; background:transparent;">
             </div>
           </div>

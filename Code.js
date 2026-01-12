@@ -21,7 +21,7 @@ const CONFIG = {
   TIMEZONE: 'Asia/Tokyo'
 };
 
-// Force Sync 27
+// Force Sync 34
 // Force push cleanup
 function doGet() {
   const template = HtmlService.createTemplateFromFile('index');
@@ -2345,5 +2345,5 @@ function saveExperience(item) {
     // Maybe update updated_at if column exists
   }
 
-  return 'Saved';
+  return { status: 'Saved', id: id };
 }
