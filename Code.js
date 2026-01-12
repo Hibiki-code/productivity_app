@@ -21,6 +21,8 @@ const CONFIG = {
   TIMEZONE: 'Asia/Tokyo'
 };
 
+// Force Sync 21
+// Force push cleanup
 function doGet() {
   const template = HtmlService.createTemplateFromFile('index');
 
@@ -940,7 +942,7 @@ function getHabitCalendar(habitName, year, month) {
       // But ensure we initialized the key if it wasn't there (e.g. M+2 read by accident)
       if (!result[key]) result[key] = {};
 
-      result[key][d.getDate()] = (val === 1 || val === true || val === 'TRUE') ? 1 : 0;
+      result[key][d.getDate()] = (val == 2) ? 2 : ((val == 1 || val === true || val === 'TRUE') ? 1 : 0);
     }
   }
 
@@ -1082,7 +1084,7 @@ function updateSingleHabitStreak(habitName, isDone) {
     // But if we MUST append, maybe just append name?
     // statSheet.appendRow([habitName]); 
   } else {
-    // statSheet.getRange(rowIndex, 2).setValue(streak); // READ ONLY Mode requested for streak
+    statSheet.getRange(rowIndex, 2).setValue(streak);
   }
 }
 
@@ -2229,3 +2231,119 @@ function createHeaderMap(headers) {
   return map;
 }
 
+
+// -----------------------------------------------------------------------------
+// EXPERIENCES (One-Day Experience)
+// -----------------------------------------------------------------------------
+function getExperiences() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheetName = 'DB_Experiences';
+  let sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    // Schema: id, title, image, status, budget, location, duration, tags, url, description, created_at
+    sheet.appendRow(['id', 'title', 'image', 'status', 'budget', 'location', 'duration', 'tags', 'url', 'description', 'created_at']);
+
+    // Add Dummy Data for First Run
+    const dummy = [
+      [Utilities.getUuid(), '陶芸体験をする', 'https://images.unsplash.com/photo-1526401037286-6ae8e11894a4?q=80&w=600&auto=format&fit=crop', 'Draft', 5000, '浅草', '3h', 'Creative,Indoor', '', '土を触って心を整える。', new Date()],
+      [Utilities.getUuid(), '鎌倉の絶景カフェに行く', 'https://images.unsplash.com/photo-1549643276-fbc2bd41499f?q=80&w=600&auto=format&fit=crop', 'Draft', 2500, '鎌倉', '4h', 'Cafe,Relax', '', '海が見えるカフェで読書する。', new Date()],
+      [Utilities.getUuid(), 'スパイスカレー作り', 'https://images.unsplash.com/photo-1596797038530-2c107229654b?q=80&w=600&auto=format&fit=crop', 'Scheduled', 4000, '下北沢', '2.5h', 'Cooking,Spicy', '', '本格的なスパイス配合を学ぶ。', new Date()]
+    ];
+    dummy.forEach(row => sheet.appendRow(row));
+  }
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+
+  const headers = data[0];
+  const hMap = createHeaderMap(headers);
+  const list = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    const id = r[hMap['id']];
+    if (!id) continue;
+
+    list.push({
+      id: String(id),
+      title: String(r[hMap['title']] || ''),
+      image: String(r[hMap['image']] || ''),
+      status: String(r[hMap['status']] || 'Draft'),
+      budget: r[hMap['budget']], // Keep raw for flexibility (string or number)
+      location: String(r[hMap['location']] || ''),
+      duration: String(r[hMap['duration']] || ''),
+      tags: String(r[hMap['tags']] || ''),
+      url: String(r[hMap['url']] || ''),
+      description: String(r[hMap['description']] || '')
+    });
+  }
+
+  return list;
+}
+
+function saveExperience(item) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, 'DB_Experiences');
+  if (!sheet) return 'Error: Sheet missing';
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const hMap = createHeaderMap(headers);
+  const data = sheet.getDataRange().getValues();
+
+  // Check mapping
+  if (hMap['id'] === undefined) return 'Error: ID column missing';
+
+  let rowIndex = -1;
+  let id = item.id;
+
+  // Find existing
+  if (id) {
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][hMap['id']]) === String(id)) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+  } else {
+    id = Utilities.getUuid();
+  }
+
+  // Prepare fields
+  const now = new Date();
+  const rowValues = {
+    'id': id,
+    'title': item.title || '',
+    'image': item.image || '',
+    'status': item.status || 'Draft',
+    'budget': item.budget || '',
+    'location': item.location || '',
+    'duration': item.duration || '',
+    'tags': item.tags || '',
+    'url': item.url || '',
+    'description': item.description || '',
+    // created_at? Only for new
+  };
+
+  if (rowIndex === -1) {
+    // Create
+    rowValues['created_at'] = now;
+    const newRow = new Array(headers.length).fill('');
+    for (const key in rowValues) {
+      if (hMap[key] !== undefined) newRow[hMap[key]] = rowValues[key];
+    }
+    sheet.appendRow(newRow);
+  } else {
+    // Update
+    for (const key in rowValues) {
+      const colIdx = hMap[key];
+      if (colIdx !== undefined) {
+        sheet.getRange(rowIndex, colIdx + 1).setValue(rowValues[key]);
+      }
+    }
+    // Maybe update updated_at if column exists
+  }
+
+  return 'Saved';
+}

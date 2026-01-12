@@ -1,0 +1,12 @@
+.clasp.json
+.agent/**
+**/*.md
+node_modules/**
+
+check_parts_syntax.js
+temp_*.js
+**/*.test.js
+package.json
+package-lock.json
+.gitignore
+.git/**

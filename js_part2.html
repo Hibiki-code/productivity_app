@@ -1,0 +1,791 @@
+<script>
+    console.log('Part 2 Start');
+    // --- New Calendar Prefetching Logic ---
+
+    function changeDetailMonth(offset) {
+        let y = currentDetailYear;
+        let m = currentDetailMonth + offset;
+
+        // Handle wrapping
+        if (m > 12) { m = 1; y++; }
+        if (m < 1) { m = 12; y--; }
+
+        // Future Restriction? (Optional: Allow viewing next month if pre-planning?)
+        // Keeping strict restriction to not go beyond M + 1 or Today?
+        // User requested "adjacent months". Let's allow freely for now.
+
+        currentDetailYear = y;
+        currentDetailMonth = m;
+        document.getElementById('cal-month-label').innerText = `${y}年${m}月`;
+
+        // Update Arrow Styles 
+        const btnNext = document.getElementById('btn-next-month');
+        if (btnNext) {
+            // Let's disable if > today? Or > today+1?
+            // For now, simple standard arrows.
+        }
+
+        // Cache Check & Render
+        const key = `${y}-${m}`;
+        if (habitCalendarCache[currentDetailHabit.name] && habitCalendarCache[currentDetailHabit.name][key]) {
+            renderGrid(habitCalendarCache[currentDetailHabit.name][key]);
+
+            // Background Fetch (Prefetch neighbors)
+            fetchCalendarData(y, m, false);
+        } else {
+            document.getElementById('detail-cal-grid').innerHTML = '<div style="padding:20px; text-align:center; color:#999;">Loading...</div>';
+            fetchCalendarData(y, m, true);
+        }
+    }
+
+    function fetchCalendarData(year, month, doRender) {
+        google.script.run.withSuccessHandler(data => {
+            // Merge Data (Multi-Month Response)
+            const hName = currentDetailHabit.name;
+            if (!habitCalendarCache[hName]) habitCalendarCache[hName] = {};
+
+            const today = new Date();
+            const tY = today.getFullYear();
+            const tM = today.getMonth() + 1;
+            const tD = today.getDate();
+            const tKey = `${tY}-${tM}`;
+
+            Object.keys(data).forEach(k => {
+                // If this is the current month, save local Today status before overwrite
+                let preservedToday = undefined;
+                if (k === tKey && habitCalendarCache[hName][k] && habitCalendarCache[hName][k][tD] !== undefined) {
+                    preservedToday = habitCalendarCache[hName][k][tD];
+                }
+
+                habitCalendarCache[hName][k] = data[k];
+
+                // Restore preserved Today
+                if (preservedToday !== undefined) {
+                    habitCalendarCache[hName][k][tD] = preservedToday;
+                }
+            });
+
+            if (doRender) {
+                const key = `${currentDetailYear}-${currentDetailMonth}`;
+                // Render only if strictly matching the request, OR if the current view is covered by the response keys.
+                // Best to check if the *currently viewing* month is in the cache now.
+                if (habitCalendarCache[hName][key]) {
+                    renderGrid(habitCalendarCache[hName][key]);
+                } else {
+                    renderGrid({});
+                }
+            }
+        }).getHabitCalendar(currentDetailHabit.name, year, month);
+    }
+
+    function renderGrid(map) {
+        const container = document.getElementById('detail-cal-grid');
+        container.innerHTML = '';
+
+        const year = currentDetailYear;
+        const month = currentDetailMonth;
+
+        // Headers
+        ['日', '月', '火', '水', '木', '金', '土'].forEach(d => {
+            const c = document.createElement('div');
+            c.className = 'cal-header-cell'; c.innerText = d;
+            container.appendChild(c);
+        });
+
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const firstDay = new Date(year, month - 1, 1).getDay();
+
+        for (let i = 0; i < firstDay; i++) container.appendChild(document.createElement('div'));
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const start = currentDetailHabit.startDate ? new Date(currentDetailHabit.startDate) : new Date('2024-01-01');
+        start.setHours(0, 0, 0, 0);
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const cell = document.createElement('div');
+            cell.className = 'cal-cell';
+            cell.innerText = d;
+            const current = new Date(year, month - 1, d);
+
+            if (current > today) {
+                cell.style.opacity = '0.3';
+            } else if (current < start) {
+                // Before Start 
+            } else {
+                const status = map[d];
+                // Status 2=Offense Done (Red in Calendar per plan)
+                // Status 1=Defense Done (Green in Calendar)
+
+                if (status === 2) {
+                    cell.classList.add('status-advanced'); // Red 
+                } else if (status === 1) {
+                    cell.classList.add('status-done'); // Green 
+                } else if (current.getTime() === today.getTime()) {
+                    cell.classList.add('status-today-incomplete');
+                } else {
+                    cell.classList.add('status-failed');
+                }
+            }
+            container.appendChild(cell);
+        }
+    }
+
+    // --- SETTINGS LOGIC --- 
+    let hsCurrentIcon = '';
+    const popularIcons = [];
+
+    function openHabitSettings() {
+        if (!currentDetailHabit) return;
+        document.getElementById('habit-settings-modal').style.display = 'flex';
+        document.getElementById('hs-name').value = currentDetailHabit.name;
+        document.getElementById('hs-time').value = currentDetailHabit.time || '';
+        document.getElementById('hs-benefit').value = currentDetailHabit.benefit || '';
+
+        // Advanced Fields
+        document.getElementById('hs-offense-title').value = currentDetailHabit.offenseTitle || '';
+        document.getElementById('hs-offense-time').value = currentDetailHabit.offenseTime || '';
+
+        // Toggle State 
+        const hasAdvanced = !!(currentDetailHabit.offenseTitle || currentDetailHabit.offenseTime);
+        document.getElementById('hs-advanced-toggle').checked = hasAdvanced;
+        toggleAdvancedSettings(); // Update visibility 
+
+        // Icon Init 
+        hsCurrentIcon = currentDetailHabit.icon || '';
+        updateIconPreview(); // Populate Sections const sel=document.getElementById('hs-section');
+        sel.innerHTML = ''; const sections = habitDataCache ? habitDataCache.sections : [];
+        sections.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.innerText = s.name;
+            if (s.id === currentDetailHabit.sectionId) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    }
+
+    function toggleAdvancedSettings() {
+        const isChecked = document.getElementById('hs-advanced-toggle').checked;
+        const container = document.getElementById('hs-advanced-settings');
+        container.style.display = isChecked ? 'block' : 'none';
+    }
+
+    function updateIconPreview() {
+        const preview = document.getElementById('hs-icon-preview');
+        // Simple logic: if in material list, render as material icon. Else assume emoji text.
+        // Or cleaner: check if string matching regex for emoji?
+        // Easiest is checking material list presence, but that might be slow if list is huge (it is).
+        // Material icons are usually snake_case words. Emojis are unicode.
+        // Let's assume regex /^[a-z0-9_]+$/ is material.
+
+        const isMaterial = hsCurrentIcon && /^[a-z0-9_]+$/.test(hsCurrentIcon);
+
+        if (hsCurrentIcon) {
+            if (isMaterial) {
+                preview.innerHTML = `<span class="material-symbols-rounded"
+                            style="color:var(--primary);">${hsCurrentIcon}</span>`;
+            } else {
+                preview.innerHTML = `<span style="font-size:24px;">${hsCurrentIcon}</span>`;
+            }
+        } else {
+            preview.innerHTML = `<span class="material-symbols-rounded"
+                            style="color:#ccc;">add_reaction</span>`;
+        }
+    }
+
+    function closeHabitSettings() {
+        document.getElementById('habit-settings-modal').style.display = 'none';
+    }
+
+    function saveHabitDefinition() {
+        const newName = document.getElementById('hs-name').value;
+        const newSec = document.getElementById('hs-section').value;
+        const newTime = document.getElementById('hs-time').value;
+        const newBenefit = document.getElementById('hs-benefit').value;
+
+        // Logic: If toggle is OFF, should we clear the offense fields?
+        // Maybe? Or just ignore them?
+        // Better to clear them if user explicitly disabled.
+        // But if user just hides and shows, they might want to keep.
+        // For now, save what is in the fields if toggle is ON?
+        // Actually, if toggle ID is unchecked, we should probably save empty strings for offense.
+
+        const isAdvanced = document.getElementById('hs-advanced-toggle').checked;
+        const newOffense = isAdvanced ? document.getElementById('hs-offense-title').value : '';
+        const newOffenseTime = isAdvanced ? document.getElementById('hs-offense-time').value : '';
+
+        if (!newName) return;
+
+        // Visual Feedback
+        const btn = document.querySelector('#habit-settings-modal .btn-save');
+        const originalText = btn ? btn.innerText : '保存';
+        if (btn) {
+            btn.innerText = '保存中...';
+            btn.disabled = true;
+        }
+
+        google.script.run.withSuccessHandler(() => {
+            closeHabitSettings();
+            // closeHabitDetail(); // Kept open as requested
+            fetchHabits();
+
+            if (btn) {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }).withFailureHandler((e) => {
+            alert('保存に失敗しました: ' + e);
+            if (btn) {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon, newTime,
+            newBenefit, newOffense, newOffenseTime);
+    }
+
+    // --- ICON PICKER ---
+    // --- ICON PICKER ---
+    let iconTab = 'material'; // 'material' | 'emoji'
+    let currentIconList = [];
+
+    function openIconPicker() {
+        document.getElementById('icon-picker-modal').style.display = 'flex';
+        // Reset to Material default or keep last? Let's reset for now or keep consistency.
+        switchIconTab('material');
+    }
+
+    function closeIconPicker() {
+        document.getElementById('icon-picker-modal').style.display = 'none';
+        document.getElementById('icon-search').value = ''; // Clear search
+    }
+
+    function switchIconTab(tab) {
+        iconTab = tab;
+        const tabMat = document.getElementById('tab-material');
+        const tabEmo = document.getElementById('tab-emoji');
+        const input = document.getElementById('icon-search');
+
+        if (tab === 'material') {
+            tabMat.style.background = 'white';
+            tabMat.style.fontWeight = 'bold';
+            tabMat.style.color = '#333';
+            tabEmo.style.background = 'transparent';
+            tabEmo.style.fontWeight = 'normal';
+            tabEmo.style.color = '#666';
+            input.placeholder = 'アイコンを検索 (例: home, account)...';
+            renderIconGrid(materialIconsList.slice(0, 100)); // Default view
+        } else {
+            tabMat.style.background = 'transparent';
+            tabMat.style.fontWeight = 'normal';
+            tabMat.style.color = '#666';
+            tabEmo.style.background = 'white';
+            tabEmo.style.fontWeight = 'bold';
+            tabEmo.style.color = '#333';
+            input.placeholder = '絵文字を検索 (例: smile, cat)...';
+            // Render first 100 emojis
+            const previewList = emojiList.slice(0, 100).map(e => e[0]);
+            renderIconGrid(previewList);
+        }
+    }
+
+    function renderIconGrid(icons) {
+        const grid = document.getElementById('icon-grid');
+        grid.innerHTML = '';
+        icons.forEach(icon => {
+            const div = document.createElement('div');
+            div.style.cssText = 'height:50px; background:#f9f9f9; border-radius:8px; display:flex; align-items: center; justify-content: center; cursor: pointer; font-size: 24px; color:#555;';
+            div.onclick = () => selectIcon(icon);
+            // Check if it's an emoji
+            // Faster: if iconTab is emoji, render text. If material, render span class.
+
+            if (iconTab === 'material') {
+                div.innerHTML = `<span class="material-symbols-rounded">${icon}</span>`;
+            } else {
+                div.innerHTML = `<span>${icon}</span>`;
+            }
+
+            grid.appendChild(div);
+        });
+    }
+
+    function selectIcon(icon) {
+        hsCurrentIcon = icon;
+        updateIconPreview();
+        closeIconPicker();
+    }
+
+    function filterIcons(query) {
+        const q = query.toLowerCase();
+
+        if (iconTab === 'material') {
+            if (!q) { renderIconGrid(materialIconsList.slice(0, 100)); return; }
+            const filtered = materialIconsList.filter(i => i.includes(q)).slice(0, 100);
+            renderIconGrid(filtered);
+        } else {
+            // Emojis: [char, keywords]
+            if (!q) {
+                renderIconGrid(emojiList.slice(0, 100).map(e => e[0]));
+                return;
+            }
+            const filtered = emojiList
+                .filter(e => e[1].includes(q)) // Search keywords
+                .map(e => e[0]) // Extract char
+                .slice(0, 100);
+            renderIconGrid(filtered);
+        }
+    }
+
+    let sectionSortable = null;
+
+    // --- SECTIONS ---
+    function openSectionManager() {
+        document.getElementById('section-manager-modal').style.display = 'flex';
+        renderSectionManagerList();
+
+        // Init Sortable
+        const el = document.getElementById('sm-list');
+        if (sectionSortable) sectionSortable.destroy();
+        sectionSortable = Sortable.create(el, {
+            handle: '.section-handle', // Drag handle class
+            animation: 150
+        });
+    }
+
+    function closeSectionManager() {
+        document.getElementById('section-manager-modal').style.display = 'none';
+        if (sectionSortable) {
+            sectionSortable.destroy();
+            sectionSortable = null;
+        }
+    }
+
+    function renderSectionManagerList() {
+        const root = document.getElementById('sm-list');
+        root.innerHTML = '';
+
+        const sections = habitDataCache ? habitDataCache.sections : [];
+
+        sections.forEach((s, idx) => {
+            const row = document.createElement('div');
+            row.className = 'section-row';
+            row.style.display = 'flex';
+            row.style.gap = '10px';
+            row.style.marginBottom = '10px';
+            row.dataset.id = s.id;
+
+            row.innerHTML = `
+                        <div class="section-handle"
+                            style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
+                            <input value="${s.name}" class="input-std" style="margin:0; flex:1;"
+                                onchange="markSectionDirty(this)">
+                            <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕
+                            </div>
+                            `;
+            root.appendChild(row);
+        });
+    }
+
+    function toggleHabitSection(secId) {
+        const list = document.getElementById('list-habit-' + secId);
+        const wrapper = document.getElementById('sec-wrapper-' + secId);
+        const icon = wrapper.querySelector('.toggle-icon');
+
+        if (list.classList.contains('collapsed')) {
+            list.classList.remove('collapsed');
+            icon.style.transform = 'rotate(0deg)';
+        } else {
+            list.classList.add('collapsed');
+            icon.style.transform = 'rotate(180deg)';
+        }
+    }
+
+    function addSectionRow() {
+        const root = document.getElementById('sm-list');
+        const row = document.createElement('div');
+        row.className = 'section-row';
+        row.style.gap = '10px';
+        row.style.marginBottom = '10px';
+        row.dataset.id = 'new-' + Date.now();
+
+        row.innerHTML = `
+                            <div class="section-handle"
+                                style="cursor:move; padding-top:5px; padding-right:5px; color:#aaa;">☰</div>
+                            <input value="" placeholder="新しいセクション" class="input-std" style="margin:0; flex:1;"
+                                onchange="markSectionDirty(this)">
+                            <div style="cursor:pointer; color:red; padding-top:5px;" onclick="deleteSectionRow(this)">✕
+                            </div>
+                            `;
+        root.appendChild(row);
+    }
+
+    function deleteSectionRow(el) {
+        if (confirm('このセクションを削除しますか？')) {
+            el.closest('.section-row').remove();
+        }
+    }
+
+    function saveSections() {
+        const rows = document.querySelectorAll('#sm-list .section-row');
+        const sections = [];
+        rows.forEach((r, idx) => {
+            const id = r.dataset.id.startsWith('new-') ? 'sec_' + Math.random().toString(36).substr(2,
+                9) : r.dataset.id;
+            const name = r.querySelector('input').value;
+            if (name) {
+                sections.push({ id: id, name: name });
+            }
+        });
+
+        google.script.run.withSuccessHandler(() => {
+            closeSectionManager();
+            fetchHabits();
+        }).saveHabitSections(sections);
+    }
+
+    // --- GOALS AND DASHBOARD ---
+
+    function fetchGoals() {
+        const activeTab = document.querySelector('.nav-item.active');
+        const isRoadmap = activeTab && activeTab.innerText.includes('Roadmap');
+
+        if (isRoadmap) {
+            renderRoadmap();
+        }
+    }
+
+    function renderGoalsTab() {
+        // Deleted
+    }
+
+    /* --- ROADMAP RENDERING (Updated UI) --- */
+    /* --- ROADMAP RENDERING (Updated UI) --- */
+    let currentRoadmapFilter = 'Active';
+    const ROADMAP_FILTERS = ['All', 'Pending', 'Active', 'Done'];
+
+    function renderRoadmap() {
+        const container = document.getElementById('goal-list-container');
+        if (!container) return;
+
+        // Fetch if needed
+        if (!window.loadedGoals) {
+            container.innerHTML = '<div class="loading-spinner"></div>';
+            google.script.run.withSuccessHandler(goals => {
+                window.loadedGoals = goals;
+                renderRoadmapUI();
+            }).withFailureHandler(err => {
+                container.innerHTML = `<div style="color:red; padding:20px;">Error: ${err}</div>`;
+            }).getGoalsV2();
+            return;
+        }
+
+        renderRoadmapUI();
+    }
+
+    function renderRoadmapUI() {
+        const list = document.getElementById('goal-list-container');
+        const filterContainer = document.getElementById('roadmap-filter-container');
+
+        // Render Filters
+        if (filterContainer) {
+            filterContainer.innerHTML = '';
+            ROADMAP_FILTERS.forEach(f => {
+                const chip = document.createElement('div');
+                const labelMap = { 'All': 'すべて', 'Pending': '未着手', 'Active': '進行中', 'Done': '完了' };
+                chip.innerText = labelMap[f];
+                chip.style.padding = '6px 14px';
+                chip.style.borderRadius = '20px';
+                chip.style.fontSize = '12px';
+                chip.style.fontWeight = 'bold';
+                chip.style.cursor = 'pointer';
+                chip.style.whiteSpace = 'nowrap';
+
+                const isSelected = (f === currentRoadmapFilter);
+                if (isSelected) {
+                    chip.style.backgroundColor = '#5D4037';
+                    chip.style.color = '#fff';
+                } else {
+                    chip.style.backgroundColor = '#f0f0f0';
+                    chip.style.color = '#666';
+                }
+
+                chip.onclick = () => {
+                    currentRoadmapFilter = f;
+                    renderRoadmapUI(); // Re-render UI only
+                };
+                filterContainer.appendChild(chip);
+            });
+        }
+
+        // Filter Data
+        const filtered = window.loadedGoals.filter(g => {
+            if (g.id.startsWith('error')) return false;
+
+            // Normalize status (Handle case sensitivity and legacy Inactive)
+            let rawStatus = (g.status || 'Active').trim();
+            let s = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1).toLowerCase();
+            if (s === 'Inactive') s = 'Pending';
+
+            if (currentRoadmapFilter === 'All') return true;
+            return s === currentRoadmapFilter;
+        });
+
+        if (filtered.length === 0) {
+            list.innerHTML = `
+                            <div style="text-align:center; padding:40px; color:#aaa;">
+                                <div style="font-size:40px; margin-bottom:10px;">🗺️</div>
+                                <div>No ${currentRoadmapFilter} roadmaps.</div>
+                            </div>
+                            `;
+            return;
+        }
+
+        let html = '';
+        filtered.forEach(g => {
+            const current = Number(g.metricCurrent) || 0;
+            const target = Number(g.metricTarget) || 1;
+            const percent = Math.min(100, Math.max(0, (current / target) * 100));
+
+            // Calculate remaining days
+            let remaining = '';
+            if (g.endDate) {
+                const today = new Date();
+                const end = new Date(g.endDate);
+                const diffTime = end - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                if (diffDays >= 0) remaining = `残り ${diffDays} 日`;
+                else remaining = '期限切れ';
+            }
+
+            // Status Badge (Optional if filtering is active, but good for 'All' view)
+            let badgeFn = (st) => {
+                if (st === 'Done') return ' <span style="font-size:10px; background:#E8F5E9; color:#4CAF50; padding:2px 6px; border-radius:4px;">Done</span>';
+                if (st === 'Pending') return ' <span style="font-size:10px; background:#F5F5F5; color:#999; padding:2px 6px; border-radius:4px;">Pending</span>';
+                return '';
+            };
+            let statusRaw = (g.status || 'Active').trim();
+            let status = statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1).toLowerCase();
+            if (status === 'Inactive') status = 'Pending';
+            let badge = (currentRoadmapFilter === 'All') ? badgeFn(status) : '';
+
+            // Card HTML (Glassmorphism)
+            html += `
+                            <div class="card-glass goal-card" onclick="openGoalDetail('${g.id}')">
+                                <div
+                                    style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                                    <div class="goal-title">${g.title}${badge}</div>
+                                    <!-- Log Button (Stop Propagation) -->
+                                    <div style="padding:5px; background:rgba(0,0,0,0.05); border-radius:50%;"
+                                        onclick="event.stopPropagation(); openProgressModal('${g.id}', ${current}, '${g.title}')">
+                                        <span class="material-symbols-rounded"
+                                            style="font-size:18px; color:#555;">add</span>
+                                    </div>
+                                </div>
+
+                                <div class="goal-vision">${g.vision || ''}</div>
+
+                                <div
+                                    style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:15px; margin-bottom:5px;">
+                                    <div style="font-size:12px; color:#666;">現在: <span
+                                            style="font-weight:bold; color:#333;">${current}</span> <span
+                                            style="font-size:10px;">${g.metricLabel || ''}</span></div>
+                                    <div style="font-size:12px; color:#999;">目標: <span
+                                            style="font-weight:bold;">${target}</span> <span
+                                            style="font-size:10px;">${g.metricLabel || ''}</span></div>
+                                </div>
+
+                                <div class="progress-container" style="height:10px; background:#f0f0f0;">
+                                    <div class="progress-bar" style="width:${percent}%; background:#2196F3;"></div>
+                                </div>
+
+                                <div
+                                    style="display:flex; justify-content:space-between; margin-top:10px; font-size:11px; color:#999;">
+                                    <div>${g.endDate ? '🏁 ' + g.endDate : ''}</div>
+                                    <div>${remaining}</div>
+                                </div>
+                            </div>
+                            `;
+        });
+        list.innerHTML = html;
+    }
+
+    // --- STATUS SELECTOR LOGIC ---
+    let selectedStatus = 'Active';
+
+    function selectGoalStatus(status) {
+        selectedStatus = status;
+        // Update UI
+        document.querySelectorAll('.status-seg-btn').forEach(btn => {
+            btn.style.backgroundColor = 'transparent';
+            btn.style.color = '#666';
+            btn.style.boxShadow = 'none';
+        });
+
+        const activeBtn = document.getElementById('status-' + status.toLowerCase());
+        if (activeBtn) {
+            activeBtn.style.backgroundColor = '#fff';
+            activeBtn.style.color = '#5D4037';
+            activeBtn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+        }
+    }
+    window.selectGoalStatus = selectGoalStatus;
+
+    // --- MODAL & SAVE ---
+    function openGoalModal(id = null, projectId = null) {
+        const modal = document.getElementById('goal-modal');
+        const titleEl = document.getElementById('g-title');
+        const visionEl = document.getElementById('g-vision');
+        const metricEl = document.getElementById('g-metric-label'); // Corrected ID
+        const targetEl = document.getElementById('g-metric-target'); // Corrected ID
+        const currentEl = document.getElementById('g-metric-current'); // Corrected ID
+        const startEl = document.getElementById('g-start-date'); // Corrected ID
+        const endEl = document.getElementById('g-end-date'); // Corrected ID
+        const projectEl = document.getElementById('g-project-id'); // Assuming this exists for project linking
+
+        // Reset Validations
+        document.querySelectorAll('.error-msg').forEach(el => el.style.display = 'none');
+
+        if (id) {
+            // EDIT MODE
+            const g = window.loadedGoals.find(x => x.id === id);
+            if (!g) return;
+
+            window.editingGoalId = id;
+            titleEl.value = g.title;
+            visionEl.value = g.vision;
+            metricEl.value = g.metricLabel;
+            targetEl.value = g.metricTarget;
+            currentEl.value = g.metricCurrent;
+            startEl.value = g.startDate;
+            endEl.value = g.endDate;
+            projectEl.value = g.projectId || '';
+
+            // Status Selector Init
+            const s = g.status === 'Inactive' ? 'Pending' : (g.status || 'Active');
+            selectGoalStatus(s);
+
+        } else {
+            // CREATE MODE
+            window.editingGoalId = null;
+            titleEl.value = '';
+            visionEl.value = '';
+            metricEl.value = '';
+            targetEl.value = '';
+            currentEl.value = '';
+            startEl.value = new Date().toISOString().split('T')[0];
+            endEl.value = '';
+            projectEl.value = projectId || ''; // Default empty or pre-fill from project context
+
+            // Default Status = Active
+            selectGoalStatus('Active');
+        }
+
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+    }
+    window.openGoalModal = openGoalModal;
+
+    function closeGoalModal() {
+        const modal = document.getElementById('goal-modal');
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+    window.closeGoalModal = closeGoalModal;
+
+    // Removed activateGoal logic as it's now handled by saveGoal status selector
+    function saveGoal() {
+        const id = window.editingGoalId; // null if new
+        const title = document.getElementById('g-title').value;
+        const vision = document.getElementById('g-vision').value;
+        const metric = document.getElementById('g-metric-label').value;
+        const target = document.getElementById('g-metric-target').value;
+        const current = document.getElementById('g-metric-current').value;
+        const start = document.getElementById('g-start-date').value;
+        const end = document.getElementById('g-end-date').value;
+        const projectId = document.getElementById('g-project-id').value;
+
+        const status = selectedStatus;
+
+        // VALIDATION LOGIC
+        // VALIDATION LOGIC
+        // Pending: No restriction (allows partial or full data).
+        // Active/Done: Requires full fields (Target, End Date).
+
+        if (!title) {
+            alert('タイトルは必須です');
+            return;
+        }
+
+        if (status !== 'Pending') {
+            if (!target || !end) {
+                alert('進行中または完了にするには、目標数値と終了日が必要です。(未着手の場合は省略可)');
+                return;
+            }
+        }
+
+        // Optimistic UI Update
+        const newGoal = {
+            id: id || 'temp-' + Date.now(),
+            title, vision, metricLabel: metric,
+            metricTarget: Number(target),
+            metricCurrent: Number(current),
+            startDate: start,
+            endDate: end,
+            projectId,
+            status: status,
+        };
+
+        // Add to list immediately
+        if (id) {
+            const idx = window.loadedGoals.findIndex(x => x.id === id);
+            if (idx !== -1) window.loadedGoals[idx] = newGoal;
+        } else {
+            window.loadedGoals.push(newGoal);
+        }
+
+        renderRoadmap(); // re-render with filters
+        closeGoalModal();
+
+        google.script.run.withSuccessHandler(() => {
+            // Sync
+            google.script.run.withSuccessHandler(goals => {
+                window.loadedGoals = goals;
+                renderRoadmap();
+            }).getGoalsV2();
+        }).saveGoalFull(id, title, vision, metric, target, current, start, end, status, projectId);
+    }
+    window.saveGoal = saveGoal;
+
+    let currentMeasurementGoalId = null;
+
+    function openMeasurementModal(goalId, metricName, goalTitle) {
+        currentMeasurementGoalId = goalId;
+        document.getElementById('mm-title').innerText = metricName;
+        document.getElementById('mm-subtitle').innerText = goalTitle;
+        document.getElementById('mm-value').value = '';
+        document.getElementById('measurement-modal').classList.add('open');
+        setTimeout(() => document.getElementById('mm-value').focus(), 100);
+    }
+
+    function closeMeasurementModal() {
+        document.getElementById('measurement-modal').classList.remove('open');
+        currentMeasurementGoalId = null;
+    }
+
+    function saveMeasurement() {
+        const val = document.getElementById('mm-value').value;
+        const comment = document.getElementById('mm-comment').value;
+
+        if (!val) return;
+
+        const idToLog = currentMeasurementGoalId;
+        closeMeasurementModal();
+        const dateStr = new Date().toLocaleDateString('en-CA');
+
+        google.script.run.withSuccessHandler(() => {
+            // Success
+        }).logDailyMeasurement(idToLog, val, comment, dateStr);
+    }
+
+    /* --- DELETED WIZARD LOGIC --- */
+    console.log('Part 2 End');
+</script>

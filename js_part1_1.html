@@ -1,0 +1,822 @@
+<script>
+    console.log('Part 1_1 Start - v2026-01-12-Fix44');
+    console.log('Loading Main JS...');
+    // --- CRITICAL GLOBAL FUNCTIONS (Defined Early) ---
+    window.activeGoalDetailId = null;
+    window.activeGoalDetailData = null;
+    window.goalDetailFromView = 'roadmap'; // 'roadmap' or 'project'
+
+    window.openGoalDetail = function (goalId, from = 'roadmap') {
+        console.log('Switching to Goal Detail Page:', goalId, 'From:', from);
+        window.activeGoalDetailId = goalId;
+        window.goalDetailFromView = from; // Capture referrer
+
+        const goal = (window.loadedGoals || []).find(g => g.id === goalId);
+        if (!goal) {
+            console.error('Goal data not found for id:', goalId);
+            return;
+        }
+        window.activeGoalDetailData = goal;
+
+        // Populate New View Elements
+        document.getElementById('gd-page-title').innerText = goal.title;
+
+        // ACTIVATE BUTTON LOGIC
+        const btnActivate = document.getElementById('gd-btn-activate');
+        if (btnActivate) {
+            // Show if NOT Active
+            if (goal.status === 'Active') {
+                btnActivate.style.display = 'none';
+            } else {
+                btnActivate.style.display = 'block';
+            }
+        }
+
+        // Vision with Edit Icon (In-Place)
+        const visionText = goal.vision || 'No vision defined.';
+        const visionHtml = `
+<div style="position:relative; padding-right:20px;">
+    <div id="gd-vision-text" contenteditable="true" onblur="saveVisionInline('${goal.id}', this)"
+        style="outline:none; white-space:pre-wrap; min-height:20px;">${visionText}</div>
+    <div onclick="document.getElementById('gd-vision-text').focus()"
+        style="position:absolute; bottom:-5px; right:-5px; cursor:pointer; color:#ccc; padding:5px;">
+        <span class="material-symbols-rounded" style="font-size:16px;">edit</span>
+    </div>
+</div>
+`;
+        document.getElementById('gd-vision-card').innerHTML = visionHtml;
+
+        const current = Number(goal.metricCurrent) || 0;
+        const target = Number(goal.metricTarget) || 0;
+        document.getElementById('gd-current-val').innerText = current + (goal.metricLabel || '');
+        document.getElementById('gd-target-val').innerText = '/ ' + target + (goal.metricLabel || '');
+        const percent = (target > 0) ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
+        document.getElementById('gd-progress-fill').style.width = percent + '%';
+
+        // START/END DATE DISPLAY (New)
+        const sDate = goal.startDate ? new Date(goal.startDate).toLocaleDateString('ja-JP') : '--';
+        const eDate = goal.endDate ? new Date(goal.endDate).toLocaleDateString('ja-JP') : '--';
+        document.getElementById('gd-date-start').innerText = sDate;
+        document.getElementById('gd-date-end').innerText = eDate;
+
+        // REFLECTION LOGIC (New)
+        const reflectionSection = document.getElementById('gd-reflection-section');
+        const reflectionText = document.getElementById('gd-reflection-text');
+        const reflectionEditBtn = document.getElementById('gd-reflection-edit-btn');
+
+        if (goal.status === 'Done') {
+            reflectionSection.style.display = 'block';
+            reflectionText.value = goal.review || '';
+            reflectionText.disabled = true; // Read-only by default
+            reflectionEditBtn.style.display = 'block';
+        } else {
+            reflectionSection.style.display = 'none';
+        }
+
+        // Load History
+        document.getElementById('gd-history-list').innerHTML = '<div class="spinner"></div>';
+        google.script.run.withSuccessHandler(window.renderGoalHistory).getGoalHistory(goalId);
+
+        // Switch View
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-goal-detail').classList.add('active');
+    };
+
+    window.enableReflectionEdit = function () {
+        const txt = document.getElementById('gd-reflection-text');
+        txt.disabled = false;
+        txt.focus();
+        document.getElementById('gd-reflection-edit-btn').style.display = 'none';
+    };
+
+    window.saveReflection = function () {
+        const id = window.activeGoalDetailId;
+        const txtElement = document.getElementById('gd-reflection-text');
+        const txt = txtElement.value;
+
+        // Optimistic UI: Disable immediately
+        txtElement.disabled = true;
+        document.getElementById('gd-reflection-edit-btn').style.display = 'block';
+
+        google.script.run.withSuccessHandler((res) => {
+            // Re-fetch to sync
+            google.script.run.withSuccessHandler(goals => {
+                window.loadedGoals = goals;
+                // Update data in memory
+                const updated = goals.find(g => g.id === id);
+                if (updated) window.activeGoalDetailData = updated;
+            }).getGoalsV2();
+        }).saveGoalReview(id, txt);
+    };
+
+    window.closeGoalDetail = function () {
+        window.activeGoalDetailId = null;
+        window.activeGoalDetailData = null;
+
+        // Hide detail
+        document.getElementById('view-goal-detail').classList.remove('active');
+
+        // Navigation Logic: Return to Referrer
+        if (window.goalDetailFromView === 'project' && window.activeProjectId) {
+            document.getElementById('view-project-detail').classList.add('active');
+        } else {
+            document.getElementById('view-roadmap').classList.add('active');
+        }
+    };
+
+    window.saveVisionInline = function (id, element) {
+        const newText = element.innerText;
+        // Visual indicator
+        element.style.color = '#aaa';
+
+        google.script.run.withSuccessHandler(() => {
+            element.style.color = ''; // Restore
+            // Optional: Toast "Saved"
+        }).updateGoalVision(id, newText);
+    };
+
+    window.renderGoalHistory = function (history) {
+        const container = document.getElementById('gd-history-list');
+        container.innerHTML = '';
+
+        if (!history || history.length === 0) {
+            container.innerHTML = '<div style="text-align:center; color:#ccc; font-size:12px; padding:20px;">履歴はありません</div>';
+            return;
+        }
+
+        // Sort Descending (Newest First)
+        history.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        history.forEach((log, index) => {
+            const d = new Date(log.date);
+            // Format: 2024/01/01 12:00
+            const dateStr = `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2,
+                '0')}/${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2,
+                    '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+
+            // Calculate Delta
+            let deltaHtml = '';
+            if (index < history.length - 1) {
+                const prev = history[index + 1]; const diff = Number(log.value) - Number(prev.value);
+                const sign = diff >= 0 ? '+' : '';
+                const color = diff >= 0 ? '#4CAF50' : '#F44336';
+                if (diff !== 0) {
+                    deltaHtml = `<span
+        style="font-size:12px; color:${color}; font-weight:bold; margin-left:8px;">(${sign}${diff})</span>`;
+                }
+            } else {
+                // First entry (oldest), maybe show (Start) or nothing
+                deltaHtml = `<span style="font-size:10px; color:#999; margin-left:5px;">(Start)</span>`;
+            }
+
+            const div = document.createElement('div');
+            div.className = 'history-card';
+            div.style.background = 'white';
+            div.style.padding = '15px';
+            div.style.borderRadius = '16px';
+            div.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)';
+            div.style.border = '1px solid rgba(0,0,0,0.03)';
+            div.style.display = 'flex';
+            div.style.flexDirection = 'column';
+            div.style.gap = '8px';
+
+            div.innerHTML = `
+    <div style="font-size:11px; color:#aaa; font-family:monospace;">${dateStr}</div>
+
+    <div style="display:flex; align-items:center; gap:6px;">
+        <span style="font-size:12px; color:#666;">達成値:</span>
+        <span style="font-size:18px; font-weight:800; color:#333;">${log.value}</span>
+        ${deltaHtml}
+    </div>
+
+    ${log.notes ? `
+    <div
+        style="background:#f9f9f9; padding:10px; border-radius:8px; font-size:13px; color:#555; line-height:1.5; margin-top:2px; position:relative;">
+        ${log.notes}
+        <div onclick="openEditNoteModal('${log.id}', '${log.notes.replace(/'/g, " \\'")}')"
+            style="position:absolute; bottom:5px; right:5px; cursor:pointer; color:#ccc; padding:2px;">
+            <span class="material-symbols-rounded" style="font-size:14px;">edit</span>
+        </div>
+    </div>` : `
+    <div onclick="openEditNoteModal('${log.id}', '')"
+        style="text-align:right; font-size:11px; color:#ddd; cursor:pointer; margin-top:2px;">
+        <span class="material-symbols-rounded" style="font-size:14px;">edit</span>
+    </div>
+    `}
+    `;
+            container.appendChild(div);
+        });
+    };
+
+    /* --- EDIT NOTE LOGIC --- */
+    function openEditNoteModal(id, currentText) {
+        document.getElementById('en-id').value = id;
+        document.getElementById('en-text').value = currentText; // Decode? It's raw text.
+
+        const modal = document.getElementById('edit-note-modal');
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+
+        setTimeout(() => document.getElementById('en-text').focus(), 100);
+    }
+
+    function closeEditNoteModal() {
+        const modal = document.getElementById('edit-note-modal');
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+
+    function saveEditedNote() {
+        const id = document.getElementById('en-id').value;
+        const text = document.getElementById('en-text').value;
+
+        closeEditNoteModal();
+
+        // Optimistic Update (Optional, but let's just reload history for simplicity)
+        const historyContainer = document.getElementById('gd-history-list');
+        historyContainer.innerHTML = '<div class="spinner"></div>';
+
+        google.script.run.withSuccessHandler((res) => {
+            // Reload History
+            google.script.run.withSuccessHandler(window.renderGoalHistory).getGoalHistory(window.activeGoalDetailId);
+        }).updateHistoryNote(id, text);
+    }
+
+    /* --- EDIT VISION LOGIC --- */
+    function openEditVisionModal(id, currentText) {
+        document.getElementById('ev-id').value = id;
+        document.getElementById('ev-text').value = currentText;
+
+        const modal = document.getElementById('edit-vision-modal');
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+
+        setTimeout(() => document.getElementById('ev-text').focus(), 100);
+    }
+
+    function closeEditVisionModal() {
+        const modal = document.getElementById('edit-vision-modal');
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+
+    function saveEditedVision() {
+        const id = document.getElementById('ev-id').value;
+        const text = document.getElementById('ev-text').value;
+
+        closeEditVisionModal();
+
+        // Optimistic Update?
+        // Let's just reload the page/view since it's the main data
+        // Or update DOM directly for speed
+        document.getElementById('gd-vision-card').innerHTML = `<div class="spinner">Updating...</div>`;
+
+        google.script.run.withSuccessHandler((res) => {
+            // Re-fetch everything to ensure sync, or just re-open
+            // Ideally we re-fetch goals to update global 'loadedGoals'
+            google.script.run.withSuccessHandler((goals) => {
+                window.loadedGoals = goals;
+                // Restore Detail View
+                window.openGoalDetail(id);
+            }).getGoalsV2();
+        }).updateGoalVision(id, text);
+    }
+
+    /* --- EXPOSE TO GLOBAL (Deferred to Part 3) --- */
+    // Assignments moved to later parts to avoid ReferenceError
+
+
+    // --- NAVIGATION HELPERS (Global) ---
+    window.showTab = function (id) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        const view = document.getElementById('view-' + id);
+        if (view) view.classList.add('active');
+
+        document.querySelectorAll('.nav-item').forEach(n => {
+            n.classList.remove('active');
+            if (n.innerHTML.includes(id) || (id === 'tasks' && n.innerHTML.includes('done_all')) || (id === 'habits' &&
+                n.innerHTML.includes('water_drop'))) {
+                n.classList.add('active');
+            }
+        });
+    };
+
+    window.switchTab = function (id, el) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-' + id).classList.add('active');
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        if (el) el.classList.add('active');
+
+        if (id === 'goals' && window.renderGoalsTab) {
+            window.renderGoalsTab();
+        }
+        if (id === 'roadmap' && window.renderRoadmap) {
+            window.renderRoadmap();
+        }
+        if (id === 'projects' && window.renderProjects) {
+            window.renderProjects();
+        }
+    };
+
+    // --- STATE ---
+    let currentHabitDate = new Date().toLocaleDateString('en-CA');
+    let habitCalendarCache = {};
+    let currentDetailHabit = null; // Object
+    let currentDetailYear = 0;
+    let currentDetailMonth = 0;
+    let todayYear = 0; // RESTORED
+    let todayMonth = 0; // RESTORED
+
+    let activeGoalDetailId = null;
+    let activeGoalDetailData = null;
+    let habitDataCache = null; // { habits: [], sections: [] } for re-rendering
+    let loadedProjects = []; // New
+
+    // --- INIT ---
+    window.onload = function () {
+        console.log("App Started v2026-01-05-1305 FIXED_SSR_TAGS");
+        // Check for Debug Errors
+        let ssrError = null;
+        try {
+            const errTag = document.getElementById('ssr-data-error');
+            if (errTag) {
+                const val = errTag.textContent;
+                if (val && val !== 'null' && val !== '"null"') {
+                    ssrError = JSON.parse(val);
+                }
+            }
+        } catch (e) { console.error("Error parsing SSR error", e); }
+
+        if (ssrError) {
+            const errDiv = document.createElement('div');
+            errDiv.style.background = '#ffebee';
+            errDiv.style.color = '#c62828';
+            errDiv.style.padding = '10px';
+            errDiv.style.borderBottom = '1px solid #ef5350';
+            errDiv.innerText = ssrError;
+            document.body.prepend(errDiv);
+        }
+
+        // Force Migration Button Visibility
+        const btn = document.getElementById('migration-btn');
+        if (btn) document.body.prepend(btn);
+
+
+        // 1. Render Injected Data (SSR)
+        try {
+            const tasksTag = document.getElementById('ssr-data-tasks');
+            const rawTasks = tasksTag ? JSON.parse(tasksTag.textContent) : [];
+
+            const habitsTag = document.getElementById('ssr-data-habits');
+            const rawHabits = habitsTag ? JSON.parse(habitsTag.textContent) : null;
+
+            if (rawTasks) renderTasks(rawTasks);
+
+            initDateStrip();
+
+            if (rawHabits) {
+                renderHabits(rawHabits);
+            } else {
+                // Fallback
+                fetchHabits(new Date().toLocaleDateString('en-CA'));
+            }
+        } catch (e) {
+            console.error("SSR Parse Error", e);
+            fetchTasks();
+            fetchHabits(new Date().toLocaleDateString('en-CA'));
+        }
+
+        // Preload Projects
+        google.script.run.withSuccessHandler(p => { window.loadedProjects = p; }).getProjects();
+
+        setupModal();
+        showTab('tasks');
+    };
+
+    // Programmatic Tab Switch
+    function showTab(id) {
+        // Manual Switch without 'el' dependency if el not found
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        const view = document.getElementById('view-' + id);
+        if (view) view.classList.add('active');
+
+        document.querySelectorAll('.nav-item').forEach(n => {
+            n.classList.remove('active');
+            // Try to match
+            if (n.innerHTML.includes(id) || (id === 'tasks' && n.innerHTML.includes('done_all')) || (id === 'habits' &&
+                n.innerHTML.includes('water_drop'))) {
+                n.classList.add('active');
+            }
+        });
+
+        if (id === 'habits') {
+            // Refresh habits
+            // fetchHabits(new Date().toLocaleDateString('en-CA')); // Optional
+        }
+    }
+
+    function setupModal() {
+        // Close Modals on Overlay Click
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    overlay.classList.remove('open');
+                    overlay.style.display = 'none'; // Fallback
+                }
+            });
+        });
+
+        // Task Modal
+        const taskModal = document.getElementById('task-modal');
+        if (taskModal) {
+            taskModal.addEventListener('click', e => {
+                if (e.target === taskModal) closeTaskModal();
+            });
+        }
+
+        // Project Modal
+        const projectModal = document.getElementById('project-modal');
+        if (projectModal) {
+            projectModal.addEventListener('click', e => {
+                if (e.target === projectModal) closeProjectModal();
+            });
+        }
+    }
+
+    function switchTab(id, el) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-' + id).classList.add('active');
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        el.classList.add('active');
+
+        if (id === 'habits') {
+            // Maybe refresh habits to be sure
+        }
+        if (id === 'goals') {
+            renderGoalsTab();
+        }
+        if (id === 'projects' && window.renderProjects) {
+            renderProjects();
+        }
+        if (id === 'experience' && window.fetchExperiences) {
+            fetchExperiences();
+        }
+    }
+
+    // --- TASKS ---
+    function fetchTasks() {
+        // Still useful for manual refresh
+        google.script.run.withSuccessHandler(renderTasks).getTasks();
+    }
+
+    /* --- TASK LOGIC REFACTOR (Edit/Add) --- */
+
+    let tasksCache = []; // Global Cache
+
+    function renderTasks(tasks) {
+        console.log('Rendering Tasks:', tasks.length);
+        tasksCache = tasks; // Cache for editing
+        try {
+            // Clear
+            const lists = ['high', 'med', 'low', 'none', 'done'];
+            lists.forEach(k => {
+                const el = document.querySelector('#list-' + k + ' > div');
+                if (el) el.innerHTML = '';
+            });
+            let counts = { 3: 0, 2: 0, 1: 0, 0: 0, done: 0 };
+
+            tasks.forEach(t => {
+                const p = Number(t.importance) || 0;
+                const status = (t.status || '').trim();
+
+                if (status === '完了') {
+                    counts.done++;
+                    createTaskEl(t, 'list-done');
+                } else {
+                    counts[p]++;
+                    const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+                    createTaskEl(t, 'list-' + map[p]);
+                }
+            });
+
+            // Update counts
+            if (document.getElementById('count-high')) document.getElementById('count-high').innerText = counts[3];
+            if (document.getElementById('count-med')) document.getElementById('count-med').innerText = counts[2];
+            if (document.getElementById('count-low')) document.getElementById('count-low').innerText = counts[1];
+            if (document.getElementById('count-none')) document.getElementById('count-none').innerText = counts[0];
+            if (document.getElementById('count-done')) document.getElementById('count-done').innerText = counts.done;
+
+            const doneSec = document.getElementById('sec-done');
+            if (doneSec) doneSec.style.display = counts.done > 0 ? 'block' : 'none';
+
+            initTaskSortables(); // Init Drag & Drop
+
+        } catch (e) {
+            console.error('Error rendering tasks:', e);
+        }
+    }
+
+    // Updated Tap Handler
+    function handleTaskTap(e, taskObj) {
+        if (isHighlightMode) {
+            e.preventDefault();
+            e.stopPropagation();
+            const id = taskObj.dataset.id;
+            showHighlightConfirm(id);
+            return;
+        }
+
+        // Edit Mode
+        const id = taskObj.dataset.id;
+        const task = tasksCache.find(t => t.id === id);
+
+        console.log('Tap Task:', id, task); // Debug
+
+        if (task) {
+            openEditTaskModal(task);
+        } else {
+            console.warn('Task not found in cache:', id);
+            // Fallback: Try to fetch or just ignore?
+        }
+    }
+
+    function saveTask() {
+        const modal = document.getElementById('task-modal');
+        const mode = modal.dataset.mode || 'add';
+        const id = document.getElementById('t-id').value;
+        const name = document.getElementById('t-name').value;
+        const prio = document.getElementById('t-prio').value;
+
+        // Inputs
+        const durH = document.getElementById('t-duration-h').value || 0;
+        const durM = document.getElementById('t-duration-m').value || 0;
+        const date = document.getElementById('t-date').value;
+        const details = document.getElementById('t-details').value;
+
+        if (!name) return;
+
+        // Format Duration
+        let durStr = '';
+        if (durH > 0) durStr += durH + 'h ';
+        if (durM > 0 || durH > 0) durStr += durM + 'm';
+
+        // Construct Data
+        const taskData = {
+            id: id,
+            name: name,
+            importance: prio,
+            estTime: durStr.trim(),
+            dueDate: date,
+            description: details
+        };
+
+        console.log('Save Task | Mode:', mode, 'ID:', id, 'Data:', taskData);
+
+        if (mode === 'edit') {
+            if (!id) {
+                alert('エラー: 編集中のタスクIDが見つかりません。');
+                return;
+            }
+            closeTaskModal();
+
+            // Optimistic Update
+            const oldTaskIndex = tasksCache.findIndex(t => t.id === id);
+            if (oldTaskIndex >= 0) {
+                // Merge Data
+                const mergedTask = { ...tasksCache[oldTaskIndex], ...taskData };
+                tasksCache[oldTaskIndex] = mergedTask;
+
+                // Remove Old Element (To handle priority change which moves list)
+                const oldElWrapper = document.querySelector(`.task-wrapper[data-id="${id}"]`);
+                if (oldElWrapper) oldElWrapper.remove();
+
+                // Re-create Element in Correct List
+                // Priority logic from createTaskEl
+                const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+                // If status is done, it goes to done list (handled by createTaskEl checking status)
+                // BUT createTaskEl takes listId as arg.
+                // If status is '完了', we should pass 'list-done'.
+                let targetListId = 'list-' + map[mergedTask.importance];
+                if (mergedTask.status === '完了') targetListId = 'list-done';
+
+                createTaskEl(mergedTask, targetListId);
+
+                // Update Counts
+                updateTaskCounts();
+            }
+
+            // Update Backend
+            google.script.run.withSuccessHandler(() => {
+                // Optional: fetchTasks(); // Consistency check, maybe skip if confident
+                console.log('Backend Updated');
+            }).updateTaskDetails(taskData);
+
+        } else {
+            // Add
+            closeTaskModal();
+            const t = {
+                ...taskData,
+                status: '未完了',
+                row: 'temp-' + Date.now()
+            };
+            const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+            createTaskEl(t, 'list-' + map[prio]);
+            google.script.run.withSuccessHandler(fetchTasks).addTask(t);
+        }
+    }
+
+    function openAddTaskModal(p) {
+        const modal = document.getElementById('task-modal');
+        modal.dataset.mode = 'add';
+
+        // Explicitly Title
+        const titleEl = document.getElementById('modal-title-task');
+        if (titleEl) titleEl.innerText = 'タスク追加';
+
+        const btnEl = document.getElementById('btn-save-task');
+        if (btnEl) btnEl.innerText = '追加';
+
+        document.getElementById('t-id').value = '';
+
+        document.getElementById('t-prio').value = (p !== undefined) ? p : 1;
+
+        // Reset Fields
+        document.getElementById('t-name').value = '';
+        document.getElementById('t-duration-h').value = '';
+        document.getElementById('t-duration-m').value = '15';
+        document.getElementById('t-date').value = '';
+        document.getElementById('t-details').value = '';
+
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+
+        setTimeout(() => document.getElementById('t-name').focus(), 100);
+    }
+
+    function openEditTaskModal(task) {
+        const modal = document.getElementById('task-modal');
+        modal.dataset.mode = 'edit';
+
+        // Explicit title
+        const titleEl = document.getElementById('modal-title-task');
+        if (titleEl) titleEl.innerText = 'タスク編集';
+
+        const btnEl = document.getElementById('btn-save-task');
+        if (btnEl) btnEl.innerText = '保存';
+
+        console.log('Opening Edit Modal for:', task.id);
+        const idInput = document.getElementById('t-id');
+        idInput.value = task.id;
+
+        document.getElementById('t-name').value = task.name;
+        document.getElementById('t-prio').value = task.importance;
+        document.getElementById('t-date').value = task.dueDate ? task.dueDate.replace(/\//g, '-') : '';
+        document.getElementById('t-details').value = task.description || '';
+
+        let h = 0, m = 15;
+        if (task.estTime) {
+            const hMatch = task.estTime.match(/(\d+)h/);
+            const mMatch = task.estTime.match(/(\d+)m/);
+            if (hMatch) h = parseInt(hMatch[1]);
+            if (mMatch) m = parseInt(mMatch[1]);
+            else if (!hMatch && !mMatch && parseInt(task.estTime)) m = parseInt(task.estTime);
+        }
+        document.getElementById('t-duration-h').value = (h > 0) ? h : '';
+        document.getElementById('t-duration-m').value = m;
+
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+    }
+
+    // Wrapper for legacy calls if any
+    function openTaskModal(p) {
+        openAddTaskModal(p);
+    }
+
+    function closeTaskModal() {
+        const modal = document.getElementById('task-modal');
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+
+    let taskSortables = [];
+
+    function initTaskSortables() {
+        // Clean old
+        taskSortables.forEach(s => s.destroy());
+        taskSortables = [];
+
+        const lists = ['high', 'med', 'low', 'none'];
+        lists.forEach(k => {
+            const el = document.querySelector('#list-' + k + ' > div');
+            if (!el) return;
+
+            const s = Sortable.create(el, {
+                group: 'tasks',
+                delay: 200, // Long press 200ms
+                delayOnTouchOnly: true,
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                dragClass: 'sortable-drag',
+                onEnd: function (evt) {
+                    const item = evt.item;
+                    const toList = evt.to.closest('.list-content').id; // list-high
+                    const fromList = evt.from.closest('.list-content').id;
+
+                    if (toList === fromList) return; // Same list
+
+                    const map = { 'list-high': 3, 'list-med': 2, 'list-low': 1, 'list-none': 0 };
+                    const newPrio = map[toList] !== undefined ? map[toList] : 0;
+
+                    // Update Data
+                    item.dataset.prio = newPrio;
+
+                    // Update Counts Logic
+                    updateTaskCounts();
+
+                    // Backend Update
+                    const row = item.dataset.row;
+                    google.script.run.updateTaskPriority(row, newPrio);
+                }
+            });
+            taskSortables.push(s);
+        });
+    }
+
+    function updateTaskCounts() {
+        const counts = { 3: 0, 2: 0, 1: 0, 0: 0 };
+        // Valid lists only
+        ['list-high', 'list-med', 'list-low', 'list-none'].forEach(id => {
+            const container = document.querySelector('#' + id + ' > div');
+            const count = container ? container.children.length : 0;
+            // Map id to prio
+            const pMap = { 'list-high': 3, 'list-med': 2, 'list-low': 1, 'list-none': 0 };
+            counts[pMap[id]] = count;
+        });
+
+        // Done count is static unless moved
+        const doneCount = document.querySelector('#list-done > div').children.length;
+
+        if (document.getElementById('count-high')) document.getElementById('count-high').innerText = counts[3];
+        if (document.getElementById('count-med')) document.getElementById('count-med').innerText = counts[2];
+        if (document.getElementById('count-low')) document.getElementById('count-low').innerText = counts[1];
+        if (document.getElementById('count-none')) document.getElementById('count-none').innerText = counts[0];
+        if (document.getElementById('count-done')) document.getElementById('count-done').innerText = doneCount;
+    }
+
+    /* --- HIGHLIGHT LOGIC --- */
+    let isHighlightMode = false;
+
+    function toggleHighlightMode() {
+        isHighlightMode = !isHighlightMode;
+        const btn = document.getElementById('highlight-mode-btn');
+        if (btn) {
+            btn.style.opacity = isHighlightMode ? '1' : '0.4';
+            btn.style.transform = isHighlightMode ? 'scale(1.2)' : 'scale(1.0)';
+        }
+        document.body.classList.toggle('highlight-mode-active', isHighlightMode);
+    }
+
+    function handleTaskTap(e, taskObj) {
+        if (isHighlightMode) {
+            e.preventDefault();
+            e.stopPropagation();
+            const id = taskObj.dataset.id;
+            showHighlightConfirm(id);
+            return;
+        }
+
+        // Edit Mode
+        const id = taskObj.dataset.id;
+        const task = tasksCache.find(t => t.id === id);
+        if (task) {
+            openEditTaskModal(task);
+        }
+    }
+
+    function showHighlightConfirm(id) {
+        if (confirm('このタスクを「今日のハイライト」に設定しますか？')) {
+            doSetHighlight(id);
+            toggleHighlightMode();
+        }
+    }
+
+    function doSetHighlight(id) {
+        // Optimistic UI updates
+        document.querySelectorAll('.highlight-diamond').forEach(el => el.remove());
+
+        const item = document.querySelector(`.task-item[data-id="${id}"] .task-content`);
+        if (item) {
+            const d = document.createElement('div');
+            d.className = 'highlight-diamond';
+            d.innerText = '💎';
+            item.prepend(d); // Add to UI
+
+            google.script.run.withSuccessHandler(() => {
+            }).setDailyHighlight(id);
+        }
+    }
+
+    /* --- TASK CREATION --- */
+    console.log('Part 1_1 End');
+</script>

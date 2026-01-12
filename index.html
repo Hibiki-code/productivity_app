@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 
 <head>
@@ -252,7 +253,7 @@
     }
 
     .habit-item.done {
-      opacity: 0.7;
+      /* opacity: 0.7; Removed per user request */
     }
 
     .habit-item.done .check-circle {
@@ -592,10 +593,16 @@
 
     /* Calendar Status Colors */
     .cal-cell.status-done {
-      background: var(--warm-orange);
-      color: white;
-      border: 2px solid var(--warm-orange);
-      /* Match size */
+      background: var(--warm-orange) !important;
+      color: white !important;
+      border: 2px solid var(--warm-orange) !important;
+    }
+
+    .cal-cell.status-advanced {
+      background: #F44336 !important;
+      /* Solid Red */
+      color: white !important;
+      border: 2px solid #F44336 !important;
     }
 
     .cal-cell.status-failed {
@@ -603,9 +610,11 @@
     }
 
     /* Completed Habit Styling */
-    #list-habit-checked .task-item {
-      opacity: 0.5;
-      filter: grayscale(100%);
+    /* Completed Habit Styling - REMOVED OPACITY/FILTER */
+    #list-habit-checked .task-item,
+    #list-habit-checked .habit-item {
+      opacity: 1 !important;
+      filter: none !important;
       transition: opacity 0.3s, filter 0.3s;
     }
 
@@ -615,11 +624,6 @@
       transition: opacity 0.3s, filter 0.3s;
     }
 
-    background: transparent;
-    color: #555;
-    border: 3px solid #D0D0D0;
-    /* Visible Gray Ring */
-    }
 
     /* Gray for missed */
     .cal-cell.status-none {}
@@ -679,11 +683,38 @@
 
     .modal-box {
       background: white;
-      width: 85%;
-      max-width: 360px;
+      width: 90%;
+      max-width: 500px;
       border-radius: 20px;
-      padding: 24px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      padding: 25px 20px;
+      box-sizing: border-box;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      max-height: 90vh;
+      animation: modalUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .modal-box.full-screen-sheet {
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 0;
+      animation: modalUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes modalUp {
+      from {
+        transform: translateY(100px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
     }
 
     .btn-save {
@@ -1140,6 +1171,20 @@
       </div>
     </div>
 
+    <!-- EXPERIENCE VIEW -->
+    <div id="view-experience" class="view">
+      <div class="glass-header">
+        Experience
+        <div style="font-size:12px; font-weight:normal; opacity:0.7; margin-top:5px;">One-Day Experience</div>
+      </div>
+
+      <div class="container" style="padding-bottom:100px;">
+        <div id="experience-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 5px;">
+          <!-- Dynamic Content -->
+          <div style="grid-column: 1 / -1; text-align:center; padding:40px; color:#999;">Loading...</div>
+        </div>
+      </div>
+    </div>
   </div> <!-- Main -->
 
   <!-- NAV BAR -->
@@ -1171,6 +1216,12 @@
     <div class="nav-item" onclick="switchTab('habits', this)">
       <div class="nav-icon">⭕</div>
       Habits
+    </div>
+
+    <!-- Experience -->
+    <div class="nav-item" onclick="switchTab('experience', this); if(window.fetchExperiences) fetchExperiences();">
+      <div class="nav-icon"><span class="material-symbols-rounded">local_activity</span></div>
+      Experience
     </div>
   </div>
 
@@ -1437,7 +1488,11 @@
   <script id="ssr-data-habits" type="application/json"><?!= initialHabitsJson ?></script>
   <script id="ssr-data-error" type="application/json"><?!= ssrError ?></script>
 
-  <?!= include('js'); ?>
+  <?!= include('js_part1_1'); ?>
+  <?!= include('js_part1_2'); ?>
+  <?!= include('js_part2'); ?>
+  <?!= include('js_part3_1'); ?>
+  <?!= include('js_part3_2'); ?>
   <?!= include('icons'); ?>
   <?!= include('emojis'); ?>
 
@@ -1991,13 +2046,115 @@
       <div style="display:flex; gap:10px; margin-bottom:20px;">
         <button class="btn-save" style="flex:1; background:#3498db;" onclick="openProgressFromDetail()">📊
           進捗を記録</button>
-        <!-- Future: Edit Goal Button -->
       </div>
 
       <h4 style="margin:0 0 10px 0; color:#34495e; font-size:14px;">History</h4>
       <div id="gdm-history-list"
         style="max-height:200px; overflow-y:auto; background:#f9f9f9; border-radius:8px; padding:10px;">
         <div style="text-align:center; color:#ccc; font-size:12px;">No logs yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPERIENCE DETAIL MODAL (Full Screen, Editable) -->
+  <div class="modal-overlay" id="experience-detail-modal" style="display:none; align-items:flex-end;">
+    <div class="modal-box full-screen-sheet">
+
+      <!-- Toolbar -->
+      <div
+        style="display:flex; justify-content:space-between; align-items:center; padding:15px; border-bottom:1px solid #eee;">
+        <button class="btn-icon" onclick="closeExperienceDetail()"><span
+            class="material-symbols-rounded">arrow_back</span></button>
+        <div style="font-size:12px; color:#aaa;" id="edm-save-status"></div>
+      </div>
+
+      <div class="scroll-content" style="padding:20px; overflow-y:auto; height:calc(100vh - 60px);">
+
+        <!-- Image Cover -->
+        <div id="edm-img-container"
+          style="width:100%; height:200px; background:#eee; background-size:cover; background-position:center; border-radius:12px; margin-bottom:20px; position:relative;">
+          <button onclick="document.getElementById('edm-image-input').style.display='block'; this.style.display='none';"
+            style="position:absolute; bottom:10px; right:10px; background:rgba(0,0,0,0.5); color:white; border:none; border-radius:4px; padding:5px 10px; font-size:12px; cursor:pointer;">Change
+            Image</button>
+        </div>
+        <input type="text" id="edm-image-input" placeholder="Image URL..." onblur="autoSaveExperience()"
+          style="display:none; width:100%; margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:8px;">
+
+        <!-- ID Hidden -->
+        <input type="hidden" id="edm-id">
+
+        <!-- Title -->
+        <div class="form-group">
+          <label style="font-size:12px; color:#888; margin-bottom:4px; display:block;">Title</label>
+          <input type="text" id="edm-title" placeholder="Experience Title" onblur="autoSaveExperience()"
+            style="width:100%; font-size:20px; font-weight:800; border:none; border-bottom:1px solid #eee; padding:5px 0; background:transparent;">
+        </div>
+
+        <!-- Status -->
+        <div class="form-group" style="margin-top:20px;">
+          <label style="font-size:12px; color:#888; margin-bottom:4px; display:block;">Status</label>
+          <select id="edm-status" onchange="autoSaveExperience()"
+            style="width:100%; padding:10px; border:1px solid #eee; border-radius:8px; background:white;">
+            <option value="Draft">Draft</option>
+            <option value="Scheduled">Scheduled</option>
+            <option value="Done">Done</option>
+          </select>
+        </div>
+
+        <!-- Meta Grid -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-top:20px;">
+          <div class="form-group">
+            <label style="font-size:12px; color:#888; margin-bottom:4px; display:block;">Budget (¥)</label>
+            <div style="display:flex; align-items:center; border-bottom:1px solid #eee;">
+              <span class="material-symbols-rounded"
+                style="color:#aaa; font-size:18px; margin-right:5px;">payments</span>
+              <input type="number" id="edm-budget" placeholder="0" onblur="autoSaveExperience()"
+                style="width:100%; padding:8px 0; border:none; background:transparent;">
+            </div>
+          </div>
+          <div class="form-group">
+            <label style="font-size:12px; color:#888; margin-bottom:4px; display:block;">Duration</label>
+            <div style="display:flex; align-items:center; border-bottom:1px solid #eee;">
+              <span class="material-symbols-rounded"
+                style="color:#aaa; font-size:18px; margin-right:5px;">schedule</span>
+              <input type="text" id="edm-duration" placeholder="e.g. 3h" onblur="autoSaveExperience()"
+                style="width:100%; padding:8px 0; border:none; background:transparent;">
+            </div>
+          </div>
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label style="font-size:12px; color:#888; margin-bottom:4px; display:block;">Location</label>
+            <div style="display:flex; align-items:center; border-bottom:1px solid #eee;">
+              <span class="material-symbols-rounded"
+                style="color:#aaa; font-size:18px; margin-right:5px;">location_on</span>
+              <!-- Location Input: accepts text or URL -->
+              <input type="text" id="edm-location" placeholder="Place or Maps URL"
+                onblur="handleLocationInput(this); autoSaveExperience()"
+                style="width:100%; padding:8px 0; border:none; background:transparent;">
+              <!-- Hidden Map URL storage (repurposing the url field for Map URL if valid) -->
+              <input type="hidden" id="edm-map-url">
+              <button id="edm-map-btn" onclick="openMap()"
+                style="background:none; border:none; color:#3498db; cursor:pointer;" title="Open Map">
+                <span class="material-symbols-rounded">map</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div class="form-group" style="margin-top:20px; padding-bottom:50px;">
+          <label style="font-size:12px; color:#888; margin-bottom:4px; display:block;">Description / Notes</label>
+          <!-- Floating Link Button if URL detected -->
+          <a id="edm-desc-link-btn" href="#" target="_blank"
+            style="display:none; align-items:center; gap:5px; font-size:13px; color:#3498db; text-decoration:none; margin-bottom:5px;">
+            <span class="material-symbols-rounded" style="font-size:16px;">link</span>
+            <span id="edm-desc-link-text"
+              style="max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Open Link</span>
+          </a>
+          <textarea id="edm-desc" placeholder="Details... (Paste URLs here)" oninput="detectDescriptionLink()"
+            onblur="autoSaveExperience()"
+            style="width:100%; height:150px; padding:15px; border:1px solid #eee; border-radius:12px; resize:none; font-family:inherit; line-height:1.5;"></textarea>
+        </div>
+
       </div>
     </div>
   </div>

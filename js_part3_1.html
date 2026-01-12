@@ -1,0 +1,302 @@
+<script>
+    console.log('Part 3_1 Start');
+
+    /* --- GOAL DETAIL LOGIC (Moved to Top) --- */
+
+    /* --- PROGRESS LOGIC --- */
+    let currentProgressGoalId = null;
+    let currentProgressBaseValue = 0; // Store the "previous" value to add increment to
+
+    function openProgressModal(id, current, title) {
+        currentProgressGoalId = id;
+        currentProgressBaseValue = Number(current) || 0;
+
+        document.getElementById('pm-title').innerText = '進捗を記録';
+        document.getElementById('pm-subtitle').innerText = title;
+        document.getElementById('pm-notes').value = '';
+
+        // Reset Toggle to Default (Snapshot)
+        const toggle = document.getElementById('pm-mode-toggle');
+        if (toggle) {
+            toggle.checked = false;
+            toggleProgressMode(); // UI Update
+        }
+
+        // Default Value: Current (Snapshot Mode)
+        document.getElementById('pm-value').value = currentProgressBaseValue;
+
+        const modal = document.getElementById('progress-modal');
+        modal.classList.add('open');
+        modal.style.display = 'flex'; // FORCE override any inline 'none'
+
+        setTimeout(() => {
+            const valInput = document.getElementById('pm-value');
+            if (valInput) {
+                valInput.focus();
+                valInput.select();
+            }
+        }, 100);
+    }
+
+    function toggleProgressMode() {
+        const isIncrement = document.getElementById('pm-mode-toggle').checked;
+        const label = document.getElementById('pm-label-value');
+        const input = document.getElementById('pm-value');
+
+        if (isIncrement) {
+            label.innerText = '今回の増分 (＋)';
+            label.style.color = '#2196F3';
+            input.placeholder = '例: 10';
+            input.value = ''; // Clear for fresh increment input
+        } else {
+            label.innerText = '現在の到達値 (Snapshot)';
+            label.style.color = '#333';
+            input.placeholder = '例: 150';
+            input.value = currentProgressBaseValue; // Restore current value
+        }
+    }
+    window.toggleProgressMode = toggleProgressMode;
+
+    function openProgressFromDetailPage() {
+        if (!window.activeGoalDetailId || !window.activeGoalDetailData) {
+            console.error('No active goal detail data found');
+            return;
+        }
+        const g = window.activeGoalDetailData;
+        const current = Number(g.metricCurrent) || 0;
+        openProgressModal(g.id, current, g.title);
+    }
+
+    function closeProgressModal() {
+        const modal = document.getElementById('progress-modal');
+        modal.classList.remove('open');
+        modal.style.display = 'none'; // FORCE hide
+        currentProgressGoalId = null;
+    }
+
+    function saveGoalProgress() {
+        const valInput = document.getElementById('pm-value').value;
+        const notes = document.getElementById('pm-notes').value;
+        const isIncrement = document.getElementById('pm-mode-toggle').checked;
+
+        if (valInput === '') { alert('数値を入力してください'); return; }
+
+        let finalValue = Number(valInput);
+
+        // Increment Logic
+        if (isIncrement) {
+            finalValue = currentProgressBaseValue + finalValue;
+        }
+
+        const idToLog = currentProgressGoalId; // Capture ID before nulling
+
+        // Close immediately for perceived speed
+        closeProgressModal();
+
+        const dateStr = new Date().toLocaleDateString('en-CA');
+
+        google.script.run.withSuccessHandler((res) => {
+            if (res !== 'Logged') {
+                alert('エラー: ' + res);
+            }
+
+            // 1. Refresh Roadmap Data (Silent)
+            google.script.run.withSuccessHandler((goals) => {
+                window.loadedGoals = goals;
+                if (window.renderRoadmap) window.renderRoadmap();
+                // 2. If Detail Page is open for this goal, refresh it
+                if (window.activeGoalDetailId === idToLog) {
+                    // Update Data Object
+                    const updatedGoal = goals.find(g => g.id === idToLog);
+                    if (updatedGoal) {
+                        window.activeGoalDetailData = updatedGoal;
+                        // Determine target calculation
+                        const cur = Number(updatedGoal.metricCurrent) || 0;
+                        const tgt = Number(updatedGoal.metricTarget) || 0;
+                        const pct = (tgt > 0) ? Math.min(100, Math.max(0, (cur / tgt) * 100)) : 0;
+
+                        // Direct DOM Update for Snapiness
+                        document.getElementById('gd-current-val').innerText = cur + (updatedGoal.metricLabel || '');
+                        document.getElementById('gd-progress-fill').style.width = pct + '%';
+
+                        // Reload History
+                        google.script.run.withSuccessHandler(window.renderGoalHistory).getGoalHistory(idToLog);
+                    }
+                }
+            }).getGoalsV2();
+
+        }).logGoalProgress(idToLog, finalValue, notes, dateStr);
+    }
+
+    /* --- EXPOSE TO GLOBAL (Fix for Scope Issues) --- */
+    window.openGoalModal = openGoalModal;
+    window.closeGoalModal = closeGoalModal;
+    window.saveGoal = saveGoal;
+    window.openMeasurementModal = openMeasurementModal;
+    window.closeMeasurementModal = closeMeasurementModal;
+    window.openProgressModal = openProgressModal;
+    window.closeProgressModal = closeProgressModal;
+    window.saveGoalProgress = saveGoalProgress;
+    window.renderGoalsTab = renderGoalsTab;
+    window.renderRoadmap = renderRoadmap;
+
+    console.log("Functions exposed to window (Part 3_1).");
+
+
+    function openJournalModal(name, item) {
+        const modal = document.getElementById('journal-modal');
+        if (!modal) return;
+        pendingJournalItem = item;
+        pendingJournalName = name;
+
+        // Reset Inputs
+        const input = document.getElementById('journal-input');
+        if (input) input.value = '';
+
+        // Dynamic Text Logic
+        const sub = document.getElementById('journal-subtitle');
+        const tit = document.getElementById('journal-title');
+
+        if (tit) tit.innerText = name;
+
+        if (sub && input) {
+            if (name.includes('感謝日記')) {
+                sub.innerText =
+                    'どんなに些細なこと、即物的（物理的）なことでも構いません。「今、ありがたいと思えること」あるいは「問題なく機能していること」を3つ、書き出してください。';
+                input.placeholder = '例：椅子が座りやすい、指が問題なく動く、雨風をしのげる部屋がある…など';
+            } else if (name.includes('夢日記')) {
+                sub.innerText = '覚えている範囲で、夢のあらすじやキーワードを記録しましょう。';
+                input.placeholder = '例：空を飛ぶ夢を見た、懐かしい友人に会った...';
+            } else {
+                sub.innerText = '今日の記録を残しましょう';
+                input.placeholder = '一言メモ...';
+            }
+        }
+
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+
+        // Auto-focus
+        if (input) setTimeout(() => input.focus(), 100);
+    }
+
+    function closeJournalModal(saved) {
+        const modal = document.getElementById('journal-modal');
+        if (modal) {
+            modal.classList.remove('open');
+            modal.style.display = 'none';
+        }
+        if (!saved) {
+            pendingJournalItem = null;
+            pendingJournalName = '';
+        }
+    }
+
+    function submitJournal() {
+        if (!pendingJournalItem) return;
+        const text = document.getElementById('journal-input').value;
+        const name = pendingJournalName;
+        const item = pendingJournalItem;
+
+        closeJournalModal(true);
+        // Force update to Done (Level 1)
+        processHabitToggle(item, name, 1, false, true);
+
+        google.script.run.logHabitText(currentHabitDate, name, text);
+    }
+
+    /* --- SLEEP MODAL LOGIC (NUCLEAR FIX 3: CLOCK UI) --- */
+
+    function populateSleepTimes() {
+        // Logic removed: Using native <input type="time">
+    }
+
+    function openSleepModal(name, item) {
+        pendingJournalItem = item;
+        pendingJournalName = name;
+
+        // Default or Persisted values
+        // If empty, set defaults.
+        const s = document.getElementById('slp-time-start');
+        const e = document.getElementById('slp-time-end');
+        if (s && !s.value) s.value = '23:00';
+        if (e && !e.value) e.value = '07:00';
+
+        const modal = document.getElementById('sleep-modal');
+        if (modal) {
+            modal.classList.add('open');
+            modal.style.display = 'flex';
+        }
+    }
+
+    function closeSleepModal() {
+        const modal = document.getElementById('sleep-modal');
+        if (modal) {
+            modal.classList.remove('open');
+            modal.style.display = 'none';
+        }
+    }
+
+    function commitSleepLog() {
+        // Read Native Inputs
+        const bedtime = document.getElementById('slp-time-start').value;
+        const wakeup = document.getElementById('slp-time-end').value;
+
+        // Validation
+        if (!bedtime || !wakeup) {
+            alert('時間を入力してください');
+            return;
+        }
+
+        const item = pendingJournalItem;
+        const name = pendingJournalName;
+
+        closeSleepModal();
+        processHabitToggle(item, name, 1, false, true);
+
+        google.script.run.logSleep(currentHabitDate, bedtime, wakeup);
+    }
+
+    function updateHabitSectionCounts() {
+        const sections = document.querySelectorAll('.habit-list-container');
+        let totalCheked = 0;
+
+        sections.forEach(sec => {
+            const id = sec.id.replace('list-habit-', '');
+            const countEl = document.getElementById('count-' + id);
+            const children = sec.querySelectorAll('.habit-item').length;
+
+            // Universal Hiding Logic: If section has no habits, hide its wrapper.
+            // ID pattern: list-habit-{id} -> sec-wrapper-{id}
+            const wrapper = document.getElementById('sec-wrapper-' + id);
+            if (wrapper) {
+                // block for Checked, what about others? Usually block is fine.
+                wrapper.style.display = (children > 0) ? 'block' : 'none';
+            }
+
+            if (id === 'checked') {
+                totalCheked = children;
+            }
+
+            if (countEl) {
+                countEl.innerText = (children > 0) ? `(${children})` : '';
+            }
+        });
+
+        // Also update the header count for checked if separate
+        const checkedCountEl = document.getElementById('count-habit-checked');
+        if (checkedCountEl) checkedCountEl.innerText = (totalCheked > 0) ? `(${totalCheked})` : '';
+    }
+
+    // Explicit global expose
+    window.submitJournal = submitJournal;
+    window.processHabitToggle = processHabitToggle;
+    window.openSleepModal = openSleepModal;
+    window.closeSleepModal = closeSleepModal;
+    window.saveSleep = commitSleepLog;
+    window.commitSleepLog = commitSleepLog;
+    window.saveSleepLog = commitSleepLog;
+    window.selectGoalStatus = selectGoalStatus; // Expose new function
+
+    console.log('Part 3_1 End');
+</script>

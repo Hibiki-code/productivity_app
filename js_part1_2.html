@@ -1,0 +1,837 @@
+<script>
+    console.log('Part 1_2 Start');
+    function createTaskEl(t, listId) {
+        const list = document.getElementById(listId);
+        if (!list) return;
+
+        const doneClass = t.status === '完了' ? 'done' : '';
+        const checkMark = t.status === '完了' ? '✓' : '';
+        const highlightIcon = t.isHighlight ? `<div class="highlight-diamond" style="font-size:18px; margin-right:5px;">💎
+    </div>` : '';
+        const isCompleted = (t.status === '完了');
+
+        const div = document.createElement('div');
+        div.className = 'task-wrapper';
+        div.dataset.id = t.id;
+
+        div.innerHTML = `
+    <div class="task-actions right"
+        style="position:absolute; top:0; left:0; right:0; width:100%; height:100%; display:flex; justify-content:flex-end; align-items:center; z-index:1; visibility: hidden; opacity: 1; pointer-events: none;">
+        <div class="action-btn archive-btn" onclick="doArchiveTask('${t.id}')"
+            style="pointer-events: auto; background:#5E6CD8 !important; width:50px !important; min-width:50px !important; max-width:50px !important; flex: 0 0 50px !important; height:100%; display:flex; align-items:center; justify-content:center; color:white; border-radius:0; margin:0; padding:0;">
+            <span class="material-symbols-rounded" style="font-size: 24px;">archive</span>
+        </div>
+        <div class="action-btn delete-btn"
+            style="pointer-events: auto; background:#FF5252 !important; width:50px !important; min-width:50px !important; max-width:50px !important; flex: 0 0 50px !important; height:100%; display:flex; align-items:center; justify-content:center; color:white; border-radius:0; margin:0; padding:0;"
+            onclick="doDeleteTask('${t.id}')">
+            <span class="material-symbols-rounded" style="font-size: 24px;">delete</span>
+        </div>
+    </div>
+
+    <div class="task-item ${doneClass}" data-id="${t.id}" data-prio="${t.importance}"
+        onclick="handleTaskTap(event, this)">
+        <div class="task-check" ontouchstart="toggleTask(event, this); event.preventDefault();"
+            onclick="if(!event.defaultPrevented) toggleTask(event, this);">
+            ${checkMark}
+        </div>
+
+        <div class="task-content">
+            <div class="test-tag"></div>
+            ${highlightIcon}
+            <div class="task-name">${t.name}</div>
+            <div class="task-meta">
+                ${t.dueDate ? `<span class="due-date">📅 ${t.dueDate.slice(5)}</span>` : ''}
+                ${t.estTime ? `<span class="est-time">⏱ ${t.estTime}</span>` : ''}
+            </div>
+        </div>
+    </div>
+    `;
+
+        const item = div.querySelector('.task-item');
+        addSwipeLogic(item);
+
+        div.style.opacity = '0';
+        div.style.transform = 'translateY(10px)';
+        if (isCompleted) {
+            list.querySelector('div').prepend(div);
+        } else {
+            list.querySelector('div').appendChild(div);
+        }
+
+        requestAnimationFrame(() => {
+            div.style.transition = 'all 0.3s ease';
+            div.style.opacity = '1';
+            div.style.transform = 'translateY(0)';
+
+            // Clear transform after animation to avoid stacking context issues
+            setTimeout(() => {
+                div.style.transform = '';
+            }, 350);
+        });
+    }
+
+    // --- SWIPE LOGIC ---
+    let openSwipes = []; // Track open elements
+
+    function doUnarchiveTask(id) {
+        if (!confirm('タスクをリストに戻しますか？')) return;
+        removeEl(id);
+        google.script.run.unarchiveTask(id);
+    }
+
+    function addSwipeLogic(el) {
+        let startX = 0;
+        let currentTranslate = 0;
+        let isDragging = false;
+        const actionsEl = el.parentElement.querySelector('.task-actions');
+
+        el.addEventListener('touchstart', e => {
+            startX = e.touches[0].clientX;
+            el.style.transition = 'none';
+            closeAllSwipes(el); // Standard behavior
+        }, { passive: true });
+
+        el.addEventListener('touchmove', e => {
+            const currentX = e.touches[0].clientX;
+            const diff = currentX - startX;
+
+            // Dead Zone & Direction Lock (Only allow left swipe)
+            if (diff > 0 && !el.classList.contains('swiped-open')) return;
+            // Show actions when swiping starts
+            if (Math.abs(diff) < 10) return;
+
+            if (actionsEl && diff < 0) {
+                actionsEl.style.visibility = 'visible';
+            }
+
+            // Simple Translation (Limit to negative or zero) 
+            const trans = Math.min(0, diff);
+            el.style.transform = `translateX(${trans}px)`;
+            currentTranslate = trans;
+            isDragging = true;
+        }, { passive: true });
+
+        el.addEventListener('touchend', e => {
+            el.style.transition = 'transform 0.2s ease-out';
+            isDragging = false;
+
+            // Snap Logic - Right Side Only (Threshold 50px for 50px buttons)
+            if (currentTranslate < -50) {
+                // Open Right (reveals buttons) 
+                el.style.transform = 'translateX(-100px)'; // 2 * 50px = 100px
+                el.classList.add('swiped-open');
+                if (actionsEl) actionsEl.style.visibility = 'visible';
+            } else {
+                closeSwipe(el);
+            }
+            currentTranslate = 0;
+        });
+    }
+
+    function closeSwipe(el) {
+        el.style.transform = `translateX(0)`;
+        el.classList.remove('swiped-open');
+
+        // Hide actions after animation to fix transparency leak 
+        const actionsEl = el.parentElement.querySelector('.task-actions');
+        if (actionsEl) {
+            setTimeout(() => {
+                actionsEl.style.visibility = 'hidden';
+            }, 250); // Match transition length
+        }
+    }
+
+    function closeAllSwipes(exceptEl) {
+        document.querySelectorAll('.task-item.swiped-open').forEach(el => {
+            if (el !== exceptEl) closeSwipe(el);
+        });
+    }
+
+    // Tap Outside Listener
+    document.addEventListener('touchstart', (e) => {
+        // If target is NOT a task-item or child of swiped-open, close all
+        if (!e.target.closest('.task-item.swiped-open') && !e.target.closest('.action-btn')) {
+            closeAllSwipes(null);
+        }
+    });
+
+    function doArchiveTask(id) {
+        if (!confirm('このタスクをアーカイブしますか？')) return;
+        removeEl(id);
+        google.script.run.archiveTask(id);
+    }
+
+    function doDeleteTask(id) {
+        if (!confirm('このタスクを完全に削除しますか？(復元できません)')) return;
+        removeEl(id);
+        google.script.run.deleteTaskHard(id); // Hard Delete
+    }
+
+    function removeEl(id) {
+        const wrapper = document.querySelector(`.task-wrapper[data-id="${id}"]`);
+        if (wrapper) {
+            wrapper.style.height = wrapper.offsetHeight + 'px';
+            wrapper.style.transition = 'height 0.3s, opacity 0.3s';
+            setTimeout(() => {
+                wrapper.style.height = '0';
+                wrapper.style.opacity = '0';
+                setTimeout(() => wrapper.remove(), 300);
+            }, 10);
+        }
+    }
+
+    // Legacy mapping (if used elsewhere)
+    function deleteTask(id) { doDeleteTask(id); }
+    function editTask(id) { alert('Edit disabled'); } // cleanup later
+
+    function toggleSection(id) {
+        const list = document.getElementById('list-' + id);
+        if (!list) return;
+
+        // Logic: Toggle 'collapsed' class on list ONLY
+        list.classList.toggle('collapsed');
+    }
+
+
+    function toggleDetails(header) {
+        const item = header.closest('.task-item');
+        const details = item.querySelector('.task-details');
+        const icon = item.querySelector('.task-icon');
+
+        if (details.style.display === 'none') {
+            details.style.display = 'block';
+            icon.innerText = '∧';
+            icon.style.color = '#333';
+        } else {
+            details.style.display = 'none';
+            icon.innerText = '⋁';
+            icon.style.color = '#CCC';
+        }
+    }
+
+    function toggleTask(e, checkEl) {
+        e.stopPropagation();
+
+        const item = checkEl.closest('.task-item');
+        if (!item) return;
+
+        const wrapper = item.closest('.task-wrapper') || item;
+        const id = item.dataset.id;
+        // Determine new status (if currently done, make undone)
+        const isDoneCurrently = item.classList.contains('done');
+        const isDoneNew = !isDoneCurrently;
+
+        // 1. Immediate Visual Update (Checkmark only)
+        if (isDoneNew) {
+            checkEl.innerText = '✓';
+            item.classList.add('done'); // Style update immediately
+        } else {
+            checkEl.innerText = '';
+            item.classList.remove('done');
+        }
+
+        // Add Leave Animation
+        wrapper.classList.add('task-anim-leave');
+
+        // Wait for Animation
+        setTimeout(() => {
+            wrapper.classList.remove('task-anim-leave');
+
+            // 2. List Move Logic
+            const p = item.dataset.prio || 0;
+            const map = { 3: 'high', 2: 'med', 1: 'low', 0: 'none' };
+            const key = map[p];
+
+            // Update Counts
+            const countEl = document.getElementById('count-' + key);
+            const doneCountEl = document.getElementById('count-done');
+            let val = parseInt(countEl.innerText.match(/\d+/)[0]) || 0;
+            let doneVal = parseInt(doneCountEl.innerText.match(/\d+/)[0]) || 0;
+
+            if (isDoneNew) {
+                // Move to Done Top
+                const doneContainer = document.querySelector('#list-done > div');
+                if (doneContainer) {
+                    doneContainer.prepend(wrapper);
+                    countEl.innerText = Math.max(0, val - 1);
+                    doneCountEl.innerText = doneVal + 1;
+                    const secDone = document.getElementById('sec-done');
+                    if (secDone) secDone.style.display = 'block';
+                }
+            } else {
+                // Move back to List
+                const sourceContainer = document.querySelector('#list-' + key + ' > div');
+                if (sourceContainer) {
+                    sourceContainer.appendChild(wrapper);
+                    countEl.innerText = val + 1;
+                    doneCountEl.innerText = Math.max(0, doneVal - 1);
+                }
+            }
+
+            // Animate Enter
+            wrapper.classList.add('task-anim-enter');
+            setTimeout(() => wrapper.classList.remove('task-anim-enter'), 400);
+
+            // 3. Server Update
+            google.script.run.withSuccessHandler((res) => {
+                console.log('Task toggled', res);
+            }).updateTaskStatus(id, isDoneNew);
+
+        }, 350);
+    }
+
+    // START LEGACY CLEANUP (Removed duplicate saveTask/openTaskModal/closeTaskModal)
+    // The correct versions are defined above (approx line 439).
+    // END LEGACY CLEANUP
+
+    function toggleArchiveView() {
+        const v = document.getElementById('view-archive');
+        const t = document.getElementById('view-tasks');
+
+        if (document.getElementById('view-archive').classList.contains('active')) {
+            document.getElementById('view-archive').classList.remove('active');
+            document.getElementById('view-tasks').classList.add('active');
+            document.querySelector('.bottom-nav').style.display = 'flex';
+        } else {
+            document.getElementById('view-tasks').classList.remove('active');
+            document.getElementById('view-archive').classList.add('active');
+            fetchArchivedTasks();
+        }
+    }
+
+    function fetchArchivedTasks() {
+        const list = document.getElementById('archive-list');
+        if (list) list.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">Loading...</div>';
+        google.script.run.withSuccessHandler(renderArchiveTasks).getArchivedTasks();
+    }
+
+    function renderArchiveTasks(tasks) {
+        const container = document.getElementById('archive-list');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (!tasks || tasks.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:#CCC;">アーカイブされたタスクはありません</div>';
+            return;
+        }
+
+        const incomplete = tasks.filter(t => t.status !== '完了');
+        const complete = tasks.filter(t => t.status === '完了');
+
+        // Helper to create list
+        const createSection = (title, listId, items, isDone) => {
+            const sec = document.createElement('div');
+            sec.className = 'section-container' + (isDone ? ' completed' : '');
+
+            const count = items.length;
+            sec.innerHTML = `
+            <div class="section-header" onclick="toggleSection('${listId}')">
+                <div style="color:${isDone ? '#AAA' : '#555'}; font-weight:bold;">${title} (${count})</div>
+            </div>
+            <div id="list-${listId}" class="list-content"></div>
+            `;
+            container.appendChild(sec);
+
+            const listDiv = sec.querySelector(`#list-${listId}`);
+            const innerDiv = document.createElement('div'); // Transition Wrapper
+            listDiv.appendChild(innerDiv);
+
+            items.forEach(t => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'task-wrapper';
+                wrapper.innerHTML = `
+            <div class="task-actions">
+                <div class="action-btn unarchive" onclick="doUnarchiveTask('${t.id}')" style="background:#8D6E63;">↩
+                </div>
+                <div class="action-btn delete" onclick="doDeleteTask('${t.id}')">❌</div>
+            </div>
+            <div class="task-item" style="background:#F9F9F9; opacity:0.9;">
+                <div style="flex:1;">
+                    <div style="font-weight:bold; color:#555; text-decoration:${isDone ? 'line-through' : 'none'};">
+                        ${t.name}</div>
+                    <div style="font-size:0.8em; color:#999;">${t.dueDate || ''}</div>
+                </div>
+            </div>
+            `;
+                const item = wrapper.querySelector('.task-item');
+                addSwipeLogic(item);
+                innerDiv.appendChild(wrapper);
+            });
+        };
+
+        if (incomplete.length > 0) createSection('未完了', 'arc-inc', incomplete, false);
+        if (complete.length > 0) createSection('完了', 'arc-com', complete, true);
+    }
+    /* --- HABITS --- */
+    function fetchHabits(dateStr) {
+        const root = document.getElementById('habit-sections-root');
+        if (root) root.style.opacity = '0.4';
+        google.script.run.withSuccessHandler((data) => {
+            if (root) root.style.opacity = '1.0';
+            renderHabits(data);
+        }).getHabitStatus(dateStr);
+    }
+
+    function initDateStrip() {
+        const strip = document.getElementById('calendar-strip');
+        strip.innerHTML = '';
+        const days = ['日', '月', '火', '水', '木', '金', '土'];
+        const today = new Date();
+
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(); d.setDate(today.getDate() - i);
+            const isToday = i === 0;
+            const ymd = d.toLocaleDateString('en-CA');
+
+            const el = document.createElement('div');
+            el.className = 'date-item' + (isToday ? ' active' : '');
+            el.onclick = () => {
+                document.querySelectorAll('.date-item').forEach(e => e.classList.remove('active'));
+                el.classList.add('active');
+                currentHabitDate = ymd;
+                fetchHabits(ymd);
+            };
+            el.innerHTML = `<div class="date-label">${days[d.getDay()]}</div>
+            <div class="date-num">${d.getDate()}</div>`;
+            strip.appendChild(el);
+        }
+    }
+
+    function renderHabits(data) {
+        // Cache Logic
+        habitDataCache = data;
+        if (data.serverDate) { todayYear = data.serverDate.year; todayMonth = data.serverDate.month; }
+        if (data.monthlyLogs) {
+            const key = `${todayYear}-${todayMonth}`;
+            Object.keys(data.monthlyLogs).forEach(hName => {
+                if (!habitCalendarCache[hName]) habitCalendarCache[hName] = {};
+                habitCalendarCache[hName][key] = data.monthlyLogs[hName];
+            });
+        }
+
+        const root = document.getElementById('habit-sections-root');
+        if (!root) return;
+        root.innerHTML = '';
+
+        // Ensure sections exist (SSR fallback)
+        const sections = (data.sections && data.sections.length > 0) ? data.sections : [
+            { id: 'sec_morning', name: '朝', order: 1 },
+            { id: 'sec_afternoon', name: '昼', order: 2 },
+            { id: 'sec_evening', name: '夜', order: 3 },
+            { id: 'sec_other', name: 'その他', order: 4 }
+        ];
+
+        // Render Sections
+        sections.forEach(sec => {
+            const div = document.createElement('div');
+            div.className = 'section-habit';
+            div.id = 'sec-wrapper-' + sec.id;
+            div.innerHTML = `
+            <div class="section-header" onclick="toggleHabitSection('${sec.id}')">
+                <div>${sec.name} <span id="count-${sec.id}" style="font-size:0.9em; opacity:0.8;"></span></div>
+                <div class="toggle-icon">∧</div>
+            </div>
+            <div id="list-habit-${sec.id}" class="habit-list-container">
+                <div><!-- Inner --></div>
+            </div>
+            `;
+            root.appendChild(div);
+        });
+
+        // Clear Checked
+        const checkedInner = document.querySelector('#list-habit-checked > div');
+        if (checkedInner) checkedInner.innerHTML = '';
+        const countChecked = document.getElementById('count-habit-checked');
+        if (countChecked) countChecked.innerText = '0';
+        let checkedCount = 0;
+
+        if (!data.habits) { updateHabitSectionCounts(); return; }
+
+        data.habits.forEach(h => {
+            // 2-Level Logic: Only Status 2 (Offense Done) moves to "Completed" area.
+
+            const isAdvanced = !!h.offenseTitle;
+            // Robust Status Check (Handle string 'DONE' or number)
+            let s = h.status;
+            if (s === 'DONE') s = (isAdvanced ? 2 : 1); // Infer numeric status if string
+            else s = parseInt(s || 0);
+
+            // Re-assign sanitized status to h for createHabitCard usage
+            h.status = s;
+
+            const isDone = isAdvanced ? (s === 2) : (s >= 1);
+
+            if (isDone) {
+                const div = createHabitCard(h, true); // Pass resolved isDone state
+                div.classList.add('done'); // FORCE ADD CLASS
+                const target = document.querySelector('#list-habit-checked > div');
+                if (target) target.appendChild(div);
+                checkedCount++;
+            } else {
+                // Find section
+                let targetSecId = h.sectionId || 'sec_other';
+                // Verify section exists in DOM
+                if (!document.getElementById('list-habit-' + targetSecId)) targetSecId = 'sec_other';
+
+                const div = createHabitCard(h, false); // Not "fully done" (might be status 1 but staying in list)
+                // Append to section
+                const container = document.querySelector(`#list-habit-${targetSecId} > div`);
+                if (container) container.appendChild(div);
+            }
+        });
+
+        updateHabitSectionCounts(); // Initial calculations
+
+        const checkedSec = document.getElementById('sec-wrapper-checked');
+        if (checkedSec) {
+            if (checkedCount > 0) {
+                checkedSec.style.display = 'block';
+                if (countChecked) countChecked.innerText = '(' + checkedCount + ')';
+            } else {
+                checkedSec.style.display = 'none';
+            }
+        }
+    }
+
+    function createHabitCard(h, isMovedToDone) {
+        const div = document.createElement('div');
+        const isAdvancedActive = (h.status >= 1 && h.offenseTitle);
+
+        div.className = 'habit-item' + (isMovedToDone ? ' done' : '') + (isAdvancedActive ? ' status-advanced' :
+            '');
+        div.onclick = () => openHabitDetail(h);
+
+        // Data attributes
+        div.setAttribute('data-status', h.status || 0);
+        div.setAttribute('data-offense-title', h.offenseTitle || '');
+        div.setAttribute('data-def-title', h.name || '');
+        div.setAttribute('data-encourage', h.offenseTitle ? 'true' : 'false');
+
+        let iconContent = '💧';
+        if (h.icon) {
+            const isMaterial = /^[a-z0-9_]+$/.test(h.icon);
+            if (isMaterial) {
+                iconContent = `<span class="material-symbols-rounded" style="font-size:24px;">${h.icon}</span>`;
+            } else {
+                iconContent = `<span style="font-size:24px;">${h.icon}</span>`;
+            }
+        }
+
+        const displayTitle = (h.status >= 1 && h.offenseTitle) ? h.offenseTitle : h.name;
+        const nameElId = 'habit-name-' + h.id;
+
+        // Escape single quotes in h.name for the onclick handler
+        const safeName = (h.name || '').replace(/'/g, "\\'");
+
+        div.innerHTML = `
+            <div class="habit-icon">${iconContent}</div>
+            <div class="habit-info">
+                <div class="habit-name" id="${nameElId}">${displayTitle}</div>
+            </div>
+            <div class="habit-stats-right">
+                <div style="font-size:16px; font-weight:bold; color:var(--primary)">${h.streak || 0}日</div>
+                <div style="font-size:10px; color:#999">現在の連続</div>
+            </div>
+            <div class="habit-check-area" onclick="event.stopPropagation(); toggleHabit(this, '${safeName}')">
+                <div class="check-circle"></div>
+            </div>
+            `;
+        div.dataset.sectionId = h.sectionId || 'sec_other';
+        return div;
+    }
+
+    function toggleHabit(checkEl, habitName) {
+        const item = checkEl.closest('.habit-item');
+        if (!item) return;
+
+        const currentStatus = parseInt(item.getAttribute('data-status') || 0);
+        const offenseTitle = item.getAttribute('data-offense-title') || '';
+        const defTitle = item.getAttribute('data-def-title') || '';
+        const hasLevels = !!offenseTitle;
+
+        let newStatus = 0;
+        if (hasLevels) {
+            if (currentStatus === 0) newStatus = 1;
+            else if (currentStatus === 1) newStatus = 2;
+            else newStatus = 0;
+        } else {
+            newStatus = (currentStatus === 0) ? 1 : 0;
+        }
+
+        processHabitToggle(item, habitName, newStatus, hasLevels, offenseTitle, defTitle);
+    }
+
+    function processHabitToggle(item, habitName, newStatus, isAdvanced, offTitle, defTitle) {
+        try {
+            // 1. Optimistic Status
+            const oldStatus = parseInt(item.getAttribute('data-status') || 0);
+            item.setAttribute('data-status', newStatus);
+
+            // 2. Title Update (Prioritized)
+            const nameEl = item.querySelector('.habit-name');
+            if (nameEl) {
+                const resolvedOffTitle = offTitle || item.getAttribute('data-offense-title');
+                const resolvedDefTitle = defTitle || item.getAttribute('data-def-title');
+
+                if (isAdvanced) {
+                    if (newStatus >= 1) {
+                        nameEl.innerText = resolvedOffTitle;
+                    } else {
+                        nameEl.innerText = resolvedDefTitle;
+                    }
+                }
+            }
+
+            // 3. Streak Update
+            const wasDone = oldStatus >= 1;
+            const isDoneNow = newStatus >= 1;
+            if (wasDone !== isDoneNow) {
+                const streakEl = item.querySelector('.habit-stats-right > div:first-child');
+                if (streakEl) {
+                    let currentStreak = parseInt(streakEl.innerText) || 0;
+                    if (!wasDone && isDoneNow) currentStreak++;
+                    if (wasDone && !isDoneNow) currentStreak = Math.max(0, currentStreak - 1);
+                    streakEl.innerText = currentStreak + '日';
+                }
+            }
+
+            // 4. Classes
+            item.classList.remove('status-advanced', 'done');
+            if (isAdvanced) {
+                if (newStatus === 1) {
+                    item.classList.add('status-advanced');
+                } else if (newStatus === 2) {
+                    item.classList.add('status-advanced');
+                    item.classList.add('done');
+                }
+            } else {
+                if (newStatus >= 1) item.classList.add('done');
+            }
+
+            // --- IMMEDIATE CALENDAR CACHE UPDATE ---
+            try {
+                // --- IMMEDIATE CALENDAR CACHE UPDATE ---
+                try {
+                    if (!window.habitCalendarCache) window.habitCalendarCache = {};
+                    if (!habitCalendarCache[habitName]) habitCalendarCache[habitName] = {};
+
+                    const today = new Date();
+                    const y = today.getFullYear();
+                    const m = today.getMonth() + 1;
+                    const d = today.getDate();
+                    const key = `${y}-${m}`;
+
+                    if (!habitCalendarCache[habitName][key]) habitCalendarCache[habitName][key] = {};
+                    habitCalendarCache[habitName][key][d] = newStatus;
+
+                    // If Detail View is open for this habit, re-render immediately
+                    if (window.activeGoalDetailId === null && window.currentDetailHabit && currentDetailHabit.name ===
+                        habitName) {
+                        // Check if visible
+                        const calGrid = document.getElementById('detail-cal-grid');
+                        if (calGrid && calGrid.offsetParent) {
+                            changeDetailMonth(0); // Refresh view
+                        }
+                    }
+
+                } catch (err) {
+                    console.warn('Calendar Cache Update Failed:', err);
+                }
+            } catch (err) {
+                console.warn('Calendar Cache Update Failed:', err);
+            }
+
+
+            // 5. Journal Logic
+            if (newStatus > 0 && newStatus !== oldStatus && (habitName.endsWith('日記') || habitName === '睡眠時間記録')) {
+                if (oldStatus === 0) openJournalModal(habitName, item);
+            }
+
+            // 6. Move Logic
+            const isDone = isAdvanced ? (newStatus === 2) : (newStatus >= 1);
+            const targetListId = isDone ? 'list-habit-checked' : ('list-habit-' + (item.dataset.sectionId ||
+                'sec_other'));
+
+            const currentParentId = item.parentElement.parentElement ? item.parentElement.parentElement.id : '';
+            if (currentParentId && currentParentId !== targetListId) {
+                const targetContainer = document.querySelector('#' + targetListId + ' > div');
+                if (targetContainer) {
+                    item.style.transition = 'all 0.3s ease';
+                    item.style.opacity = '0';
+                    item.style.transform = 'scale(0.9)';
+                    setTimeout(() => {
+                        targetContainer.appendChild(item);
+                        updateHabitSectionCounts();
+                        requestAnimationFrame(() => {
+                            item.style.opacity = '1';
+                            item.style.transform = 'scale(1)';
+                        });
+                    }, 300);
+                } else {
+                    updateHabitSectionCounts();
+                }
+            } else {
+                updateHabitSectionCounts();
+            }
+            updateHabitSectionCounts();
+
+            // 7. Server Call
+            google.script.run.withSuccessHandler(() => { }).logHabit(currentHabitDate, habitName, newStatus);
+
+        } catch (e) {
+            console.error('Error in Toggle:', e);
+            alert('Error: ' + e.message);
+        }
+    }
+
+    function openJournalModal(name, item) {
+        const modal = document.getElementById('journal-modal');
+        if (modal) {
+            pendingJournalItem = item;
+            pendingJournalName = name;
+            const input = document.getElementById('journal-input');
+            if (input) input.value = '';
+            modal.classList.add('open');
+        }
+    }
+
+    let pendingJournalItem = null;
+    let pendingJournalName = '';
+
+    function closeJournalModal(saved) {
+        document.getElementById('journal-modal').classList.remove('open');
+        if (!saved && pendingJournalItem) {
+            // Cancelled: Revert the checkbox visually
+            // This logic is now handled by processHabitToggle if newStatus is 0
+            // For now, just clear pending item.
+            pendingJournalItem = null;
+            // CSS Grid Transition
+            // list.classList.toggle('collapsed'); // Assuming list is global or querySelector needed
+        }
+    }
+
+    function markSectionDirty(input) {
+        // Can use valid visual cue
+        input.style.backgroundColor = '#FFF8E1';
+    }
+
+    function updateHabitSectionCounts() {
+        const sections = habitDataCache ? habitDataCache.sections : [];
+        sections.forEach(sec => {
+            const listId = 'list-habit-' + sec.id;
+            const wrapperId = 'sec-wrapper-' + sec.id;
+            const countId = 'count-' + sec.id;
+
+            const listContainer = document.querySelector('#' + listId + ' > div');
+            if (!listContainer) return;
+
+            const count = listContainer.children.length;
+            const countEl = document.getElementById(countId);
+            const wrapperEl = document.getElementById(wrapperId);
+
+            if (countEl) countEl.innerText = '(' + count + ')';
+
+            // Auto Hide Logic (keep wrapper in DOM but hide)
+            if (wrapperEl) {
+                if (count === 0) {
+                    wrapperEl.style.display = 'none';
+                } else {
+                    wrapperEl.style.display = 'block';
+                }
+            }
+        });
+    }
+
+    // --- HABIT DETAIL & CALENDAR ---
+    function openHabitDetail(habit) {
+        currentDetailHabit = habit;
+
+        // Ensure valid date references to prevent 1970 bug
+        const d = new Date();
+        if (!todayYear || isNaN(todayYear)) {
+            todayYear = d.getFullYear();
+            todayMonth = d.getMonth() + 1;
+        }
+
+        // Initialize current detail view date
+        currentDetailYear = todayYear;
+        currentDetailMonth = todayMonth;
+
+        // Extra safety: if somehow still invalid, force defaults
+        if (!currentDetailYear) currentDetailYear = 2025;
+        if (!currentDetailMonth) currentDetailMonth = 1;
+
+        const iconEl = document.querySelector('#habit-detail-modal .detail-icon');
+        if (iconEl) {
+            if (habit.icon) {
+                const isMaterial = /^[a-z0-9_]+$/.test(habit.icon);
+                if (isMaterial) {
+                    iconEl.innerHTML = `<span class="material-symbols-rounded"
+                style="color:var(--primary); font-size:40px;">${habit.icon}</span>`;
+                } else {
+                    iconEl.innerHTML = `<span style="font-size:40px;">${habit.icon}</span>`;
+                }
+            } else {
+                iconEl.innerHTML = '💧';
+            }
+        }
+
+        const titleEl = document.getElementById('detail-name');
+        if (titleEl) titleEl.innerText = habit.name;
+
+        const timeEl = document.getElementById('detail-time');
+        if (timeEl) timeEl.innerText = '所要時間: ' + (habit.time || '未設定');
+
+        const descEl = document.getElementById('detail-desc');
+        if (descEl) descEl.innerText = habit.benefit || '習慣を続けて目標を達成しましょう';
+
+        const streakEl = document.getElementById('detail-streak');
+        if (streakEl) streakEl.innerText = `${habit.streak || 0} 日`;
+
+        const rateEl = document.getElementById('detail-rate');
+        if (rateEl) rateEl.innerText = `${habit.rate30 || 0}% `;
+
+        // Journal Logs Logic
+        const logContainer = document.getElementById('detail-journal-logs-container');
+        if (logContainer) {
+            logContainer.innerHTML = ''; // Clear previous
+
+            if (habit.name.endsWith('日記') || habit.name === '睡眠時間記録') {
+                logContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">Loading...</div>';
+                google.script.run.withSuccessHandler(renderJournalLogs).getHabitTextLogs(habit.name);
+            }
+        }
+
+        document.getElementById('habit-detail-modal').classList.add('open');
+
+        // Initial Calendar Render with Prefetch (New Logic)
+        changeDetailMonth(0);
+    }
+
+    function renderJournalLogs(logs) {
+        const container = document.getElementById('detail-journal-logs-container');
+        if (!container) return;
+
+        if (!logs || logs.length === 0) {
+            container.innerHTML = '<div style="color:#999; text-align:center; font-size:12px;">記録はまだありません</div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        logs.forEach(log => {
+            const card = document.createElement('div');
+            card.style.cssText = 'background:rgba(255,255,255,0.8); border-radius:12px; padding:15px; margin-bottom:10px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);';
+            card.innerHTML = `
+            <div style="font-size:12px; color:#888; margin-bottom:5px;">${log.date}</div>
+            <div style="font-size:14px; color:#333; white-space:pre-wrap;">${log.text}</div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    function closeHabitDetail() {
+        document.getElementById('habit-detail-modal').classList.remove('open');
+    }
+
+    console.log('Part 1_2 End');
+</script>
