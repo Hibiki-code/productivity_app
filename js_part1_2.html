@@ -502,6 +502,8 @@
         div.onclick = () => openHabitDetail(h);
 
         // Data attributes
+        div.setAttribute('data-habit-id', h.id); // Valid ID for lookup
+        div.setAttribute('data-current-streak', h.streak || 0); // Source of Truth
         div.setAttribute('data-status', h.status || 0);
         div.setAttribute('data-offense-title', h.offenseTitle || '');
         div.setAttribute('data-def-title', h.name || '');
@@ -558,6 +560,21 @@
             newStatus = (currentStatus === 0) ? 1 : 0;
         }
 
+        // --- INTERCEPT FOR DELAYED COMPLETION (Sleep & Journal) ---
+        // If turning ON (newStatus > 0) and it's a special habit,
+        // open modal FIRST and do NOT toggle yet.
+        // The modal save function will call processHabitToggle later.
+        if (newStatus > 0 && currentStatus === 0) {
+            if (habitName === '睡眠時間記録') {
+                openSleepModal(habitName, item);
+                return; // STOP here. Wait for modal save.
+            } else if (habitName.endsWith('日記')) {
+                openJournalModal(habitName, item);
+                return; // STOP here. Wait for modal save.
+            }
+        }
+        // ---------------------------------------------------------
+
         processHabitToggle(item, habitName, newStatus, hasLevels, offenseTitle, defTitle);
     }
 
@@ -585,13 +602,26 @@
             // 3. Streak Update
             const wasDone = oldStatus >= 1;
             const isDoneNow = newStatus >= 1;
-            if (wasDone !== isDoneNow) {
-                const streakEl = item.querySelector('.habit-stats-right > div:first-child');
-                if (streakEl) {
-                    let currentStreak = parseInt(streakEl.innerText) || 0;
+            let updatedStreak = null;
+
+            const streakEl = item.querySelector('.habit-stats-right > div:first-child');
+            if (streakEl) {
+                let currentStreak = parseInt(streakEl.innerText) || 0;
+                if (wasDone !== isDoneNow) {
                     if (!wasDone && isDoneNow) currentStreak++;
                     if (wasDone && !isDoneNow) currentStreak = Math.max(0, currentStreak - 1);
                     streakEl.innerText = currentStreak + '日';
+                    // Update Source of Truth in DOM
+                    item.setAttribute('data-current-streak', currentStreak);
+                }
+                updatedStreak = currentStreak;
+            }
+
+            // NEW: Optimistic Detail Modal Update
+            if (window.currentDetailHabit && currentDetailHabit.name === habitName) {
+                const detailStreakEl = document.getElementById('detail-streak');
+                if (detailStreakEl && updatedStreak !== null) {
+                    detailStreakEl.innerText = updatedStreak + ' 日';
                 }
             }
 
@@ -642,10 +672,7 @@
             }
 
 
-            // 5. Journal Logic
-            if (newStatus > 0 && newStatus !== oldStatus && (habitName.endsWith('日記') || habitName === '睡眠時間記録')) {
-                if (oldStatus === 0) openJournalModal(habitName, item);
-            }
+
 
             // 6. Move Logic
             const isDone = isAdvanced ? (newStatus === 2) : (newStatus >= 1);
@@ -786,7 +813,13 @@
         if (descEl) descEl.innerText = habit.benefit || '習慣を続けて目標を達成しましょう';
 
         const streakEl = document.getElementById('detail-streak');
-        if (streakEl) streakEl.innerText = `${habit.streak || 0} 日`;
+        // REFACTOR: Read from DOM (Live) instead of habit object (Stale)
+        let liveStreak = habit.streak || 0;
+        const liveItem = document.querySelector(`.habit-item[data-habit-id="${habit.id}"]`);
+        if (liveItem && liveItem.hasAttribute('data-current-streak')) {
+            liveStreak = parseInt(liveItem.getAttribute('data-current-streak')) || 0;
+        }
+        if (streakEl) streakEl.innerText = `${liveStreak} 日`;
 
         const rateEl = document.getElementById('detail-rate');
         if (rateEl) rateEl.innerText = `${habit.rate30 || 0}% `;

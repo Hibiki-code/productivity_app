@@ -1009,12 +1009,21 @@
     </div>
 
     <!-- SCHEDULE VIEW -->
+    <!-- SCHEDULE VIEW -->
     <div id="view-schedule" class="view">
-      <div class="glass-header">スケジュール</div>
-      <div style="text-align:center; margin-top:50px; color:#aaa;">
-        Coming Soon...
+      <div class="glass-header" style="display:flex; align-items:center; justify-content:center;">
+        <div id="schedule-header-date" style="font-size:18px; font-weight:bold;">スケジュール</div>
       </div>
-      <div id="schedule-list"></div>
+
+      <!-- Date Scroll Strip -->
+      <div id="schedule-date-strip"
+        style="display:flex; overflow-x:auto; padding:10px 0; border-bottom:1px solid #eee; background:white; scroll-behavior:smooth;">
+        <!-- JS Injected -->
+      </div>
+
+      <div id="schedule-event-list" style="padding:15px; padding-bottom:100px;">
+        <!-- Events -->
+      </div>
     </div>
 
 
@@ -1209,7 +1218,7 @@
     </div>
 
     <!-- Schedule (Cal) -->
-    <div class="nav-item" onclick="switchTab('cal', this)">
+    <div class="nav-item" onclick="switchTab('schedule', this); if(window.initScheduleView) initScheduleView();">
       <div class="nav-icon"><span class="material-symbols-rounded">calendar_month</span></div>
       Schedule
     </div>
@@ -1501,6 +1510,7 @@
   <?!= include('js_part2'); ?>
   <?!= include('js_part3_1'); ?>
   <?!= include('js_part3_2'); ?>
+  <?!= include('js_part3_3'); ?>
   <?!= include('icons'); ?>
   <?!= include('emojis'); ?>
 
@@ -1514,6 +1524,97 @@
     }
 
     /* 2-Level Habit Styles */
+    /* SCHEDULE STYLES */
+    .date-strip-item {
+      flex: 0 0 50px;
+      height: 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 0 5px;
+      border-radius: 12px;
+      background: #f5f5f5;
+      color: #888;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .date-strip-item.selected {
+      background: var(--primary);
+      color: white;
+      transform: scale(1.1);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .date-strip-item.today {
+      border: 2px solid var(--primary);
+    }
+
+    .date-strip-item.today.selected {
+      border: 2px solid white;
+    }
+
+    .ds-day {
+      font-size: 10px;
+      font-weight: bold;
+    }
+
+    .ds-num {
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .event-card {
+      background: white;
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+      border-left: 4px solid #ddd;
+    }
+
+    .event-time {
+      width: 80px;
+      font-size: 12px;
+      color: #666;
+      font-weight: 700;
+      text-align: right;
+      margin-right: 15px;
+    }
+
+    .event-time.all-day {
+      color: white;
+      background: #999;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-align: center;
+      width: auto;
+      min-width: 60px;
+      font-size: 10px;
+    }
+
+    .event-details {
+      flex: 1;
+    }
+
+    .event-title {
+      font-weight: bold;
+      color: #333;
+      font-size: 15px;
+      margin-bottom: 2px;
+    }
+
+    .event-loc {
+      font-size: 11px;
+      color: #999;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
     .habit-item.status-advanced .habit-icon {
       background-color: #EF5350 !important;
       /* Red */

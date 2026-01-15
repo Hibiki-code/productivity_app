@@ -21,7 +21,7 @@ const CONFIG = {
   TIMEZONE: 'Asia/Tokyo'
 };
 
-// Force Sync 67
+// Force Sync 78
 // Force push cleanup
 function doGet() {
   const template = HtmlService.createTemplateFromFile('index');
@@ -102,6 +102,81 @@ function getSheetByNameFuzzy(db, name) {
     }
   }
   return null;
+}
+
+// --- CALENDAR ---
+function getCalendarEvents(dateStr) {
+  try {
+    const start = new Date(dateStr + 'T00:00:00');
+    const end = new Date(dateStr + 'T23:59:59');
+
+    // Safety check
+    if (isNaN(start.getTime())) {
+      console.error('Invalid date passed to getCalendarEvents:', dateStr);
+      return [];
+    }
+
+    let allEvents = [];
+    // Fetch from ALL calendars
+    const calendars = CalendarApp.getAllCalendars();
+
+    for (const cal of calendars) {
+      try {
+        const events = cal.getEvents(start, end);
+        allEvents = allEvents.concat(events);
+      } catch (innerErr) {
+        console.warn(`Error fetching calendar ${cal.getName()}:`, innerErr);
+      }
+    }
+
+    // Deduplicate?
+    const mapped = allEvents.map(e => {
+      let color = '#7986cb'; // default
+      try {
+        if (e.getColor()) color = e.getColor(); // Just grab ID for now if we can't map
+      } catch (err) { }
+
+      const isAllDay = e.isAllDayEvent();
+      let timeStr = '';
+      if (!isAllDay) {
+        const s = e.getStartTime();
+        const f = e.getEndTime();
+        const sStr = Utilities.formatDate(s, Session.getScriptTimeZone(), 'HH:mm');
+        const fStr = Utilities.formatDate(f, Session.getScriptTimeZone(), 'HH:mm');
+        timeStr = `${sStr} - ${fStr}`;
+      }
+
+      return {
+        id: e.getId(),
+        title: e.getTitle(),
+        isAllDay: isAllDay,
+        time: timeStr,
+        location: e.getLocation(),
+        desc: e.getDescription(),
+        color: e.getColor() || color
+      };
+    });
+
+    // Unique by ID
+    const unique = [];
+    const seen = new Set();
+    for (const m of mapped) {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        unique.push(m);
+      }
+    }
+
+    return unique;
+
+  } catch (e) {
+    console.error('getCalendarEvents Error:', e);
+    // Rethrow permission errors so client sees Auth Popup
+    if (e.message && (e.message.includes('permission') || e.message.includes('authorization'))) {
+      throw e;
+    }
+    return [];
+  }
 }
 
 function getTasks() {

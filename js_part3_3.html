@@ -1,0 +1,165 @@
+<script>
+    console.log('Part 3_3 Start');
+
+    // === CONFIG ===
+    let currentScheduleDate = new Date(); // Center date
+    let scheduleDateCache = {}; // Cache events by dateStr
+
+    // === INIT ===
+    function initScheduleView() {
+        renderDateStrip();
+        loadSchedule(formatDateForApi(currentScheduleDate));
+    }
+
+    // === DATE STRIP LOGIC ===
+    function renderDateStrip() {
+        const container = document.getElementById('schedule-date-strip');
+        if (!container) return;
+        container.innerHTML = '';
+
+        // Generate +/- 15 days for now (simple implementation since user asked for infinite feel)
+        // Ideally we use intersection observer for true infinite scroll, but 30 days is enough buffer 
+        // if we re-center on selection.
+
+        const center = new Date(currentScheduleDate);
+        const start = new Date(center);
+        start.setDate(center.getDate() - 14);
+
+        for (let i = 0; i < 30; i++) {
+            const d = new Date(start);
+            d.setDate(start.getDate() + i);
+            const isToday = isSameDate(d, new Date());
+            const isSelected = isSameDate(d, center);
+
+            const el = document.createElement('div');
+            el.className = `date-strip-item ${isSelected ? 'selected' : ''} ${isToday ? 'today' : ''}`;
+            el.onclick = () => selectScheduleDate(d);
+
+            // Day of week
+            const days = ['日', '月', '火', '水', '木', '金', '土'];
+            const dayStr = days[d.getDay()];
+
+            el.innerHTML = `
+                <div class="ds-day">${dayStr}</div>
+                <div class="ds-num">${d.getDate()}</div>
+            `;
+            container.appendChild(el);
+
+            if (isSelected) {
+                setTimeout(() => {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                }, 100);
+            }
+        }
+    }
+
+    function selectScheduleDate(date) {
+        currentScheduleDate = new Date(date);
+        renderDateStrip(); // Re-render to update selected state & potentially re-center
+
+        const dateStr = formatDateForApi(date);
+
+        // Update Header Date
+        const header = document.getElementById('schedule-header-date');
+        if (header) {
+            const days = ['日', '月', '火', '水', '木', '金', '土'];
+            header.innerText = `${date.getMonth() + 1}月${date.getDate()}日 (${days[date.getDay()]})`;
+        }
+
+        loadSchedule(dateStr);
+    }
+
+    // === DATA LOADING ===
+    function loadSchedule(dateStr) {
+        const list = document.getElementById('schedule-event-list');
+        if (!list) return;
+
+        // Check Cache
+        if (scheduleDateCache[dateStr]) {
+            renderEvents(scheduleDateCache[dateStr]);
+            return;
+        }
+
+        list.innerHTML = '<div style="text-align:center; padding:40px; color:#999;">Loading...</div>';
+
+        google.script.run.withSuccessHandler((events) => {
+            scheduleDateCache[dateStr] = events;
+            renderEvents(events);
+        }).withFailureHandler((err) => {
+            list.innerHTML = `<div style="text-align:center; padding:20px; color:red;">Error: ${err.message}</div>`;
+        }).getCalendarEvents(dateStr);
+    }
+
+    function renderEvents(events) {
+        const list = document.getElementById('schedule-event-list');
+        if (!list) return;
+        list.innerHTML = '';
+
+        if (!events || events.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.innerHTML = `
+                <div style="text-align:center; padding:50px 20px; color:#aaa;">
+                    <span class="material-symbols-rounded" style="font-size:48px; color:#eee;">event_busy</span>
+                    <div style="margin-top:10px;">予定はありません</div>
+                </div>`;
+            list.appendChild(emptyState);
+            return;
+        }
+
+        // Sort: All day first, then by time
+        events.sort((a, b) => {
+            if (a.isAllDay && !b.isAllDay) return -1;
+            if (!a.isAllDay && b.isAllDay) return 1;
+            return a.time.localeCompare(b.time);
+        });
+
+        events.forEach(e => {
+            const card = document.createElement('div');
+            card.className = 'event-card';
+
+            let timeHtml = '';
+            if (e.isAllDay) {
+                timeHtml = `<div class="event-time all-day">All Day</div>`;
+            } else {
+                timeHtml = `<div class="event-time">${e.time}</div>`;
+            }
+
+            // Location
+            let locHtml = '';
+            if (e.location) {
+                locHtml = `<div class="event-loc"><span class="material-symbols-rounded" style="font-size:12px;">location_on</span> ${e.location}</div>`;
+            }
+
+            card.innerHTML = `
+                ${timeHtml}
+                <div class="event-details">
+                    <div class="event-title">${e.title}</div>
+                    ${locHtml}
+                </div>
+            `;
+
+            // Border color from calendar
+            if (e.color) {
+                card.style.borderLeft = `4px solid ${e.color}`;
+            }
+
+            list.appendChild(card);
+        });
+    }
+
+    // === UTILS ===
+    function formatDateForApi(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    function isSameDate(d1, d2) {
+        return d1.getFullYear() === d2.getFullYear() &&
+            d1.getMonth() === d2.getMonth() &&
+            d1.getDate() === d2.getDate();
+    }
+
+    console.log('Part 3_3 End');
+</script>
