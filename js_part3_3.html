@@ -80,14 +80,14 @@
             return;
         }
 
-        list.innerHTML = '<div style="text-align:center; padding:40px; color:#999;">Loading...</div>';
+        list.innerHTML = '<div style="text-align:center; padding:40px; color:#999;">Loading Smart Schedule...<br><span style="font-size:10px;">(Checking Calendars, Habits & Tasks)</span></div>';
 
         google.script.run.withSuccessHandler((events) => {
             scheduleDateCache[dateStr] = events;
             renderEvents(events);
         }).withFailureHandler((err) => {
             list.innerHTML = `<div style="text-align:center; padding:20px; color:red;">Error: ${err.message}</div>`;
-        }).getCalendarEvents(dateStr);
+        }).getSmartSchedule(dateStr); // UPDATED FUNCTION
     }
 
     function renderEvents(events) {
@@ -110,12 +110,28 @@
         events.sort((a, b) => {
             if (a.isAllDay && !b.isAllDay) return -1;
             if (!a.isAllDay && b.isAllDay) return 1;
-            return a.time.localeCompare(b.time);
+
+            // If times are equal, put real events before generated ones
+            const timeDiff = a.time.localeCompare(b.time);
+            if (timeDiff !== 0) return timeDiff;
+
+            if (a.type === 'event' && b.type !== 'event') return -1;
+            if (a.type !== 'event' && b.type === 'event') return 1;
+
+            return 0;
         });
 
         events.forEach(e => {
             const card = document.createElement('div');
             card.className = 'event-card';
+
+            // Custom Styling for Auto-Generated items
+            if (e.type === 'habit' || e.type === 'task') {
+                card.style.borderLeftStyle = 'dashed';
+                card.style.borderLeftWidth = '4px';
+                card.style.background = '#fcfcfc';
+                card.style.opacity = '0.9';
+            }
 
             let timeHtml = '';
             if (e.isAllDay) {
@@ -124,23 +140,36 @@
                 timeHtml = `<div class="event-time">${e.time}</div>`;
             }
 
-            // Location
+            // Location or Type Label
             let locHtml = '';
-            if (e.location) {
+            if (e.type === 'habit') {
+                locHtml = `<div class="event-loc" style="color:#66bb6a;"><span class="material-symbols-rounded" style="font-size:12px;">auto_awesome</span> おすすめの習慣</div>`;
+            } else if (e.type === 'task') {
+                locHtml = `<div class="event-loc" style="color:#ffa726;"><span class="material-symbols-rounded" style="font-size:12px;">auto_awesome</span> おすすめのタスク</div>`;
+            } else if (e.location) {
                 locHtml = `<div class="event-loc"><span class="material-symbols-rounded" style="font-size:12px;">location_on</span> ${e.location}</div>`;
+            }
+
+            // Title Icon
+            let iconHtml = '';
+            if (e.icon) {
+                // Use Google Font icon if provided
+                // Note: e.icon might be 'star' or 'check_circle'
             }
 
             card.innerHTML = `
                 ${timeHtml}
                 <div class="event-details">
-                    <div class="event-title">${e.title}</div>
+                    <div class="event-title" style="display:flex; align-items:center; gap:5px;">
+                        ${e.title}
+                    </div>
                     ${locHtml}
                 </div>
             `;
 
-            // Border color from calendar
+            // Border color from calendar or type default
             if (e.color) {
-                card.style.borderLeft = `4px solid ${e.color}`;
+                card.style.borderLeft = `4px ${e.type === 'event' ? 'solid' : 'dashed'} ${e.color}`;
             }
 
             list.appendChild(card);
@@ -160,6 +189,116 @@
             d1.getMonth() === d2.getMonth() &&
             d1.getDate() === d2.getDate();
     }
+
+    // === GEMINI CHAT LOGIC ===
+    function toggleGeminiChat() {
+        const overlay = document.getElementById('gemini-chat-overlay');
+        const fab = document.getElementById('gemini-fab');
+        if (!overlay) return;
+
+        const isOpen = overlay.style.bottom === '0px';
+        if (isOpen) {
+            overlay.style.bottom = '-100%';
+            fab.style.transform = 'scale(1)';
+        } else {
+            overlay.style.bottom = '0px';
+            fab.style.transform = 'scale(0)'; // Hide FAB when open
+            // Focus input
+            setTimeout(() => document.getElementById('gemini-input').focus(), 300);
+        }
+    }
+
+    function sendGeminiMessage() {
+        const input = document.getElementById('gemini-input');
+        const container = document.getElementById('gemini-messages');
+        const text = input.value.trim();
+        if (!text) return;
+
+        // 1. Add User Message
+        appendMessage(text, 'user');
+        input.value = '';
+        input.style.height = 'auto'; // Reset height
+
+        // 2. Show Loading
+        const loadingId = 'loading-' + Date.now();
+        appendLoading(loadingId);
+
+        // 3. Prepare Payload
+        // Simple history for now: just current message. 
+        // Logic could be expanded to include previous messages.
+        const messages = [
+            { role: "user", parts: [{ text: text }] }
+        ];
+
+        // 4. Call Backend
+        google.script.run.withSuccessHandler((response) => {
+            removeLoading(loadingId);
+            appendMessage(response, 'ai');
+        }).withFailureHandler((err) => {
+            removeLoading(loadingId);
+            appendMessage("Error: " + err.message, 'ai');
+        }).callGeminiAPI(messages);
+    }
+
+    function appendMessage(text, type) {
+        const container = document.getElementById('gemini-messages');
+        const div = document.createElement('div');
+        div.className = `chat-msg ${type}`;
+
+        // Style Logic inline for simplicity or use CSS classes
+        const baseStyle = "padding:12px 16px; border-radius:18px; font-size:14px; line-height:1.5; max-width:85%; word-wrap:break-word;";
+        const userStyle = "align-self:flex-end; background:#4285f4; color:white; border-bottom-right-radius:4px;";
+        const aiStyle = "align-self:flex-start; background:white; color:#333; border-bottom-left-radius:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05);";
+
+        div.style.cssText = baseStyle + (type === 'user' ? userStyle : aiStyle);
+
+        // Simple Markdown parsing for AI checks
+        if (type === 'ai') {
+            // Convert **bold** to <b>
+            let html = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+            html = html.replace(/\n/g, '<br>');
+            div.innerHTML = html;
+        } else {
+            div.innerText = text;
+        }
+
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function appendLoading(id) {
+        const container = document.getElementById('gemini-messages');
+        const div = document.createElement('div');
+        div.id = id;
+        div.className = 'chat-msg ai';
+        div.style.cssText = "align-self:flex-start; background:white; padding:12px 16px; border-radius:18px; border-bottom-left-radius:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05); color:#999; font-size:12px;";
+        div.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px; animation:spin 1s linear infinite;">progress_activity</span> Thinking...';
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function removeLoading(id) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+    }
+
+    // Auto-resize textarea
+    document.addEventListener('DOMContentLoaded', () => {
+        const input = document.getElementById('gemini-input');
+        if (input) {
+            input.addEventListener('input', function () {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+            });
+            // Enter to send
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendGeminiMessage();
+                }
+            });
+        }
+    });
 
     console.log('Part 3_3 End');
 </script>

@@ -1024,6 +1024,50 @@
       <div id="schedule-event-list" style="padding:15px; padding-bottom:100px;">
         <!-- Events -->
       </div>
+
+      <!-- GEMINI CHAT FAB -->
+      <div id="gemini-fab" onclick="toggleGeminiChat()"
+        style="position:fixed; bottom:90px; right:20px; width:56px; height:56px; background:#4285f4; border-radius:50%; box-shadow:0 4px 12px rgba(66, 133, 244, 0.4); display:flex; align-items:center; justify-content:center; z-index:200; cursor:pointer; transition: transform 0.2s;">
+        <span class="material-symbols-rounded" style="color:white; font-size:28px;">smart_toy</span>
+      </div>
+
+      <!-- GEMINI CHAT OVERLAY -->
+      <div id="gemini-chat-overlay"
+        style="position:fixed; bottom:-100%; left:0; width:100%; height:80%; background:white; border-top-left-radius:24px; border-top-right-radius:24px; box-shadow:0 -5px 20px rgba(0,0,0,0.15); z-index:2000; transition: bottom 0.3s cubic-bezier(0.16, 1, 0.3, 1); display:flex; flex-direction:column;">
+
+        <!-- Header -->
+        <div
+          style="padding:15px 20px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-weight:800; font-size:16px; color:#444; display:flex; align-items:center; gap:8px;">
+            <span class="material-symbols-rounded" style="color:#4285f4;">smart_toy</span>
+            AI Assistant
+          </div>
+          <div onclick="toggleGeminiChat()" style="cursor:pointer; padding:5px; color:#999;">
+            <span class="material-symbols-rounded">expand_more</span>
+          </div>
+        </div>
+
+        <!-- Messages Area -->
+        <div id="gemini-messages"
+          style="flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:15px; background:#f9f9f9;">
+          <div class="chat-msg ai"
+            style="align-self:flex-start; background:white; padding:12px 16px; border-radius:18px; border-bottom-left-radius:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05); max-width:85%; font-size:14px; line-height:1.5;">
+            こんにちは！スケジュールの調整やタスクの相談など、なんでも聞いてください。<br>
+            「今日のスケジュールを教えて」や「空き時間に何か入れたい」など、話しかけてみてください。
+          </div>
+        </div>
+
+        <!-- Input Area -->
+        <div
+          style="padding:15px 20px; background:white; border-top:1px solid #eee; display:flex; gap:10px; align-items:flex-end;">
+          <textarea id="gemini-input" placeholder="メッセージを入力..." rows="1"
+            style="flex:1; padding:12px 15px; border:1px solid #ddd; border-radius:24px; resize:none; font-family:inherit; outline:none; max-height:100px;"></textarea>
+          <div onclick="sendGeminiMessage()"
+            style="width:40px; height:40px; background:#4285f4; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0;">
+            <span class="material-symbols-rounded" style="color:white; font-size:20px;">send</span>
+          </div>
+        </div>
+      </div>
     </div>
 
 

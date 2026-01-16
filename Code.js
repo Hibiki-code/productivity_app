@@ -15,13 +15,14 @@ const CONFIG = {
     DB_WEEKLY_GOALS: 'DB_WeeklyGoals',
     DB_DAILY_MEASUREMENTS: 'DB_DailyMeasurements',
     DB_GOALS_PROGRESS: 'DB_GoalsProgress',
+    DB_GOALS_PROGRESS: 'DB_GoalsProgress',
     DB_PROJECT: 'DB_Project'
   },
-  GEMINI_API_KEY: 'Pending',
+  GEMINI_API_KEY: 'AIzaSyDCw2c4JIZSFBpMaJ8e4b5CtqCIYLwYuFc',
   TIMEZONE: 'Asia/Tokyo'
 };
 
-// Force Sync 78
+// Force Sync 83
 // Force push cleanup
 function doGet() {
   const template = HtmlService.createTemplateFromFile('index');
@@ -176,6 +177,236 @@ function getCalendarEvents(dateStr) {
       throw e;
     }
     return [];
+  }
+}
+
+// --- AI SMART SCHEDULING ---
+function getSmartSchedule(dateStr) {
+  // 1. Get Base Events
+  const events = getCalendarEvents(dateStr);
+  // Mark regular events
+  const combined = events.map(e => ({ ...e, type: 'event' }));
+
+  try {
+    // 2. Get Habits (Pending for today)
+    const habitData = getHabitStatus(dateStr); // Uses cached logic
+    // Filter: Not done (status === 0)
+    // Optional: Filter only 'ACTIVE' habits? getHabitStatus already does that.
+    const pendingHabits = habitData.habits.filter(h => h.status === 0);
+
+    // 3. Get Tasks (Due or High Priority & Not Done)
+    const allTasks = getTasks();
+
+    // Date Comparison Prep
+    // dateStr is 'yyyy-MM-dd' usually from frontend
+    const targetYMD = dateStr.replace(/-/g, '/'); // "2024/01/15"
+
+    const pendingTasks = allTasks.filter(t => {
+      if (t.status === '完了') return false;
+
+      // Priority 1: Due Date <= Today (Overdue or Today)
+      if (t.dueDate) {
+        // Task due date format is yyyy/MM/dd
+        if (t.dueDate <= targetYMD) return true;
+      }
+
+      // Priority 2: High Importance (3 or 2) even if no due date?
+      // Let's stick to High (3) for auto-schedule without due date
+      // if (t.importance >= 3) return true;
+
+      return false;
+    });
+
+    // Sort Tasks: Overdue/Today first, then Priority
+    pendingTasks.sort((a, b) => {
+      // Due Date
+      if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+      if (a.dueDate && !b.dueDate) return -1;
+      if (!a.dueDate && b.dueDate) return 1;
+      // Prio
+      return b.importance - a.importance;
+    });
+
+    // 4. Calculate Free Slots (Simple Heuristic: 08:00 - 22:00)
+    const dayStart = new Date(dateStr + 'T08:00:00');
+    const dayEnd = new Date(dateStr + 'T22:00:00'); // End of active day
+
+    // Parse Event Rangs
+    const busyRanges = [];
+    events.forEach(e => {
+      if (e.isAllDay) return; // Ignore all day for slot calc (usually doesn't block time)
+      if (!e.time) return;
+      // Format "HH:mm - HH:mm"
+      const parts = e.time.split(' - ');
+      if (parts.length !== 2) return;
+
+      const s = new Date(dateStr + 'T' + parts[0] + ':00');
+      const f = new Date(dateStr + 'T' + parts[1] + ':00');
+      busyRanges.push({ start: s.getTime(), end: f.getTime() });
+    });
+
+    busyRanges.sort((a, b) => a.start - b.start);
+
+    // Find Gaps
+    let pointer = dayStart.getTime();
+    const gaps = [];
+
+    for (const range of busyRanges) {
+      // Overlap adjustment
+      if (range.start < pointer) {
+        pointer = Math.max(pointer, range.end);
+        continue;
+      }
+
+      if (range.start > pointer) {
+        gaps.push({ start: pointer, end: range.start });
+      }
+      pointer = Math.max(pointer, range.end);
+    }
+
+    // Final gap
+    if (dayEnd.getTime() > pointer) {
+      gaps.push({ start: pointer, end: dayEnd.getTime() });
+    }
+
+    // 5. Fill Gaps
+    let habitIdx = 0;
+    let taskIdx = 0;
+
+    const formatTime = (ts) => Utilities.formatDate(new Date(ts), CONFIG.TIMEZONE, 'HH:mm');
+
+    for (const gap of gaps) {
+      let currentPos = gap.start;
+      let remaining = (gap.end - gap.start) / (60 * 1000); // minutes
+
+      // Strategy:
+      // - Fill Habits first (Quick wins, 15m)
+      // - Fill Tasks next (30m blocks)
+
+      // Loop while we have space in this gap
+      while (remaining >= 15 && (habitIdx < pendingHabits.length || taskIdx < pendingTasks.length)) {
+
+        // Try Habit (15m)
+        if (habitIdx < pendingHabits.length) {
+          const h = pendingHabits[habitIdx];
+          const dur = 15;
+
+          if (remaining >= dur) {
+            const endPos = currentPos + (dur * 60 * 1000);
+            combined.push({
+              id: 'auto-habit-' + h.id,
+              title: h.name,
+              type: 'habit',
+              time: `${formatTime(currentPos)} - ${formatTime(endPos)}`,
+              isAllDay: false,
+              location: 'Smart Suggestion',
+              color: '#fff', // Frontend will handle style
+              icon: h.icon || 'star', // Pass icon
+              originalId: h.id
+            });
+
+            currentPos = endPos;
+            remaining -= dur;
+            habitIdx++;
+            continue; // Loop again
+          }
+        }
+
+        // Try Task (30m)
+        if (taskIdx < pendingTasks.length) {
+          const t = pendingTasks[taskIdx];
+          // Determine duration?
+          let dur = 30;
+          if (t.estTime) {
+            // Parse "1h", "30m" etc?
+            // Simple fallback
+          }
+
+          if (remaining >= dur) {
+            const endPos = currentPos + (dur * 60 * 1000);
+            combined.push({
+              id: 'auto-task-' + t.id,
+              title: t.name,
+              type: 'task',
+              time: `${formatTime(currentPos)} - ${formatTime(endPos)}`,
+              isAllDay: false,
+              location: 'Due Task',
+              color: '#fff',
+              icon: 'check_circle',
+              originalId: t.id
+            });
+
+            currentPos = endPos;
+            remaining -= dur;
+            taskIdx++;
+            continue;
+          } else {
+            // Not enough space for task, break to next gap
+            break;
+          }
+        }
+
+        // If we get here, neither fit or empty list
+        break;
+      }
+    }
+
+  } catch (err) {
+    console.error('getSmartSchedule Error:', err);
+    // Return events only on error
+  }
+
+  return combined;
+}
+
+// --- GEMINI API ---
+function callGeminiAPI(messages) {
+  // messages = [{ role: "user", parts: [{ text: "..." }] }, ...]
+  if (!CONFIG.GEMINI_API_KEY || CONFIG.GEMINI_API_KEY === 'Pending') {
+    return "Error: API Key not set.";
+  }
+
+  // Fallback to specific version tag
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${CONFIG.GEMINI_API_KEY}`;
+
+  const payload = {
+    contents: messages,
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 800
+    }
+  };
+
+  const options = {
+    'method': 'post',
+    'contentType': 'application/json',
+    'payload': JSON.stringify(payload),
+    'muteHttpExceptions': true
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(url, options);
+    const code = response.getResponseCode();
+    const text = response.getContentText();
+
+    if (code !== 200) {
+      console.error('Gemini API Error:', text);
+      return `Error ${code}: ${text}`;
+    }
+
+    const json = JSON.parse(text);
+    if (json.candidates && json.candidates.length > 0) {
+      const content = json.candidates[0].content;
+      if (content && content.parts && content.parts.length > 0) {
+        return content.parts[0].text;
+      }
+    }
+
+    return "No response text found.";
+
+  } catch (e) {
+    console.error('callGeminiAPI Exception:', e);
+    return "Exception: " + e.message;
   }
 }
 
