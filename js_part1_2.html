@@ -403,9 +403,10 @@
         if (data.serverDate) { todayYear = data.serverDate.year; todayMonth = data.serverDate.month; }
         if (data.monthlyLogs) {
             const key = `${todayYear}-${todayMonth}`;
-            Object.keys(data.monthlyLogs).forEach(hName => {
-                if (!habitCalendarCache[hName]) habitCalendarCache[hName] = {};
-                habitCalendarCache[hName][key] = data.monthlyLogs[hName];
+
+            Object.keys(data.monthlyLogs).forEach(hId => {
+                if (!habitCalendarCache[hId]) habitCalendarCache[hId] = {};
+                habitCalendarCache[hId][key] = data.monthlyLogs[hId];
             });
         }
 
@@ -575,7 +576,11 @@
         }
         // ---------------------------------------------------------
 
-        processHabitToggle(item, habitName, newStatus, hasLevels, offenseTitle, defTitle);
+        // 7. Server Call
+        // Pass ID (item.dataset.habitId) instead of Name
+        const hId = item.dataset.habitId;
+        google.script.run.withSuccessHandler(() => { }).logHabit(currentHabitDate, hId, newStatus);
+
     }
 
     function processHabitToggle(item, habitName, newStatus, isAdvanced, offTitle, defTitle) {
@@ -642,8 +647,9 @@
             try {
                 // --- IMMEDIATE CALENDAR CACHE UPDATE ---
                 try {
+                    const hId = item.dataset.habitId;
                     if (!window.habitCalendarCache) window.habitCalendarCache = {};
-                    if (!habitCalendarCache[habitName]) habitCalendarCache[habitName] = {};
+                    if (!habitCalendarCache[hId]) habitCalendarCache[hId] = {};
 
                     const today = new Date();
                     const y = today.getFullYear();
@@ -651,12 +657,11 @@
                     const d = today.getDate();
                     const key = `${y}-${m}`;
 
-                    if (!habitCalendarCache[habitName][key]) habitCalendarCache[habitName][key] = {};
-                    habitCalendarCache[habitName][key][d] = newStatus;
+                    if (!habitCalendarCache[hId][key]) habitCalendarCache[hId][key] = {};
+                    habitCalendarCache[hId][key][d] = newStatus;
 
                     // If Detail View is open for this habit, re-render immediately
-                    if (window.activeGoalDetailId === null && window.currentDetailHabit && currentDetailHabit.name ===
-                        habitName) {
+                    if (window.activeGoalDetailId === null && window.currentDetailHabit && currentDetailHabit.id === hId) {
                         // Check if visible
                         const calGrid = document.getElementById('detail-cal-grid');
                         if (calGrid && calGrid.offsetParent) {
@@ -703,7 +708,9 @@
             updateHabitSectionCounts();
 
             // 7. Server Call
-            google.script.run.withSuccessHandler(() => { }).logHabit(currentHabitDate, habitName, newStatus);
+            // 7. Server Call
+            const hId = item.dataset.habitId;
+            google.script.run.withSuccessHandler(() => { }).logHabit(currentHabitDate, hId, newStatus);
 
         } catch (e) {
             console.error('Error in Toggle:', e);

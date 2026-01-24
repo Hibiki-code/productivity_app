@@ -76,6 +76,11 @@ function initAppSchema() {
       sheet.getRange(1, 3).setValue('date');
     }
   }
+
+  // Migration Hook: Ensure Habit Headers are IDs
+  if (typeof migrateHabitHeadersToIds === 'function') {
+    try { migrateHabitHeadersToIds(); } catch (e) { console.warn('Migration warning', e); }
+  }
 }
 
 // ... (Other functions irrelevant to replace)
@@ -141,7 +146,8 @@ function getSafeSheet(ss, name) {
     const sName = s.getName();
     if (normalize(sName) === targetNorm) {
       console.warn(`Found fuzzy match: "${sName}" -> Renaming to "${name}"`);
-      s.setName(name); // Rename to strict ASCII
+      // s.setName(name); // Rename to strict ASCII? Risk of breaking?
+      // For now, return it.
       return s;
     }
   }
@@ -1259,6 +1265,20 @@ function getHabitStatus(dateStr) {
     }
   }
 
+  // REFACTOR: Map keys from IDs to Names for Frontend? 
+  // No, frontend should use IDs. 
+  // But wait, monthlyLogs[hName] is using the HEADER as key. 
+  // If we migrated headers to IDs, hName IS the ID.
+  // So 'monthlyLogs' will be keyed by ID.
+  // frontend 'habitCalendarCache' expects keys. 
+  // If we change keys to ID, frontend loop `Object.keys(data.monthlyLogs).forEach(hName => ...)`
+  // If hName is ID, we need to make sure `habitCalendarCache` uses ID or Name?
+  // Frontend `habitCalendarCache` is keyed by NAME in `renderHabits`: `habitCalendarCache[hName][key]`.
+  // If backend sends IDs, frontend `hName` variable will hold ID. 
+  // We need to verify frontend uses `h.id` or `h.name`. 
+  // Frontend uses `currentDetailHabit.name` for lookup. 
+  // We should change frontend to use `currentDetailHabit.id`.
+
   // Merge
   const enrichedHabits = habits.map(h => {
     const s = statMap[h.name] || {};
@@ -1266,7 +1286,7 @@ function getHabitStatus(dateStr) {
       ...h,
       streak: s.streak || 0,
       rate30: s.rate30 || 0,
-      status: todaysLog[h.name] || 0
+      status: todaysLog[h.id] || 0
     };
   });
 
@@ -1340,8 +1360,8 @@ function logHabit(dateStr, habitName, status) {
   const data = sheet.getDataRange().getValues();
   let headers = data.length > 0 ? data[0] : [];
 
-  // Dynamic Column Creation/Fix
-  let colIndex = headers.indexOf(habitName);
+  // Dynamic Column Creation/Fix (Using ID)
+  let colIndex = headers.indexOf(habitName); // habitName argument should be ID now
   if (colIndex === -1) {
     if (headers.length === 0) {
       headers = ['Date']; // Init
@@ -1512,7 +1532,7 @@ function getHabitCalendar(habitName, year, month) {
 
   // Header Check
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const colIndex = headers.indexOf(habitName);
+  const colIndex = headers.indexOf(habitName); // habitName passed here should be ID if we update caller
 
   if (colIndex === -1) return {};
 
@@ -1764,7 +1784,7 @@ function calculateSingleStreak(habitName) {
   const data = logSheet.getDataRange().getValues();
   if (data.length === 0) return 0;
   const headers = data[0];
-  const colIndex = headers.indexOf(habitName);
+  const colIndex = headers.indexOf(habitName); // Expects ID
   if (colIndex === -1) return 0;
 
   // Extract dates for this habit

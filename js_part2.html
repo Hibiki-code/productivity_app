@@ -27,8 +27,9 @@
 
         // Cache Check & Render
         const key = `${y}-${m}`;
-        if (habitCalendarCache[currentDetailHabit.name] && habitCalendarCache[currentDetailHabit.name][key]) {
-            renderGrid(habitCalendarCache[currentDetailHabit.name][key]);
+        const hId = currentDetailHabit.id;
+        if (habitCalendarCache[hId] && habitCalendarCache[hId][key]) {
+            renderGrid(habitCalendarCache[hId][key]);
 
             // Background Fetch (Prefetch neighbors)
             fetchCalendarData(y, m, false);
@@ -41,8 +42,8 @@
     function fetchCalendarData(year, month, doRender) {
         google.script.run.withSuccessHandler(data => {
             // Merge Data (Multi-Month Response)
-            const hName = currentDetailHabit.name;
-            if (!habitCalendarCache[hName]) habitCalendarCache[hName] = {};
+            const hId = currentDetailHabit.id; // Use ID
+            if (!habitCalendarCache[hId]) habitCalendarCache[hId] = {};
 
             const today = new Date();
             const tY = today.getFullYear();
@@ -53,15 +54,15 @@
             Object.keys(data).forEach(k => {
                 // If this is the current month, save local Today status before overwrite
                 let preservedToday = undefined;
-                if (k === tKey && habitCalendarCache[hName][k] && habitCalendarCache[hName][k][tD] !== undefined) {
-                    preservedToday = habitCalendarCache[hName][k][tD];
+                if (k === tKey && habitCalendarCache[hId][k] && habitCalendarCache[hId][k][tD] !== undefined) {
+                    preservedToday = habitCalendarCache[hId][k][tD];
                 }
 
-                habitCalendarCache[hName][k] = data[k];
+                habitCalendarCache[hId][k] = data[k];
 
                 // Restore preserved Today
                 if (preservedToday !== undefined) {
-                    habitCalendarCache[hName][k][tD] = preservedToday;
+                    habitCalendarCache[hId][k][tD] = preservedToday;
                 }
             });
 
@@ -69,13 +70,13 @@
                 const key = `${currentDetailYear}-${currentDetailMonth}`;
                 // Render only if strictly matching the request, OR if the current view is covered by the response keys.
                 // Best to check if the *currently viewing* month is in the cache now.
-                if (habitCalendarCache[hName][key]) {
-                    renderGrid(habitCalendarCache[hName][key]);
+                if (habitCalendarCache[hId][key]) {
+                    renderGrid(habitCalendarCache[hId][key]);
                 } else {
                     renderGrid({});
                 }
             }
-        }).getHabitCalendar(currentDetailHabit.name, year, month);
+        }).getHabitCalendar(currentDetailHabit.id, year, month);
     }
 
     function renderGrid(map) {
