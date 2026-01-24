@@ -153,8 +153,11 @@
 
         // Icon Init 
         hsCurrentIcon = currentDetailHabit.icon || '';
-        updateIconPreview(); // Populate Sections const sel=document.getElementById('hs-section');
-        sel.innerHTML = ''; const sections = habitDataCache ? habitDataCache.sections : [];
+        updateIconPreview();
+
+        const sel = document.getElementById('hs-section');
+        sel.innerHTML = '';
+        const sections = habitDataCache ? habitDataCache.sections : [];
         sections.forEach(s => {
             const opt = document.createElement('option');
             opt.value = s.id;

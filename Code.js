@@ -15,23 +15,25 @@ const CONFIG = {
     DB_WEEKLY_GOALS: 'DB_WeeklyGoals',
     DB_DAILY_MEASUREMENTS: 'DB_DailyMeasurements',
     DB_GOALS_PROGRESS: 'DB_GoalsProgress',
-    DB_GOALS_PROGRESS: 'DB_GoalsProgress',
-    DB_PROJECT: 'DB_Project'
+    DB_PROJECT: 'DB_Project',
+    DB_SCHEDULE: 'DB_Schedule'
   },
   GEMINI_API_KEY: 'AIzaSyDCw2c4JIZSFBpMaJ8e4b5CtqCIYLwYuFc',
   TIMEZONE: 'Asia/Tokyo'
 };
 
-// Force Sync 83
+// Force Sync 86
 // Force push cleanup
 function doGet() {
   const template = HtmlService.createTemplateFromFile('index');
 
+  // Ensure DB Schema Exists
+  initAppSchema();
+
   // Server-Side Rendering (SSR) of Initial Data
-  // This bypasses google.script.run for the first paint, ensuring data confirms
   try {
     const tasks = getTasks();
-    const habits = getHabitStatus(new Date().toDateString()); // Today
+    const habits = getHabitStatus(new Date().toDateString());
 
     template.initialTasksJson = JSON.stringify(tasks).replace(/</g, '\\u003c');
     template.initialHabitsJson = JSON.stringify(habits).replace(/</g, '\\u003c');
@@ -51,9 +53,75 @@ function doGet() {
   return html;
 }
 
-
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+function initAppSchema() {
+  const ss = SpreadsheetApp.openById(CONFIG.TASK_DB_ID);
+  const sheetName = CONFIG.SHEET_NAMES.DB_SCHEDULE;
+  let sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    // New Schema: id, created_at, date, startTime, endTime, type, refId, title, isPinned
+    sheet.appendRow(['id', 'created_at', 'date', 'startTime', 'endTime', 'type', 'refId', 'title', 'isPinned']);
+  } else {
+    // Migration Check: Check if Col B (Index 2 in API, 0-indexed in array is 1) is 'date' or 'created_at'
+    const headers = sheet.getRange(1, 1, 1, 9).getValues()[0];
+    if (headers[1] === 'date') {
+      // Old Schema detected. Rename 'date' -> 'created_at' AND Insert 'date' column
+      sheet.getRange(1, 2).setValue('created_at');
+      sheet.insertColumnAfter(2); // Insert new Col 3 (C)
+      sheet.getRange(1, 3).setValue('date');
+    }
+  }
+}
+
+// ... (Other functions irrelevant to replace)
+
+// --- AI AGENT ---
+
+function chatWithAgent(message) {
+  const today = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  // Simple Context
+  const schedule = getSmartSchedule(today);
+  const scheduleTxt = schedule.map(e => `${e.time} ${e.title} (${e.type})`).join('\n');
+
+  const systemPrompt = `
+You are a scheduler assistant. Today is ${today}.
+Current Schedule:
+${scheduleTxt}
+
+Tools (Response JSON ONLY):
+- { "tool": "assignTime", "args": { "title": "TaskName", "time": "HH:mm", "duration": 30 }, "reply": "OK" }
+
+If user says "Schedule [Task] at [Time]", assume 30m if not specified.
+Reply field is what you say to user.
+`;
+
+  const messages = [
+    { role: "user", parts: [{ text: systemPrompt + "\nUser: " + message }] }
+  ];
+
+  const responseText = callGeminiAPI(messages);
+
+  try {
+    // Robust JSON Parsing: Strip backticks
+    const cleanText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      const action = JSON.parse(jsonMatch[0]);
+      if (action.tool === 'assignTime') {
+        executeAiAction(action.tool, action.args);
+        return action.reply + " (Updated)";
+      }
+      return action.reply;
+    }
+  } catch (e) { console.error(e); }
+
+  return responseText;
 }
 
 /**
@@ -188,33 +256,41 @@ function getSmartSchedule(dateStr) {
   const combined = events.map(e => ({ ...e, type: 'event' }));
 
   try {
+    // 1.5 Get Pinned Items (DB_Schedule)
+    const pinned = getPinnedScheduleItems(dateStr);
+    pinned.forEach(p => combined.push(p));
+
+    // Deduplication Sets
+    const pinnedTitles = new Set(pinned.map(p => p.title));
+    const pinnedRefIds = new Set(pinned.map(p => p.originalId || p.refId || ''));
+
     // 2. Get Habits (Pending for today)
-    const habitData = getHabitStatus(dateStr); // Uses cached logic
-    // Filter: Not done (status === 0)
-    // Optional: Filter only 'ACTIVE' habits? getHabitStatus already does that.
-    const pendingHabits = habitData.habits.filter(h => h.status === 0);
+    const habitData = getHabitStatus(dateStr);
+
+    // Filter: Not done (status === 0) AND Not already pinned
+    let pendingHabits = habitData.habits.filter(h => h.status === 0);
+    pendingHabits = pendingHabits.filter(h => {
+      // Check ID or Title
+      if (pinnedRefIds.has(String(h.id))) return false;
+      if (pinnedTitles.has(h.name)) return false;
+      return true;
+    });
 
     // 3. Get Tasks (Due or High Priority & Not Done)
     const allTasks = getTasks();
+    const targetYMD = dateStr.replace(/-/g, '/');
 
-    // Date Comparison Prep
-    // dateStr is 'yyyy-MM-dd' usually from frontend
-    const targetYMD = dateStr.replace(/-/g, '/'); // "2024/01/15"
-
-    const pendingTasks = allTasks.filter(t => {
+    let pendingTasks = allTasks.filter(t => {
       if (t.status === '完了') return false;
 
-      // Priority 1: Due Date <= Today (Overdue or Today)
-      if (t.dueDate) {
-        // Task due date format is yyyy/MM/dd
-        if (t.dueDate <= targetYMD) return true;
-      }
+      // Check Pinned
+      if (pinnedRefIds.has(String(t.id))) return false;
+      if (pinnedTitles.has(t.name)) return false;
 
-      // Priority 2: High Importance (3 or 2) even if no due date?
-      // Let's stick to High (3) for auto-schedule without due date
-      // if (t.importance >= 3) return true;
+      // Priority 1: Due Date <= Today
+      if (t.dueDate && t.dueDate <= targetYMD) return true;
 
-      return false;
+      return false; // Only Due tasks for now
     });
 
     // Sort Tasks: Overdue/Today first, then Priority
@@ -357,6 +433,292 @@ function getSmartSchedule(dateStr) {
   }
 
   return combined;
+}
+
+
+function getPinnedScheduleItems(dateStr) {
+  const ss = SpreadsheetApp.openById(CONFIG.TASK_DB_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_NAMES.DB_SCHEDULE);
+  if (!sheet) return [];
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+
+  const items = [];
+  // NEW: id(0), created_at(1), date(2), start(3), end(4), type(5), refId(6), title(7), pin(8)
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+
+    // Col 2 is Target Date
+    let rowDateStr = '';
+
+    // Robust Date Check for Col 2
+    if (row[2]) {
+      if (row[2] instanceof Date) {
+        rowDateStr = Utilities.formatDate(row[2], CONFIG.TIMEZONE, 'yyyy-MM-dd');
+      } else {
+        const d = new Date(row[2]);
+        if (!isNaN(d.getTime())) {
+          rowDateStr = Utilities.formatDate(d, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+        } else {
+          rowDateStr = String(row[2]);
+        }
+      }
+    } else {
+      // Fallback: Check created_at (Col 1) if migrated and empty?
+      if (row[1] instanceof Date) {
+        rowDateStr = Utilities.formatDate(row[1], CONFIG.TIMEZONE, 'yyyy-MM-dd');
+      }
+    }
+
+    if (rowDateStr !== dateStr) continue;
+
+    const sTime = (row[3] instanceof Date) ? Utilities.formatDate(row[3], CONFIG.TIMEZONE, 'HH:mm') : row[3];
+    const eTime = (row[4] instanceof Date) ? Utilities.formatDate(row[4], CONFIG.TIMEZONE, 'HH:mm') : row[4];
+
+    if (row.length < 8) continue; // Safety
+
+    items.push({
+      id: row[0],
+      title: row[7], // Moved from 6
+      type: row[5] || 'task', // Moved from 4
+      time: `${sTime} - ${eTime}`,
+      isAllDay: false,
+      color: '#ff7043',
+      icon: 'push_pin',
+      refId: row[6],         // Moved from 5
+      originalId: row[6],
+      isPinned: true
+    });
+  }
+  return items;
+}
+
+// --- AI AGENT ---
+
+function chatWithAgent(message) {
+  const today = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyy-MM-dd');
+
+  // 1. Schedule Context
+  const schedule = getSmartSchedule(today);
+  const scheduleTxt = schedule.map(e => `${e.time} : ${e.title} (${e.type})`).join('\n');
+
+  // 2. Task Context (for smart linking)
+  const allTasks = getTasks(); // Cached? No, direct read. Optimization: separate function if slow.
+  // Filter handy tasks
+  const pendingTasks = allTasks.filter(t => t.status !== '完了');
+  const taskListTxt = pendingTasks.slice(0, 15).map(t => `- ${t.name}`).join('\n'); // Top 15
+
+  const systemPrompt = `
+You are a scheduler assistant. Today is ${today}.
+
+Current Schedule:
+${scheduleTxt}
+
+Pending Tasks (Top 15):
+${taskListTxt}
+
+Tools (Response JSON ONLY):
+- { "tool": "assignTime", "args": { "title": "TaskName", "time": "HH:mm", "duration": 30 }, "reply": "Scheduled..." }
+- { "tool": "updateAssignment", "args": { "targetTitle": "TaskTitle", "newTime": "HH:mm", "newDate": "YYYY-MM-DD" }, "reply": "Moved..." }
+- { "tool": "removeAssignment", "args": { "targetTitle": "TaskTitle" }, "reply": "Removed..." }
+- { "tool": "completeTask", "args": { "targetTitle": "TaskTitle" }, "reply": "Great job! Marked as done." }
+
+Rules:
+- If user wants to schedule a specific pending task, use its exact title.
+- 'updateAssignment': 'newDate' is optional. If missing, keep same day.
+- 'completeTask': Use this when user says "I finished X" or "X is done".
+`;
+
+  const messages = [
+    { role: "user", parts: [{ text: systemPrompt + "\nUser: " + message }] }
+  ];
+
+  const responseText = callGeminiAPI(messages);
+
+  try {
+    const cleanText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const action = JSON.parse(jsonMatch[0]);
+      const res = executeAiAction(action.tool, action.args);
+      const reply = action.reply || "処理を完了しました。";
+      return reply + (res ? " (Updated)" : "");
+    }
+  } catch (e) {
+    console.error(e);
+    return "エラーが発生しました: " + e.message;
+  }
+
+  return responseText;
+}
+
+// --- DEBUG HELPER ---
+function logDebug(msg) {
+  const ss = SpreadsheetApp.openById(CONFIG.TASK_DB_ID);
+  let sheet = ss.getSheetByName('DebugLog');
+  if (!sheet) {
+    sheet = ss.insertSheet('DebugLog');
+    sheet.appendRow(['Timestamp', 'Message']);
+  }
+  sheet.appendRow([new Date(), msg]);
+}
+
+function executeAiAction(tool, args) {
+  const ss = SpreadsheetApp.openById(CONFIG.TASK_DB_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_NAMES.DB_SCHEDULE);
+  if (!sheet) return false;
+
+  const todayStr = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  logDebug(`[executeAiAction] Tool: ${tool}, Args: ${JSON.stringify(args)}, Today: ${todayStr}`);
+
+  // Helper: Find Row and Data
+  const findRowByTitle = (targetTitle) => {
+    const data = sheet.getDataRange().getValues();
+    const cleanTarget = String(targetTitle).trim().toLowerCase().replace(/\s+/g, '');
+
+    logDebug(`[Search] Target: "${targetTitle}" -> clean: "${cleanTarget}"`);
+
+    // NEW: id(0), created(1), date(2), start(3), end(4), type(5), refId(6), title(7)
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+
+      // Date Check (Col 2, fallback Col 1)
+      let rowDateStr = '';
+      const targetDateVal = row[2] || row[1];
+
+      if (targetDateVal instanceof Date) {
+        rowDateStr = Utilities.formatDate(targetDateVal, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+      } else {
+        const d = new Date(targetDateVal);
+        if (!isNaN(d.getTime())) {
+          rowDateStr = Utilities.formatDate(d, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+        } else {
+          rowDateStr = String(targetDateVal);
+        }
+      }
+
+      const rowTitle = String(row[7]); // Index 7
+      const cleanRowTitle = rowTitle.trim().toLowerCase().replace(/\s+/g, '');
+
+      if (cleanRowTitle.includes(cleanTarget) || cleanTarget.includes(cleanRowTitle)) {
+        logDebug(`[Match Check] Row ${i + 1}: Date=${rowDateStr} title="${rowTitle}"`);
+      }
+
+      if (rowDateStr === todayStr && cleanRowTitle.includes(cleanTarget)) {
+        logDebug(`[Found] Row ${i + 1} matched!`);
+        return { row: i + 1, refId: row[6], id: row[0], title: row[7] };
+      }
+    }
+    logDebug(`[Not Found] Scanned ${data.length} rows.`);
+    return null;
+  };
+
+  // Helper: Find Task ID by Name from Master DB
+  const findTaskIdByName = (name) => {
+    const tasks = getTasks();
+    const hit = tasks.find(t => t.name === name || name.includes(t.name));
+    return hit ? hit.id : 'ai';
+  };
+
+  if (tool === 'assignTime') {
+    const id = Utilities.getUuid();
+    const now = new Date();
+    const date = new Date();
+
+    const [h, m] = args.time.split(':').map(Number);
+    const startD = new Date(date); startD.setHours(h, m, 0);
+    const endD = new Date(startD.getTime() + (args.duration || 30) * 60000);
+    const endTime = Utilities.formatDate(endD, CONFIG.TIMEZONE, 'HH:mm');
+
+    // Try to link to Real Task
+    const refId = findTaskIdByName(args.title);
+
+    // [id, created, date, start, end, type, refId, title, pin]
+    sheet.appendRow([id, now, date, args.time, endTime, 'task', refId, args.title, true]);
+    return `【新規作成】${args.time}に「${args.title}」を追加しました。`;
+  }
+
+  if (tool === 'updateAssignment') {
+    const found = findRowByTitle(args.targetTitle);
+    if (found) {
+      let msg = `【変更】「${found.title}」を`;
+      if (args.newTime) {
+        const [h, m] = args.newTime.split(':').map(Number);
+        let dBase = new Date();
+
+        if (args.newDate) dBase = new Date(args.newDate);
+
+        const startD = new Date(dBase); startD.setHours(h, m, 0);
+        const dur = 30 * 60000;
+        const endD = new Date(startD.getTime() + dur);
+        const endTime = Utilities.formatDate(endD, CONFIG.TIMEZONE, 'HH:mm');
+
+        sheet.getRange(found.row, 4).setValue(args.newTime); // Col 4 (Start)
+        sheet.getRange(found.row, 5).setValue(endTime);     // Col 5 (End)
+        msg += `${args.newTime}に変更しました。`;
+      }
+      if (args.newDate) {
+        sheet.getRange(found.row, 3).setValue(new Date(args.newDate)); // Col 3 (Date)
+        msg += `日付を${args.newDate}に移動しました。`;
+      }
+      logDebug(`[Update] Success for row ${found.row}`);
+      return msg;
+    } else {
+      // Fallback Upsert
+      logDebug("[Upsert] Triggered because target not found.");
+      console.log("Update target not found, creating new entry (Upsert): " + args.targetTitle);
+      const id = Utilities.getUuid();
+      const now = new Date();
+      const date = args.newDate ? new Date(args.newDate) : new Date();
+      const time = args.newTime || "09:00";
+
+      const [h, m] = time.split(':').map(Number);
+      const startD = new Date(date); startD.setHours(h, m, 0);
+      const endD = new Date(startD.getTime() + (args.duration || 30) * 60000);
+      const endTime = Utilities.formatDate(endD, CONFIG.TIMEZONE, 'HH:mm');
+
+      const refId = findTaskIdByName(args.targetTitle);
+
+      // [id, created, date, start, end, type, refId, title, pin]
+      sheet.appendRow([id, now, date, time, endTime, 'task', refId, args.targetTitle, true]);
+      return `【新規追加（該当する予定が見つからなかったため）】「${args.targetTitle}」を${time}に追加しました。`;
+    }
+  }
+
+  if (tool === 'removeAssignment') {
+    const found = findRowByTitle(args.targetTitle);
+    if (found) {
+      sheet.deleteRow(found.row);
+      return `【削除】「${found.title}」を削除しました。`;
+    }
+    return "削除対象が見つかりませんでした。";
+  }
+
+  if (tool === 'completeTask') {
+    const found = findRowByTitle(args.targetTitle);
+    let targetId = null;
+
+    if (found) {
+      targetId = found.refId;
+    } else {
+      targetId = findTaskIdByName(args.targetTitle);
+    }
+
+    if (targetId && targetId !== 'ai') {
+      const res = updateTaskStatus(targetId, true);
+      if (found) sheet.deleteRow(found.row);
+      return `【完了】タスク「${args.targetTitle}」を完了にしました。`;
+    } else {
+      if (found) {
+        sheet.deleteRow(found.row);
+        return `【完了】予定「${found.title}」を完了として削除しました。`;
+      }
+    }
+    return "完了対象のタスクが見つかりませんでした。";
+  }
+
+  return false;
 }
 
 // --- GEMINI API ---

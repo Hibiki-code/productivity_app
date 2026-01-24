@@ -234,10 +234,18 @@
         google.script.run.withSuccessHandler((response) => {
             removeLoading(loadingId);
             appendMessage(response, 'ai');
+
+            // Check if schedule update happened
+            if (response.includes('(Updated)')) {
+                // Refresh Schedule
+                const d = document.querySelector('.date-item.active');
+                const dateStr = d ? d.dataset.date : formatDateForApi(new Date());
+                loadSchedule(dateStr);
+            }
         }).withFailureHandler((err) => {
             removeLoading(loadingId);
             appendMessage("Error: " + err.message, 'ai');
-        }).callGeminiAPI(messages);
+        }).chatWithAgent(text); // UPDATED FUNCTION
     }
 
     function appendMessage(text, type) {
