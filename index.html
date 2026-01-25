@@ -1451,6 +1451,24 @@
     <div id="detail-journal-logs-container" style="margin:20px 20px 100px 20px;"></div>
   </div>
 
+
+  <!-- GUIDE MODAL -->
+  <div class="modal-overlay" id="habit-guide-modal" onclick="if(event.target===this) closeGuideModal()">
+    <div class="modal-box" style="max-height:85vh; display:flex; flex-direction:column;">
+      <h3 id="hgm-title" style="margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:10px;">Habit Guide</h3>
+
+      <div id="hgm-content"
+        style="flex:1; overflow-y:auto; white-space:pre-wrap; line-height:1.6; color:#444; font-size:15px; background:#f9f9f9; padding:15px; border-radius:8px; margin-bottom:20px;">
+        <!-- Content -->
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn-sec" onclick="closeGuideModal()">キャンセル</button>
+        <button class="btn-save" onclick="confirmGuideCompletion()">これで完了！</button>
+      </div>
+    </div>
+  </div>
+
   <!-- HABIT SETTINGS MODAL -->
   <div class="modal-overlay" id="habit-settings-modal" onclick="if(event.target===this) closeHabitSettings()">
     <div class="modal-box">
@@ -1498,6 +1516,24 @@
 
         <label style="font-size:12px; color:#999; display:block; margin-top:10px; margin-bottom:4px;">攻めの所要時間</label>
         <input id="hs-offense-time" class="input-std">
+      </div>
+
+      <!-- Guide Feature -->
+      <div class="toggle-switch-container" style="margin-top:20px;">
+        <span class="toggle-label" style="display:flex; align-items:center; gap:5px;">
+          <span class="material-symbols-rounded" style="font-size:16px;">menu_book</span>
+          やり方ガイドを表示
+        </span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="hs-guide-toggle" onchange="toggleGuideSettings()">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div id="hs-guide-settings" style="display:none; margin-top:10px;">
+        <label style="font-size:12px; color:#999;">ガイド内容 (完了時に表示)</label>
+        <textarea id="hs-guide-text" class="input-std" rows="6"
+          placeholder="例: 1. 姿勢を正す&#13;&#10;2. 腹式呼吸を5分間..."></textarea>
       </div>
 
       <button class="btn-save" onclick="saveHabitDefinition()">保存</button>

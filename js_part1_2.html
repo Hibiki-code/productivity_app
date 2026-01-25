@@ -509,6 +509,8 @@
         div.setAttribute('data-offense-title', h.offenseTitle || '');
         div.setAttribute('data-def-title', h.name || '');
         div.setAttribute('data-encourage', h.offenseTitle ? 'true' : 'false');
+        div.setAttribute('data-has-guide', h.hasGuide ? 'true' : 'false');
+        div.setAttribute('data-guide-text', h.guideText || '');
 
         let iconContent = '💧';
         if (h.icon) {
@@ -573,14 +575,75 @@
                 openJournalModal(habitName, item);
                 return; // STOP here. Wait for modal save.
             }
+            // Guide Check
+            const hasGuide = (item.dataset.hasGuide === 'true');
+            if (hasGuide) {
+                openGuideModal(habitName, item);
+                return; // STOP
+            }
         }
         // ---------------------------------------------------------
 
-        // 7. Server Call
-        // Pass ID (item.dataset.habitId) instead of Name
-        const hId = item.dataset.habitId;
-        google.script.run.withSuccessHandler(() => { }).logHabit(currentHabitDate, hId, newStatus);
+        processHabitToggle(item, habitName, newStatus, hasLevels, offenseTitle, defTitle);
+    }
 
+    // --- GUIDE MODAL LOGIC ---
+    let pendingGuideItem = null;
+    let pendingGuideName = '';
+
+    function openGuideModal(name, item) {
+        const modal = document.getElementById('habit-guide-modal');
+        const contentEl = document.getElementById('hgm-content');
+        const titleEl = document.getElementById('hgm-title');
+
+        if (modal && contentEl && item) {
+            const text = item.dataset.guideText || 'ガイドなし';
+            // Simple basic markdown-ish process: \n -> <br>
+            const html = text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
+            contentEl.innerHTML = html;
+
+            if (titleEl) titleEl.innerText = name;
+
+            pendingGuideItem = item;
+            pendingGuideName = name;
+            modal.classList.add('open');
+        } else {
+            // Fallback if modal missing
+            console.warn('Guide modal missing');
+            processHabitToggle(item, name, 1, false, '', ''); // Assume status 1
+        }
+    }
+
+    function closeGuideModal() {
+        document.getElementById('habit-guide-modal').classList.remove('open');
+        pendingGuideItem = null;
+    }
+
+    function confirmGuideCompletion() {
+        if (!pendingGuideItem) return;
+
+        // Resume Toggle (Same logic as toggleHabit)
+        const item = pendingGuideItem;
+        const habitName = pendingGuideName;
+
+        const currentStatus = parseInt(item.getAttribute('data-status') || 0);
+        const offenseTitle = item.getAttribute('data-offense-title') || '';
+        const defTitle = item.getAttribute('data-def-title') || '';
+        const hasLevels = !!offenseTitle;
+
+        // Re-calc new status (usually 1 if from 0)
+        let newStatus = 0;
+        if (hasLevels) {
+            if (currentStatus === 0) newStatus = 1;
+            else if (currentStatus === 1) newStatus = 2;
+            else newStatus = 0;
+        } else {
+            newStatus = (currentStatus === 0) ? 1 : 0;
+        }
+
+        processHabitToggle(item, habitName, newStatus, hasLevels, offenseTitle, defTitle);
+
+        closeGuideModal();
     }
 
     function processHabitToggle(item, habitName, newStatus, isAdvanced, offTitle, defTitle) {

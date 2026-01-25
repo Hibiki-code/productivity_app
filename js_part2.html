@@ -152,6 +152,13 @@
         document.getElementById('hs-advanced-toggle').checked = hasAdvanced;
         toggleAdvancedSettings(); // Update visibility 
 
+        // Guide Init
+        const hasGuide = !!(currentDetailHabit.hasGuide);
+        const guideText = currentDetailHabit.guideText || '';
+        document.getElementById('hs-guide-toggle').checked = hasGuide;
+        document.getElementById('hs-guide-text').value = guideText;
+        toggleGuideSettings();
+
         // Icon Init 
         hsCurrentIcon = currentDetailHabit.icon || '';
         updateIconPreview();
@@ -171,6 +178,12 @@
     function toggleAdvancedSettings() {
         const isChecked = document.getElementById('hs-advanced-toggle').checked;
         const container = document.getElementById('hs-advanced-settings');
+        container.style.display = isChecked ? 'block' : 'none';
+    }
+
+    function toggleGuideSettings() {
+        const isChecked = document.getElementById('hs-guide-toggle').checked;
+        const container = document.getElementById('hs-guide-settings');
         container.style.display = isChecked ? 'block' : 'none';
     }
 
@@ -218,6 +231,9 @@
         const newOffense = isAdvanced ? document.getElementById('hs-offense-title').value : '';
         const newOffenseTime = isAdvanced ? document.getElementById('hs-offense-time').value : '';
 
+        const hasGuide = document.getElementById('hs-guide-toggle').checked;
+        const guideText = hasGuide ? document.getElementById('hs-guide-text').value : '';
+
         if (!newName) return;
 
         // Visual Feedback
@@ -243,8 +259,14 @@
                 btn.innerText = originalText;
                 btn.disabled = false;
             }
+        }).withFailureHandler((e) => {
+            alert('保存に失敗しました: ' + e);
+            if (btn) {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
         }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon, newTime,
-            newBenefit, newOffense, newOffenseTime);
+            newBenefit, newOffense, newOffenseTime, hasGuide, guideText);
     }
 
     // --- ICON PICKER ---

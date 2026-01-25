@@ -1180,7 +1180,9 @@ function getHabitStatus(dateStr) {
       hasTextInput: (getVal(r, 'text_input', false) === true),
       time: getVal(r, 'time_needed', ''),
       offenseTitle: getVal(r, 'title_offense', ''),
-      offenseTime: getVal(r, 'time_offense', '')
+      offenseTime: getVal(r, 'time_offense', ''),
+      hasGuide: (getVal(r, 'has_guide', false) === true),
+      guideText: getVal(r, 'guide_text', '')
     };
   }).filter(h => h);
 
@@ -2009,7 +2011,7 @@ function reorderSections(idList) {
 }
 
 
-function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime) {
+function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = ss.getSheetByName('DB_Habits');
   const data = sheet.getDataRange().getValues();
@@ -2060,6 +2062,16 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
       // Expanding for Offense Time
       if (hMap['time_offense'] !== undefined && newOffenseTime !== undefined) {
         sheet.getRange(row, hMap['time_offense'] + 1).setValue(newOffenseTime);
+      }
+
+      // Expanding for Guide
+      if (hasGuide !== undefined) {
+        ensureColumn('has_guide');
+        sheet.getRange(row, hMap['has_guide'] + 1).setValue(hasGuide);
+      }
+      if (guideText !== undefined) {
+        ensureColumn('guide_text');
+        sheet.getRange(row, hMap['guide_text'] + 1).setValue(guideText);
       }
 
       // Update At (Only if exists)
