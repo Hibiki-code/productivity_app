@@ -1197,7 +1197,8 @@ function getHabitStatus(dateStr) {
     const statData = statSheet.getDataRange().getValues();
     statData.shift();
     statData.forEach(r => {
-      statMap[r[0]] = { streak: r[1], rate30: r[2], rateAll: r[3] };
+      // New Schema: id(0), title(1), current_streak(2), Rate30(3), RateAll(4)
+      statMap[r[0]] = { streak: r[2], rate30: r[3], rateAll: r[4] };
     });
   }
 
@@ -1287,7 +1288,7 @@ function getHabitStatus(dateStr) {
 
   // Merge
   const enrichedHabits = habits.map(h => {
-    const s = statMap[h.name] || {};
+    const s = statMap[h.id] || {}; // Lookup by ID
     return {
       ...h,
       streak: s.streak || 0,
@@ -1400,7 +1401,14 @@ function logHabit(dateStr, habitName, status) {
   sheet.getRange(rowIndex, colIndex + 1).setValue(Number(status) || 0);
 
   // 3. STATS UPDATE (Lightweight)
-  updateSingleHabitStreak(habitName);
+  // 3. STATS UPDATE (Lightweight)
+  if (habitId) {
+    updateSingleHabitStreak(habitId, status);
+  } else {
+    // Fallback if ID lookup failed? 
+    // If habitName passed is essentially Unknown, we shouldn't really update stats.
+    console.warn('Skipping streak update: No ID found for', habitName);
+  }
   return 'Updated';
 }
 
@@ -1756,48 +1764,40 @@ function logSleep(dateStr, bedtime, wakeup) {
 }
 
 
-function updateSingleHabitStreak(habitName, isDone) {
+function updateSingleHabitStreak(habitId, isDone) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const statSheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_STATS);
   if (!statSheet) return;
 
   const data = statSheet.getDataRange().getValues();
-  // Header: Habit, Streak, Rate30, RateAll
+  // New Schema: id(0), title(1), current_streak(2), Rate30(3), RateAll(4)
   let rowIndex = -1;
   let currentStreak = 0;
 
   for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === habitName) {
+    // Search by ID (Col A / Index 0)
+    if (String(data[i][0]) === String(habitId)) {
       rowIndex = i + 1;
-      currentStreak = Number(data[i][1] || 0);
+      currentStreak = Number(data[i][2] || 0); // Col C is Index 2
       break;
     }
   }
 
-  // Simple Heuristic: 
-  // If Done -> Streak++ (Optimization: User sees immediate increment)
-  // If Not Done -> Streak-- (or 0? Hard to know if it was 100 before and we just unchecked today)
-  // Conservative: If unchecked, set to 0 or logic requires reading history.
-  // Given "Persistence" request, let's be safer:
-  // We will NOT guess. We will read the history for this ONE habit.
-  // It is faster than reading ALL habits.
-
-  const streak = calculateSingleStreak(habitName); // Helper
+  // Calculate Streak based on Log
+  const streak = calculateSingleStreak(habitId);
 
   if (rowIndex === -1) {
-    // statSheet.appendRow([habitName, streak, 0, 0]); // Stop appending if user manages row? Or just append 0? 
-    // User said "quote current_streak...".
-    // If we append a new row, we might break formulas.
-    // Safer to DO NOTHING if row missing? Or append only name?
-    // Let's assume row exists or user handles it. 
-    // But if we MUST append, maybe just append name?
-    // statSheet.appendRow([habitName]); 
+    // If not found in stats, try to find by Name (fallback) or append?
+    // User requests: "Search by Habit ID".
+    // If missing, we might need to append.
+    // statSheet.appendRow([habitId, 'Unknown', streak, 0, 0]);
   } else {
-    statSheet.getRange(rowIndex, 2).setValue(streak);
+    // Update Col C (Index 2) -> Column 3
+    statSheet.getRange(rowIndex, 3).setValue(streak);
   }
 }
 
-function calculateSingleStreak(habitName) {
+function calculateSingleStreak(habitId) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const logSheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_LOG);
   if (!logSheet) return 0;
@@ -1805,7 +1805,9 @@ function calculateSingleStreak(habitName) {
   const data = logSheet.getDataRange().getValues();
   if (data.length === 0) return 0;
   const headers = data[0];
-  const colIndex = headers.indexOf(habitName); // Expects ID
+
+  // Header should be ID now
+  const colIndex = headers.indexOf(habitId);
   if (colIndex === -1) return 0;
 
   // Extract dates for this habit
