@@ -157,6 +157,12 @@
         const guideText = currentDetailHabit.guideText || '';
         document.getElementById('hs-guide-toggle').checked = hasGuide;
         document.getElementById('hs-guide-text').value = guideText;
+
+        // Image Init
+        hsCurrentGuideImageUrl = currentDetailHabit.guideImage || '';
+        document.getElementById('hs-guide-image-text').value = hsCurrentGuideImageUrl; // Set Input
+        updateGuideImagePreview();
+
         toggleGuideSettings();
 
         // Icon Init 
@@ -233,6 +239,7 @@
 
         const hasGuide = document.getElementById('hs-guide-toggle').checked;
         const guideText = hasGuide ? document.getElementById('hs-guide-text').value : '';
+        const guideImage = hasGuide ? hsCurrentGuideImageUrl : '';
 
         if (!newName) return;
 
@@ -260,13 +267,76 @@
                 btn.disabled = false;
             }
         }).withFailureHandler((e) => {
-            alert('保存に失敗しました: ' + e);
-            if (btn) {
-                btn.innerText = originalText;
-                btn.disabled = false;
-            }
+            fetchHabits();
         }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon, newTime,
-            newBenefit, newOffense, newOffenseTime, hasGuide, guideText);
+            newBenefit, newOffense, newOffenseTime, hasGuide, guideText, guideImage);
+    }
+
+    // --- IMAGE LOGIC ---
+    let hsCurrentGuideImageUrl = '';
+
+    function handleGuideImageTextChange() {
+        const val = document.getElementById('hs-guide-image-text').value;
+        hsCurrentGuideImageUrl = val;
+        updateGuideImagePreview();
+    }
+
+    function handleGuideImageSelect() {
+        const input = document.getElementById('hs-guide-image-input');
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+            const status = document.getElementById('hs-guide-image-status');
+
+            // Limit size? 5MB
+            if (file.size > 5 * 1024 * 1024) {
+                alert('画像サイズが大きすぎます(5MB以下)');
+                input.value = '';
+                return;
+            }
+
+            status.innerText = 'アップロード中...';
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const base64 = e.target.result.split(',')[1];
+                const type = file.type;
+
+                google.script.run.withSuccessHandler((url) => {
+                    if (url.startsWith('Error')) {
+                        alert(url);
+                        status.innerText = 'エラー';
+                    } else {
+                        hsCurrentGuideImageUrl = url;
+                        document.getElementById('hs-guide-image-text').value = url; // Update Text Input
+                        status.innerText = '完了';
+                        updateGuideImagePreview();
+                    }
+                }).uploadHabitImage(base64, type, currentDetailHabit.name || 'new');
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function updateGuideImagePreview() {
+        const preview = document.getElementById('hs-guide-image-preview');
+        const img = document.getElementById('hs-guide-image-img');
+
+        if (hsCurrentGuideImageUrl) {
+            img.src = hsCurrentGuideImageUrl;
+            preview.style.display = 'block';
+            document.getElementById('hs-guide-image-status').innerText = '設定済み';
+        } else {
+            preview.style.display = 'none';
+            document.getElementById('hs-guide-image-status').innerText = '未選択';
+        }
+    }
+
+    function clearGuideImage() {
+        hsCurrentGuideImageUrl = '';
+        document.getElementById('hs-guide-image-input').value = ''; // Reset input
+        document.getElementById('hs-guide-image-text').value = ''; // Reset text
+        document.getElementById('hs-guide-image-status').innerText = '';
+        updateGuideImagePreview();
     }
 
     // --- ICON PICKER ---

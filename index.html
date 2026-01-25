@@ -1471,7 +1471,7 @@
 
   <!-- HABIT SETTINGS MODAL -->
   <div class="modal-overlay" id="habit-settings-modal" onclick="if(event.target===this) closeHabitSettings()">
-    <div class="modal-box">
+    <div class="modal-box" style="max-height:85vh; overflow-y:auto;">
       <h3>習慣設定</h3>
 
       <div style="display:flex; gap:10px; align-items:center; margin-bottom:15px;">
@@ -1534,6 +1534,31 @@
         <label style="font-size:12px; color:#999;">ガイド内容 (完了時に表示)</label>
         <textarea id="hs-guide-text" class="input-std" rows="6"
           placeholder="例: 1. 姿勢を正す&#13;&#10;2. 腹式呼吸を5分間..."></textarea>
+
+        <!-- Image Upload UI -->
+        <div style="margin-top:10px;">
+          <label style="font-size:12px; color:#999; display:block; margin-bottom:5px;">参考画像 (アップロード または URL貼り付け)</label>
+
+          <!-- URL Input -->
+          <input type="text" id="hs-guide-image-text" class="input-std" placeholder="https://..."
+            style="margin-bottom:8px; font-size:12px;" onchange="handleGuideImageTextChange()">
+
+          <div style="display:flex; gap:10px; align-items:center;">
+            <input type="file" id="hs-guide-image-input" accept="image/*" style="display:none;"
+              onchange="handleGuideImageSelect()">
+            <button class="btn-sec" onclick="document.getElementById('hs-guide-image-input').click()"
+              style="padding:5px 10px; font-size:12px;">
+              <span class="material-symbols-rounded"
+                style="font-size:16px; vertical-align:middle;">add_photo_alternate</span> ドライブにアップロード
+            </button>
+            <span id="hs-guide-image-status" style="font-size:11px; color:#999;"></span>
+          </div>
+          <div id="hs-guide-image-preview" style="margin-top:10px; display:none;">
+            <img id="hs-guide-image-img" src=""
+              style="max-width:100%; max-height:150px; border-radius:8px; border:1px solid #ddd;">
+            <div style="font-size:10px; color:red; cursor:pointer;" onclick="clearGuideImage()">× 画像を削除</div>
+          </div>
+        </div>
       </div>
 
       <button class="btn-save" onclick="saveHabitDefinition()">保存</button>

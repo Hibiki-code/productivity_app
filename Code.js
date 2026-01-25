@@ -1182,7 +1182,9 @@ function getHabitStatus(dateStr) {
       offenseTitle: getVal(r, 'title_offense', ''),
       offenseTime: getVal(r, 'time_offense', ''),
       hasGuide: (getVal(r, 'has_guide', false) === true),
-      guideText: getVal(r, 'guide_text', '')
+      hasGuide: (getVal(r, 'has_guide', false) === true),
+      guideText: getVal(r, 'guide_text', ''),
+      guideImage: getVal(r, 'guide_image', '')
     };
   }).filter(h => h);
 
@@ -2026,7 +2028,7 @@ function reorderSections(idList) {
 }
 
 
-function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText) {
+function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText, guideImage) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = ss.getSheetByName('DB_Habits');
   const data = sheet.getDataRange().getValues();
@@ -2087,6 +2089,12 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
       if (guideText !== undefined) {
         ensureColumn('guide_text');
         sheet.getRange(row, hMap['guide_text'] + 1).setValue(guideText);
+      }
+
+      // Image URL
+      if (guideImage !== undefined) { // Could be empty string to clear
+        ensureColumn('guide_image');
+        sheet.getRange(row, hMap['guide_image'] + 1).setValue(guideImage);
       }
 
       // Update At (Only if exists)
@@ -3104,4 +3112,33 @@ function resolveImage(url) {
     console.warn("OGP Resolve Error", e);
   }
   return url;
+}
+
+// --- IMAGE UPLOAD LOGIC ---
+function getOrCreateHabitImageFolder() {
+  const folders = DriveApp.getFoldersByName('HabitApp_Images_v1');
+  if (folders.hasNext()) return folders.next();
+  const folder = DriveApp.createFolder('HabitApp_Images_v1');
+  folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return folder;
+}
+
+function uploadHabitImage(base64Data, mimeType, name) {
+  try {
+    const folder = getOrCreateHabitImageFolder();
+    const cleanName = 'guide_' + name.replace(/[^a-zA-Z0-9]/g, '_') + '_' + new Date().getTime();
+    const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, cleanName);
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); // Ensure file is shared
+
+    // Return direct link logic if possible, or thumbnailLink/webContentLink
+    // webContentLink -> Download. webViewLink -> Preview Page.
+    // To embed in <img>, we generally use Drive ID with a specific endpoint or 'thumbnailLink' (which is actually a displayable image).
+    // Or we use 'https://drive.google.com/uc?export=view&id=' + file.getId()
+
+    return 'https://drive.google.com/uc?export=view&id=' + file.getId();
+  } catch (e) {
+    console.error('Upload Failed', e);
+    return 'Error: ' + e.toString();
+  }
 }

@@ -511,6 +511,7 @@
         div.setAttribute('data-encourage', h.offenseTitle ? 'true' : 'false');
         div.setAttribute('data-has-guide', h.hasGuide ? 'true' : 'false');
         div.setAttribute('data-guide-text', h.guideText || '');
+        div.setAttribute('data-guide-image', h.guideImage || '');
 
         let iconContent = '💧';
         if (h.icon) {
@@ -601,6 +602,18 @@
             // Simple basic markdown-ish process: \n -> <br>
             const html = text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
             contentEl.innerHTML = html;
+
+            // Image Append
+            const guideImg = item.dataset.guideImage;
+            if (guideImg) {
+                const imgEl = document.createElement('img');
+                imgEl.src = guideImg;
+                imgEl.style.width = '100%';
+                imgEl.style.marginTop = '15px';
+                imgEl.style.borderRadius = '8px';
+                imgEl.style.border = '1px solid #eee';
+                contentEl.appendChild(imgEl);
+            }
 
             if (titleEl) titleEl.innerText = name;
 
