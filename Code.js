@@ -1184,7 +1184,9 @@ function getHabitStatus(dateStr) {
       hasGuide: (getVal(r, 'has_guide', false) === true),
       hasGuide: (getVal(r, 'has_guide', false) === true),
       guideText: getVal(r, 'guide_text', ''),
-      guideImage: getVal(r, 'guide_image', '')
+      guideImage: getVal(r, 'guide_image', ''),
+      hasShortcut: (getVal(r, 'has_shortcut', false) === true),
+      shortcutUrl: getVal(r, 'shortcut_url', '')
     };
   }).filter(h => h);
 
@@ -2028,7 +2030,7 @@ function reorderSections(idList) {
 }
 
 
-function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText, guideImage) {
+function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText, guideImage, hasShortcut, shortcutUrl) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = ss.getSheetByName('DB_Habits');
   const data = sheet.getDataRange().getValues();
@@ -2095,6 +2097,16 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
       if (guideImage !== undefined) { // Could be empty string to clear
         ensureColumn('guide_image');
         sheet.getRange(row, hMap['guide_image'] + 1).setValue(guideImage);
+      }
+
+      // Shortcut Feature
+      if (hasShortcut !== undefined) {
+        ensureColumn('has_shortcut');
+        sheet.getRange(row, hMap['has_shortcut'] + 1).setValue(hasShortcut);
+      }
+      if (shortcutUrl !== undefined) {
+        ensureColumn('shortcut_url');
+        sheet.getRange(row, hMap['shortcut_url'] + 1).setValue(shortcutUrl);
       }
 
       // Update At (Only if exists)
