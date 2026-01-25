@@ -985,7 +985,10 @@
     <div id="view-habits" class="view active">
       <div class="glass-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>習慣</div>
-        <div id="habit-date-display" style="font-size:16px; font-weight:600; color:var(--text-sub);"></div>
+        <div style="display:flex; gap:15px; align-items:center;">
+          <div id="habit-date-display" style="font-size:16px; font-weight:600; color:var(--text-sub);"></div>
+          <div class="add-btn-small" onclick="openAddHabitModal()">+</div>
+        </div>
       </div>
 
       <div class="calendar-strip" id="calendar-strip">

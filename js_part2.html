@@ -139,6 +139,11 @@
     function openHabitSettings() {
         if (!currentDetailHabit) return;
         document.getElementById('habit-settings-modal').style.display = 'flex';
+        // Title & Button Reset (Edit Mode)
+        document.querySelector('#habit-settings-modal h3').innerText = '習慣設定';
+        const btn = document.querySelector('#habit-settings-modal .btn-save');
+        if (btn) btn.innerText = '保存';
+
         document.getElementById('hs-name').value = currentDetailHabit.name;
         document.getElementById('hs-time').value = currentDetailHabit.time || '';
         document.getElementById('hs-benefit').value = currentDetailHabit.benefit || '';
@@ -183,6 +188,71 @@
             opt.value = s.id;
             opt.innerText = s.name;
             if (s.id === currentDetailHabit.sectionId) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    }
+
+    function openAddHabitModal() {
+        // Create Dummy Object for New Habit
+        currentDetailHabit = {
+            id: '', // Empty ID signals creation
+            name: '',
+            sectionId: 'sec_morning', // Default?
+            icon: 'water_drop',
+            time: '',
+            benefit: '',
+            offenseTitle: '',
+            offenseTime: '',
+            hasGuide: false,
+            guideText: '',
+            guideImage: '',
+            hasShortcut: false,
+            shortcutUrl: ''
+        };
+
+        document.getElementById('habit-settings-modal').style.display = 'flex';
+
+        // Title & Button Set (Add Mode)
+        document.querySelector('#habit-settings-modal h3').innerText = '習慣を追加';
+        const btn = document.querySelector('#habit-settings-modal .btn-save');
+        if (btn) btn.innerText = '追加';
+
+        // Clear Fields
+        document.getElementById('hs-name').value = '';
+        document.getElementById('hs-time').value = '';
+        document.getElementById('hs-benefit').value = '';
+
+        // Advanced
+        document.getElementById('hs-offense-title').value = '';
+        document.getElementById('hs-offense-time').value = '';
+        document.getElementById('hs-advanced-toggle').checked = false;
+        toggleAdvancedSettings();
+
+        // Guide
+        document.getElementById('hs-guide-toggle').checked = false;
+        document.getElementById('hs-guide-text').value = '';
+        hsCurrentGuideImageUrl = '';
+        document.getElementById('hs-guide-image-text').value = '';
+        updateGuideImagePreview();
+        toggleGuideSettings();
+
+        // Shortcut
+        document.getElementById('hs-shortcut-toggle').checked = false;
+        document.getElementById('hs-shortcut-url').value = '';
+        toggleShortcutSettings();
+
+        // Icon
+        hsCurrentIcon = 'water_drop';
+        updateIconPreview();
+
+        // Section Select
+        const sel = document.getElementById('hs-section');
+        sel.innerHTML = '';
+        const sections = habitDataCache ? habitDataCache.sections : [];
+        sections.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.innerText = s.name;
             sel.appendChild(opt);
         });
     }
@@ -258,6 +328,41 @@
 
         if (!newName) return;
 
+        // --- OPTIMISTIC UI UPDATE ---
+        // 1. Update Global Current Object
+        if (currentDetailHabit) {
+            currentDetailHabit.name = newName;
+            currentDetailHabit.sectionId = newSec;
+            currentDetailHabit.time = newTime;
+            currentDetailHabit.benefit = newBenefit;
+            currentDetailHabit.icon = hsCurrentIcon;
+
+            // Advanced
+            currentDetailHabit.offenseTitle = newOffense;
+            currentDetailHabit.offenseTime = newOffenseTime;
+
+            // Guide
+            currentDetailHabit.hasGuide = hasGuide;
+            currentDetailHabit.guideText = guideText;
+            currentDetailHabit.guideImage = guideImage;
+
+            // Shortcut
+            currentDetailHabit.hasShortcut = hasShortcut;
+            currentDetailHabit.shortcutUrl = shortcutUrl;
+        }
+
+        // 2. Update Cache (List)
+        if (habitDataCache && habitDataCache.habits) {
+            const cached = habitDataCache.habits.find(h => h.id === currentDetailHabit.id);
+            if (cached) {
+                Object.assign(cached, currentDetailHabit);
+            }
+        }
+
+        // 3. UI Refresh (Optional but nice)
+        // If we want to verify immediately, we could re-render list or detail. 
+        // But simply keeping state is enough for "re-open persistence".
+
         // Visual Feedback
         const btn = document.querySelector('#habit-settings-modal .btn-save');
         const originalText = btn ? btn.innerText : '保存';
@@ -269,6 +374,8 @@
         google.script.run.withSuccessHandler(() => {
             closeHabitSettings();
             // closeHabitDetail(); // Kept open as requested
+            // fetchHabits(); // No need to fetch if we trusted our optimistic update! 
+            // But fetching ensures sync. Let's keep it but maybe silent?
             fetchHabits();
 
             if (btn) {
@@ -277,12 +384,11 @@
             }
         }).withFailureHandler((e) => {
             alert('保存に失敗しました: ' + e);
+            // Rollback? Too complex for now. Just alert.
             if (btn) {
                 btn.innerText = originalText;
                 btn.disabled = false;
             }
-        }).withFailureHandler((e) => {
-            fetchHabits();
         }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon, newTime,
             newBenefit, newOffense, newOffenseTime, hasGuide, guideText, guideImage, hasShortcut, shortcutUrl);
     }

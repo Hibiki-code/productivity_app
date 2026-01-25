@@ -2061,63 +2061,101 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
   if (newOffenseTime !== undefined) ensureColumn('time_offense');
 
   let found = false;
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][hMap['title']] === name) {
-      const row = i + 1;
-      if (newName && newName !== name) sheet.getRange(row, hMap['title'] + 1).setValue(newName);
-      if (sectionId) sheet.getRange(row, hMap['section'] + 1).setValue(sectionId);
-      if (icon) sheet.getRange(row, hMap['icon'] + 1).setValue(icon);
+  if (name) {
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][hMap['title']] === name) {
+        const row = i + 1;
+        if (newName && newName !== name) sheet.getRange(row, hMap['title'] + 1).setValue(newName);
+        if (sectionId) sheet.getRange(row, hMap['section'] + 1).setValue(sectionId);
+        if (icon) sheet.getRange(row, hMap['icon'] + 1).setValue(icon);
 
-      // Expanding for Benefit and Time
-      if (hMap['benefit'] !== undefined && newBenefit !== undefined) {
-        sheet.getRange(row, hMap['benefit'] + 1).setValue(newBenefit);
-      }
-      if (hMap['time_needed'] !== undefined && newTime !== undefined) {
-        sheet.getRange(row, hMap['time_needed'] + 1).setValue(newTime);
-      }
+        // Expanding for Benefit and Time
+        if (hMap['benefit'] !== undefined && newBenefit !== undefined) {
+          sheet.getRange(row, hMap['benefit'] + 1).setValue(newBenefit);
+        }
+        if (hMap['time_needed'] !== undefined && newTime !== undefined) {
+          sheet.getRange(row, hMap['time_needed'] + 1).setValue(newTime);
+        }
 
-      // Expanding for Offense Title
-      if (hMap['title_offense'] !== undefined && newOffenseTitle !== undefined) {
-        sheet.getRange(row, hMap['title_offense'] + 1).setValue(newOffenseTitle);
-      }
-      // Expanding for Offense Time
-      if (hMap['time_offense'] !== undefined && newOffenseTime !== undefined) {
-        sheet.getRange(row, hMap['time_offense'] + 1).setValue(newOffenseTime);
-      }
+        // Expanding for Offense Title
+        if (hMap['title_offense'] !== undefined && newOffenseTitle !== undefined) {
+          sheet.getRange(row, hMap['title_offense'] + 1).setValue(newOffenseTitle);
+        }
+        // Expanding for Offense Time
+        if (hMap['time_offense'] !== undefined && newOffenseTime !== undefined) {
+          sheet.getRange(row, hMap['time_offense'] + 1).setValue(newOffenseTime);
+        }
 
-      // Expanding for Guide
-      if (hasGuide !== undefined) {
-        ensureColumn('has_guide');
-        sheet.getRange(row, hMap['has_guide'] + 1).setValue(hasGuide);
-      }
-      if (guideText !== undefined) {
-        ensureColumn('guide_text');
-        sheet.getRange(row, hMap['guide_text'] + 1).setValue(guideText);
-      }
+        // Expanding for Guide
+        if (hasGuide !== undefined) {
+          ensureColumn('has_guide');
+          sheet.getRange(row, hMap['has_guide'] + 1).setValue(hasGuide);
+        }
+        if (guideText !== undefined) {
+          ensureColumn('guide_text');
+          sheet.getRange(row, hMap['guide_text'] + 1).setValue(guideText);
+        }
 
-      // Image URL
-      if (guideImage !== undefined) { // Could be empty string to clear
-        ensureColumn('guide_image');
-        sheet.getRange(row, hMap['guide_image'] + 1).setValue(guideImage);
-      }
+        // Image URL
+        if (guideImage !== undefined) { // Could be empty string to clear
+          ensureColumn('guide_image');
+          sheet.getRange(row, hMap['guide_image'] + 1).setValue(guideImage);
+        }
 
-      // Shortcut Feature
-      if (hasShortcut !== undefined) {
-        ensureColumn('has_shortcut');
-        sheet.getRange(row, hMap['has_shortcut'] + 1).setValue(hasShortcut);
-      }
-      if (shortcutUrl !== undefined) {
-        ensureColumn('shortcut_url');
-        sheet.getRange(row, hMap['shortcut_url'] + 1).setValue(shortcutUrl);
-      }
+        // Shortcut Feature
+        if (hasShortcut !== undefined) {
+          ensureColumn('has_shortcut');
+          sheet.getRange(row, hMap['has_shortcut'] + 1).setValue(hasShortcut);
+        }
+        if (shortcutUrl !== undefined) {
+          ensureColumn('shortcut_url');
+          sheet.getRange(row, hMap['shortcut_url'] + 1).setValue(shortcutUrl);
+        }
 
-      // Update At (Only if exists)
-      if (hMap['updatedat'] !== undefined) {
-        sheet.getRange(row, hMap['updatedat'] + 1).setValue(new Date());
+        // Update At (Only if exists)
+        if (hMap['updatedat'] !== undefined) {
+          sheet.getRange(row, hMap['updatedat'] + 1).setValue(new Date());
+        }
+
+        found = true;
+        break;
       }
-      found = true;
-      break;
     }
+  }
+
+  // --- NEW HABIT CREATION ---
+  if (!found) {
+    const newId = Utilities.getUuid();
+    const newRow = [];
+    // Initialize row with empty strings
+    for (let k = 0; k < headers.length; k++) newRow.push('');
+
+    // Fill known columns using hMap
+    newRow[hMap['id'] || 0] = newId;
+    newRow[hMap['title']] = newName;
+    newRow[hMap['section']] = sectionId || 'sec_morning';
+    newRow[hMap['icon']] = icon || 'water_drop';
+    newRow[hMap['isactive'] || 1] = 'ACTIVE'; // active/isActive mess. Assume 'active' or 'isActive'
+    // Check header for active
+    let activeIdx = hMap['isactive'];
+    if (activeIdx === undefined) activeIdx = hMap['active'];
+    if (activeIdx !== undefined) newRow[activeIdx] = 'ACTIVE';
+
+    if (hMap['benefit'] !== undefined) newRow[hMap['benefit']] = newBenefit || '';
+    if (hMap['time_needed'] !== undefined) newRow[hMap['time_needed']] = newTime || '';
+    if (hMap['title_offense'] !== undefined) newRow[hMap['title_offense']] = newOffenseTitle || '';
+    if (hMap['time_offense'] !== undefined) newRow[hMap['time_offense']] = newOffenseTime || '';
+
+    if (hMap['has_guide'] !== undefined) newRow[hMap['has_guide']] = hasGuide || false;
+    if (hMap['guide_text'] !== undefined) newRow[hMap['guide_text']] = guideText || '';
+    if (hMap['guide_image'] !== undefined) newRow[hMap['guide_image']] = guideImage || '';
+
+    if (hMap['has_shortcut'] !== undefined) newRow[hMap['has_shortcut']] = hasShortcut || false;
+    if (hMap['shortcut_url'] !== undefined) newRow[hMap['shortcut_url']] = shortcutUrl || '';
+
+    if (hMap['createdat'] !== undefined) newRow[hMap['createdat']] = new Date();
+
+    sheet.appendRow(newRow);
   }
 
   if (!found) {
