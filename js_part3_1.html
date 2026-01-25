@@ -6,6 +6,9 @@
     /* --- PROGRESS LOGIC --- */
     let currentProgressGoalId = null;
     let currentProgressBaseValue = 0; // Store the "previous" value to add increment to
+    let pendingJournalItem = null;
+    let pendingJournalName = '';
+    let pendingJournalId = null;
 
     function openProgressModal(id, current, title) {
         currentProgressGoalId = id;
@@ -146,8 +149,11 @@
     function openJournalModal(name, item) {
         const modal = document.getElementById('journal-modal');
         if (!modal) return;
+        if (!modal) return;
         pendingJournalItem = item;
         pendingJournalName = name;
+        pendingJournalId = item ? item.getAttribute('data-habit-id') : null; // Capture ID
+        pendingJournalId = item ? item.getAttribute('data-habit-id') : null; // Capture ID
 
         // Reset Inputs
         const input = document.getElementById('journal-input');
@@ -189,8 +195,10 @@
         if (!saved) {
             pendingJournalItem = null;
             pendingJournalName = '';
+            pendingJournalId = null;
         }
     }
+
 
     function submitJournal() {
         if (!pendingJournalItem) return;
@@ -198,11 +206,14 @@
         const name = pendingJournalName;
         const item = pendingJournalItem;
 
+        const id = pendingJournalId; // Use ID
+
         closeJournalModal(true);
         // Force update to Done (Level 1)
-        processHabitToggle(item, name, 1, false, true);
+        processHabitToggle(item, name, 1, false, true); // Visual toggle still needs name for cache/UI? toggleHabit uses ID now? processHabitToggle uses Item.
 
-        google.script.run.logHabitText(currentHabitDate, name, text);
+        // Backend expects ID now
+        google.script.run.logHabitText(currentHabitDate, id, text);
     }
 
     /* --- SLEEP MODAL LOGIC (NUCLEAR FIX 3: CLOCK UI) --- */

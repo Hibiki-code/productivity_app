@@ -792,8 +792,7 @@
         }
     }
 
-    let pendingJournalItem = null;
-    let pendingJournalName = '';
+
 
     function closeJournalModal(saved) {
         document.getElementById('journal-modal').classList.remove('open');
@@ -901,7 +900,7 @@
 
             if (habit.name.endsWith('日記') || habit.name === '睡眠時間記録') {
                 logContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">Loading...</div>';
-                google.script.run.withSuccessHandler(renderJournalLogs).getHabitTextLogs(habit.name);
+                google.script.run.withSuccessHandler(renderJournalLogs).getHabitTextLogs(habit.id);
             }
         }
 

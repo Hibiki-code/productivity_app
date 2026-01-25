@@ -1403,36 +1403,51 @@ function logHabit(dateStr, habitName, status) {
 
 
 
-function logHabitText(dateStr, habitName, text) {
+function logHabitText(dateStr, habitId, text) { // habitName argument replaced by habitId
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const logName = '日記記録'; // Targets the Journal Sheet directly
   let sheet = ss.getSheetByName(logName);
 
   if (!sheet) {
     sheet = ss.insertSheet(logName);
-    sheet.appendRow(['日付', '夢日記', '感謝日記']); // Header Init matching likely Defaults
+    sheet.appendRow(['id']); // Row 1 Header (ID)
+    sheet.appendRow(['title']); // Row 2 Header (Title, User managed usually)
   }
 
-  // 1. Ensure Column Exists (Habit Name)
+  // 1. Ensure Column Exists by ID (Row 1)
   const lastCol = sheet.getLastColumn();
-  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  let colIndex = headers.indexOf(habitName);
+  let headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0]; // Row 1 is IDs
+
+  // If headers empty (new sheet), initialize
+  if (headers.length === 0) {
+    sheet.getRange(1, 1).setValue('id');
+    headers = ['id'];
+  }
+
+  let colIndex = headers.indexOf(habitId);
+
+  // If it's a UUID-like thing or explicit ID, great.
+  // If frontend passed name by mistake, we might create a column named "Name" in ID row. 
+  // Allow this fallback? User specifically said "Use ID".
 
   if (colIndex === -1) {
     // Create new column if not found
-    sheet.getRange(1, lastCol + 1).setValue(habitName);
-    colIndex = lastCol; // The new index is the old length
+    colIndex = headers.length; // New index
+    sheet.getRange(1, colIndex + 1).setValue(habitId); // Set ID in Row 1
+    // Also try to set Title in Row 2 if possible?
+    // User said "Auto-displayed", so we leave Row 2 alone.
   }
 
   // 2. Ensure Row Exists (Date)
-  const targetYMD = Utilities.formatDate(new Date(dateStr), CONFIG.TIMEZONE, 'yyyy/MM/dd'); // Use slash for this sheet as per screenshot
+  // Date is in Column A (Index 0).
+  const targetYMD = Utilities.formatDate(new Date(dateStr), CONFIG.TIMEZONE, 'yyyy/MM/dd'); // Using Slash
 
-  // Find Row
+  // Search logic
   const data = sheet.getDataRange().getValues();
   let rowIndex = -1;
 
-  // Search from bottom up for efficiency
-  for (let i = data.length - 1; i >= 1; i--) {
+  // Search from bottom up
+  for (let i = data.length - 1; i >= 2; i--) { // Start from Row 3 (Index 2) because Row 1,2 are headers
     let dVal = data[i][0];
     let dStr = '';
     if (dVal instanceof Date) dStr = Utilities.formatDate(dVal, CONFIG.TIMEZONE, 'yyyy/MM/dd');
@@ -1639,7 +1654,7 @@ function getHabitCalendar(habitName, year, month) {
   return result;
 }
 
-function getHabitTextLogs(habitName) {
+function getHabitTextLogs(habitId) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const logName = '日記記録'; // Matrix Sheet
   const sheet = ss.getSheetByName(logName);
@@ -1647,8 +1662,8 @@ function getHabitTextLogs(habitName) {
   if (!sheet) return [];
 
   const lastCol = sheet.getLastColumn();
-  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  const colIndex = headers.indexOf(habitName); // 0-based index in headers
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0]; // Row 1 is IDs
+  const colIndex = headers.indexOf(habitId); // 0-based index in headers
 
   if (colIndex === -1) return [];
 
@@ -1663,7 +1678,7 @@ function getHabitTextLogs(habitName) {
 
   const results = [];
 
-  for (let i = 1; i < data.length; i++) {
+  for (let i = 2; i < data.length; i++) { // Start from Index 2 (Row 3)
     const row = data[i];
     const val = row[colIndex];
     if (val && String(val).trim() !== '') {
