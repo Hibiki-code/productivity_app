@@ -371,12 +371,24 @@
             btn.disabled = true;
         }
 
-        google.script.run.withSuccessHandler(() => {
+        google.script.run.withSuccessHandler((updatedData) => {
             closeHabitSettings();
-            // closeHabitDetail(); // Kept open as requested
-            // fetchHabits(); // No need to fetch if we trusted our optimistic update! 
-            // But fetching ensures sync. Let's keep it but maybe silent?
-            fetchHabits();
+
+            if (updatedData && updatedData.habits) {
+                console.log('Habit Definition Saved, Updating Cache', updatedData);
+                habitDataCache = updatedData;
+
+                // Re-render
+                renderHabits(updatedData);
+
+                // Also update currentDetailHabit if needed (though it was optimistic)
+                if (currentDetailHabit) {
+                    const fresh = updatedData.habits.find(h => h.id === currentDetailHabit.id);
+                    if (fresh) currentDetailHabit = fresh;
+                }
+            } else {
+                fetchHabits();
+            }
 
             if (btn) {
                 btn.innerText = originalText;
@@ -384,7 +396,6 @@
             }
         }).withFailureHandler((e) => {
             alert('保存に失敗しました: ' + e);
-            // Rollback? Too complex for now. Just alert.
             if (btn) {
                 btn.innerText = originalText;
                 btn.disabled = false;
@@ -1005,4 +1016,12 @@
 
     /* --- DELETED WIZARD LOGIC --- */
     console.log('Part 2 End');
+
+    // EXPORTS
+    window.openGoalModal = openGoalModal;
+    window.closeGoalModal = closeGoalModal;
+    window.saveGoal = saveGoal;
+    window.openMeasurementModal = openMeasurementModal;
+    window.closeMeasurementModal = closeMeasurementModal;
+    window.saveMeasurement = saveMeasurement;
 </script>

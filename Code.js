@@ -24,7 +24,23 @@ const CONFIG = {
 
 // Force Sync 86
 // Force push cleanup
-function doGet() {
+// Force Sync 87
+function doGet(e) {
+  // 1. MIGRATION / DEBUG TRIGGERS
+  if (e && e.parameter && e.parameter.migrate === 'habit_headers') {
+    const result = migrateHabitLogHeaders();
+    return ContentService.createTextOutput(result);
+  }
+  if (e && e.parameter && e.parameter.migrate === 'dedup') {
+    const result = deduplicateHabitLogs();
+    return ContentService.createTextOutput(result);
+  }
+  if (e && e.parameter && e.parameter.migrate === 'debug_habit') {
+    const result = debugHabitStatus();
+    return ContentService.createTextOutput(result);
+  }
+
+  // 2. NORMAL APP VIEW
   const template = HtmlService.createTemplateFromFile('index');
 
   // Ensure DB Schema Exists
@@ -39,11 +55,11 @@ function doGet() {
     template.initialHabitsJson = JSON.stringify(habits).replace(/</g, '\\u003c');
     template.ssrError = 'null';
 
-  } catch (e) {
-    console.error("SSR Error", e);
+  } catch (err) {
+    console.error("SSR Error", err);
     template.initialTasksJson = '[]';
     template.initialHabitsJson = '{}';
-    template.ssrError = JSON.stringify('Server Error: ' + e.toString() + ' Stack: ' + e.stack).replace(/</g, '\\u003c');
+    template.ssrError = JSON.stringify('Server Error: ' + err.toString());
   }
 
   const html = template.evaluate();
@@ -728,6 +744,77 @@ function executeAiAction(tool, args) {
 }
 
 // --- GEMINI API ---
+
+function debugHabitStatus() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_LOG);
+  const dbHabits = ss.getSheetByName('DB_Habits').getDataRange().getValues();
+
+  if (!sheet) return 'Log Sheet Not Found';
+
+  const logData = sheet.getDataRange().getValues();
+  const logHeaders = logData[0];
+  const dateStr = new Date().toDateString();
+  const targetDateObj = new Date(dateStr);
+  const targetYMD = Utilities.formatDate(targetDateObj, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+
+  let report = `Debug Report for ${targetYMD}\n`;
+  report += `Headers (Row 1): ${logHeaders.slice(0, 5).join(', ')}...\n`;
+
+  // Find Row
+  let foundRow = null;
+  let foundRowIndex = -1;
+  const targetYear = targetDateObj.getFullYear();
+  const targetMonth = targetDateObj.getMonth();
+  const targetDate = targetDateObj.getDate();
+
+  for (let i = 1; i < logData.length; i++) {
+    const rowRaw = logData[i][0];
+    if (!rowRaw) continue;
+    try {
+      const d = new Date(rowRaw);
+      const rowYMD = Utilities.formatDate(d, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+
+      // Loose Match
+      if (d.getFullYear() === targetYear && d.getMonth() === targetMonth && d.getDate() === targetDate) {
+        foundRow = logData[i];
+        foundRowIndex = i + 1;
+        report += `Row Found at Index ${foundRowIndex} (Date: ${rowYMD})\n`;
+        break; // Take first/top match for debug
+      }
+    } catch (e) { }
+  }
+
+  if (!foundRow) return report + "No row found for today.";
+
+  // Check Matches
+  const idIdx = 0; // DB_Habits ID column default
+  const titleIdx = 1;
+
+  report += "\n-- Habits Check --\n";
+
+  for (let i = 1; i < dbHabits.length; i++) {
+    const hId = String(dbHabits[i][idIdx]);
+    const hName = String(dbHabits[i][titleIdx]);
+
+    // Look for ID in Headers
+    const colIdx = logHeaders.indexOf(hId);
+    let idStatus = 'N/A';
+    if (colIdx > -1) idStatus = foundRow[colIdx];
+
+    // Look for Name in Headers
+    const nameIdx = logHeaders.indexOf(hName);
+    let nameStatus = 'N/A';
+    if (nameIdx > -1) nameStatus = foundRow[nameIdx];
+
+    report += `Habit: ${hName} (${hId.substring(0, 6)}...)\n`;
+    report += `  -> Header[ID] match: col ${colIdx} val=${idStatus}\n`;
+    report += `  -> Header[Name] match: col ${nameIdx} val=${nameStatus}\n`;
+  }
+
+  return report;
+}
+
 function callGeminiAPI(messages) {
   // messages = [{ role: "user", parts: [{ text: "..." }] }, ...]
   if (!CONFIG.GEMINI_API_KEY || CONFIG.GEMINI_API_KEY === 'Pending') {
@@ -1243,21 +1330,25 @@ function getHabitStatus(dateStr) {
     const rDay = rDate.getDate();
 
     if (rYear === targetYear && rMonth === targetMonth && rDay === targetDateNum) {
-      // console.log('Match found (numeric) for:', dateStr);
       for (let c = 1; c < logHeaders.length; c++) {
         const hName = logHeaders[c];
         const val = logData[i][c];
         // 2-level System: Return raw value 0, 1, 2
-        // Legacy check for boolean true replaced by 1
         let status = 0;
         if (val == 2) status = 2;
         else if (val == 1 || val === true || val === 'TRUE') status = 1;
 
-        todaysLog[hName] = status;
+        // OR-Merge: If already set to 1/2, keep it. Don't overwrite with 0.
+        // If current status is higher, ignore this row's 0.
+        // If this row has 1 and current is 0, update.
+        const current = todaysLog[hName] || 0;
+        if (status > current) {
+          todaysLog[hName] = status;
+        }
       }
     }
 
-    // Collect Month Data
+    // Collect Month Data (Merge as well)
     if (rYear === targetYear && rMonth === targetMonth) {
       for (let c = 1; c < logHeaders.length; c++) {
         const hName = logHeaders[c];
@@ -1267,7 +1358,11 @@ function getHabitStatus(dateStr) {
         else if (val == 1 || val === true || val === 'TRUE') status = 1;
 
         if (!monthlyLogs[hName]) monthlyLogs[hName] = {};
-        monthlyLogs[hName][rDay] = status;
+
+        const currentMonthVal = monthlyLogs[hName][rDay] || 0;
+        if (status > currentMonthVal) {
+          monthlyLogs[hName][rDay] = status;
+        }
       }
     }
   }
@@ -1293,7 +1388,7 @@ function getHabitStatus(dateStr) {
       ...h,
       streak: s.streak || 0,
       rate30: s.rate30 || 0,
-      status: todaysLog[h.id] || 0
+      status: todaysLog[h.id] || todaysLog[h.name] || 0
     };
   });
 
@@ -1306,108 +1401,158 @@ function getHabitStatus(dateStr) {
   };
 }
 
-function logHabit(dateStr, habitName, status) {
+function logHabit(dateStr, habitIdOrName, status) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
 
-  // 1. EVENT LOGGING (DB_HabitLogs) - Transaction Log
-  let dbSheet = ss.getSheetByName('DB_HabitLogs');
-  if (!dbSheet) {
-    dbSheet = ss.insertSheet('DB_HabitLogs');
-    dbSheet.appendRow(['Timestamp', 'DateTarget', 'Habit', 'Status', 'UserAgent']); // Legacy headers or new?
-    // Plan said: id, date, habitId, status, value, timestamp
-    // Ideally we assume columns if it exists.
-    // Let's stick to appending in a robust way or matching headers.
-    // For now, let's keep the existing format I made earlier: Timestamp, DateTarget, Habit, Status, UserAgent
-    // To be perfectly aligned with plan, we should look up ID.
+  // 1. Resolve ID and Name
+  // Front-end should pass ID. But legacy might pass Name.
+  // We need both ID (for DB_HabitLogs) and ID (for HABIT_LOG Header).
+
+  let habitId = habitIdOrName;
+  let habitName = habitIdOrName; // Fallback for error msgs
+
+  const dbHabits = ss.getSheetByName('DB_Habits').getDataRange().getValues();
+  // Map ID -> Name and Name -> ID
+  // To verify if input is ID or Name.
+
+  // Quick heuristic: UUID length > 20? 
+  // Better: Check against DB.
+
+  let foundRow = null;
+  const hHeaders = dbHabits[0].map(h => String(h).trim().toLowerCase());
+  let titleIdx = hHeaders.indexOf('title'); if (titleIdx === -1) titleIdx = 1;
+  let idIdx = hHeaders.indexOf('id'); if (idIdx === -1) idIdx = 0;
+
+  // Search as ID first
+  for (let i = 1; i < dbHabits.length; i++) {
+    if (String(dbHabits[i][idIdx]) === String(habitIdOrName)) {
+      foundRow = dbHabits[i];
+      habitId = dbHabits[i][idIdx];
+      habitName = dbHabits[i][titleIdx];
+      break;
+    }
   }
 
-  // Lookup ID from DB_Habits
-  const dbHabits = ss.getSheetByName('DB_Habits').getDataRange().getValues();
-  let habitId = '';
-  // DB_Habits new schema: id(0), title(1)
-  // Assuming Fallback if header search fails: title is idx 1
-  const hHeaders = dbHabits[0].map(h => String(h).trim().toLowerCase());
-  let titleIdx = hHeaders.indexOf('title');
-  const idIdx = hHeaders.indexOf('id');
-
-  if (titleIdx === -1) titleIdx = 1; // Fallback
-  // idIdx usually 0
-
-  if (titleIdx > -1 && idIdx > -1) {
+  // If not found as ID, search as Name
+  if (!foundRow) {
     for (let i = 1; i < dbHabits.length; i++) {
-      if (dbHabits[i][titleIdx] === habitName) {
+      if (String(dbHabits[i][titleIdx]) === String(habitIdOrName)) {
+        foundRow = dbHabits[i];
         habitId = dbHabits[i][idIdx];
+        habitName = dbHabits[i][titleIdx];
         break;
       }
     }
   }
 
-  // 2. Validate/Align Headers with [id, date, habitId, status, value, updatedAt]
-  // We assume the sheet is already set up correctly by migration or prior manual creation.
-  // Schema: id, date, habitId, status, value, updatedAt
+  if (!foundRow) {
+    console.warn('logHabit: Habit not found for ' + habitIdOrName);
+    // Proceed with using input as ID/Name mixed (Legacy/New dynamic)?
+    // If not in DB, we probably shouldn't log it, but user might have deleted it?
+    // Let's assume input is the key.
+  }
 
+  // 2. EVENT LOGGING (DB_HabitLogs)
+  let dbSheet = ss.getSheetByName('DB_HabitLogs');
+  if (!dbSheet) {
+    dbSheet = ss.insertSheet('DB_HabitLogs');
+    dbSheet.appendRow(['id', 'date', 'habitId', 'status', 'value', 'updatedAt']);
+  }
+
+  // Ensure header if lazy init
   if (dbSheet.getLastRow() === 0) {
     dbSheet.appendRow(['id', 'date', 'habitId', 'status', 'value', 'updatedAt']);
   }
 
-  // Prepare Row
   const logId = Utilities.getUuid();
-
   const value = Number(status) || 0;
-  // Status check: 2 = ADVANCED, 1 = DONE, 0 = SKIPPED/NONE
   let statusStr = 'SKIPPED';
   if (value === 2) statusStr = 'ADVANCED';
   else if (value === 1) statusStr = 'DONE';
 
   dbSheet.appendRow([logId, dateStr, habitId, statusStr, value, new Date()]);
 
-
-  // 2. MATRIX UPDATE (習慣記録１)
+  // 3. MATRIX UPDATE (習慣記録１) - Uses ID as Header now!
   const sheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_LOG);
   const data = sheet.getDataRange().getValues();
   let headers = data.length > 0 ? data[0] : [];
 
-  // Dynamic Column Creation/Fix (Using ID)
-  let colIndex = headers.indexOf(habitName); // habitName argument should be ID now
+  // We use habitId as the Column Header.
+  let colIndex = headers.indexOf(habitId);
+
   if (colIndex === -1) {
-    if (headers.length === 0) {
-      headers = ['Date']; // Init
-      sheet.appendRow(['Date']);
+    // If not found, maybe it's still using Name in header? (Migration didn't run?)
+    // Try finding by Name
+    let nameColIndex = headers.indexOf(habitName);
+    if (nameColIndex !== -1) {
+      // Found by Name. We should update this header to ID?
+      // Or just use it?
+      // Let's use it, but ideally we migrate.
+      colIndex = nameColIndex;
+      // Auto-migrate header? (Safe to do?)
+      // sheet.getRange(1, colIndex + 1).setValue(habitId); 
+      // decided not to auto-migrate here to avoid side effects during write.
+    } else {
+      // New Column
+      if (headers.length === 0) {
+        headers = ['Date'];
+        sheet.appendRow(['Date']);
+      }
+      colIndex = headers.length;
+      sheet.getRange(1, colIndex + 1).setValue(habitId); // Set ID as Header
+      headers.push(habitId);
     }
-    colIndex = headers.length;
-    sheet.getRange(1, colIndex + 1).setValue(habitName); // Add Header
-    headers.push(habitName);
   }
 
-  const targetYMD = Utilities.formatDate(new Date(dateStr), CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  // Robust Date Matching
+  const targetDateObj = new Date(dateStr);
+  const targetYear = targetDateObj.getFullYear();
+  const targetMonth = targetDateObj.getMonth();
+  const targetDate = targetDateObj.getDate();
+  const targetYMD = Utilities.formatDate(targetDateObj, CONFIG.TIMEZONE, 'yyyy-MM-dd');
 
   let rowIndex = -1;
-  // Search from bottom up optimization
+  // Search from bottom up
   for (let i = data.length - 1; i >= 1; i--) {
     const rowDateRaw = data[i][0];
     if (!rowDateRaw) continue;
-    const rowYMD = Utilities.formatDate(new Date(rowDateRaw), CONFIG.TIMEZONE, 'yyyy-MM-dd');
-    if (rowYMD === targetYMD) {
-      rowIndex = i + 1;
-      break;
+
+    // Try/Catch for Date Parsing
+    try {
+      const d = new Date(rowDateRaw);
+      if (isNaN(d.getTime())) continue; // Invalid Date
+
+      // 1. Compare formatted string (Strict)
+      const rowYMD = Utilities.formatDate(d, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+      if (rowYMD === targetYMD) {
+        rowIndex = i + 1;
+        break;
+      }
+
+      // 2. Compare Components (Loose) - covers different separators or time components
+      if (d.getFullYear() === targetYear && d.getMonth() === targetMonth && d.getDate() === targetDate) {
+        rowIndex = i + 1;
+        break;
+      }
+    } catch (e) {
+      console.warn('logHabit date parse error at row ' + i, e);
+      continue;
     }
   }
 
   if (rowIndex === -1) {
+    // Check if we really need to append, or if we missed it.
+    // Trust the search. Append new row.
+    // Use targetYMD (Normalized)
     sheet.appendRow([targetYMD]);
     rowIndex = sheet.getLastRow();
   }
 
   sheet.getRange(rowIndex, colIndex + 1).setValue(Number(status) || 0);
 
-  // 3. STATS UPDATE (Lightweight)
-  // 3. STATS UPDATE (Lightweight)
+  // 4. STATS UPDATE
   if (habitId) {
     updateSingleHabitStreak(habitId, status);
-  } else {
-    // Fallback if ID lookup failed? 
-    // If habitName passed is essentially Unknown, we shouldn't really update stats.
-    console.warn('Skipping streak update: No ID found for', habitName);
   }
   return 'Updated';
 }
@@ -2158,9 +2303,9 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
     sheet.appendRow(newRow);
   }
 
-  if (!found) {
-    // Create New Logic (if we ever implement Create from here)
-  }
+  // Return updated status to Frontend
+  // Use toDateString() to match doGet logic
+  return getHabitStatus(new Date().toDateString());
 }
 
 
@@ -3194,3 +3339,5 @@ function uploadHabitImage(base64Data, mimeType, name) {
     return 'Error: ' + e.toString();
   }
 }
+
+// EOF

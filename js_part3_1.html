@@ -131,13 +131,7 @@
         }).logGoalProgress(idToLog, finalValue, notes, dateStr);
     }
 
-    /* --- EXPOSE TO GLOBAL (Fix for Scope Issues) --- */
-    window.openGoalModal = openGoalModal;
-    window.closeGoalModal = closeGoalModal;
-    window.saveGoal = saveGoal;
-    window.openMeasurementModal = openMeasurementModal;
-    window.closeMeasurementModal = closeMeasurementModal;
-    window.openProgressModal = openProgressModal;
+    /* --- Logic Moved to js_part2 or Global --- */
     window.closeProgressModal = closeProgressModal;
     window.saveGoalProgress = saveGoalProgress;
     window.renderGoalsTab = renderGoalsTab;
