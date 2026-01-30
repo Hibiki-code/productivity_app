@@ -963,7 +963,10 @@
         <div class="section-container completed">
           <div class="section-header" onclick="toggleSection('done')">
             <div style="color:#AAA; font-weight:bold;">完了 (<span id="count-done">0</span>)</div>
-            <div class="add-btn-small" style="opacity:0; pointer-events:none;"></div>
+            <div class="add-btn-small" onclick="event.stopPropagation(); doArchiveAllCompleted()"
+              style="display:flex; align-items:center; justify-content:center; color:#AAA;">
+              <span class="material-symbols-rounded" style="font-size:20px;">inventory_2</span>
+            </div>
           </div>
           <div id="list-done" class="list-content">
             <div></div>
@@ -1259,13 +1262,13 @@
   <div class="bottom-nav">
     <!-- Habits -->
     <div class="nav-item active" onclick="switchTab('habits', this)">
-      <div class="nav-icon">⭕</div>
+      <div class="nav-icon"><span class="material-symbols-rounded">event_repeat</span></div>
       Habits
     </div>
 
     <!-- Tasks -->
     <div class="nav-item" onclick="switchTab('tasks', this)">
-      <div class="nav-icon">✓</div>
+      <div class="nav-icon"><span class="material-symbols-rounded">check</span></div>
       Tasks
     </div>
 

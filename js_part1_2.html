@@ -167,6 +167,30 @@
         google.script.run.deleteTaskHard(id); // Hard Delete
     }
 
+    function doArchiveAllCompleted() {
+        const countEl = document.getElementById('count-done');
+        const count = parseInt(countEl.innerText.match(/\d+/)[0]) || 0;
+        if (count === 0) {
+            alert('完了タスクはありません。');
+            return;
+        }
+
+        if (!confirm(`完了済みのタスク（${count}件）をすべてアーカイブしますか？\n（画面からは消えますが、データは残ります）`)) return;
+
+        // Optimistic UI Update
+        const listDone = document.querySelector('#list-done > div');
+        if (listDone) listDone.innerHTML = '';
+        if (countEl) countEl.innerText = '0';
+        const secDone = document.getElementById('sec-done');
+        // Don't hide section, just empty it. Or maybe hide if empty?
+        // Usually we keep the section visible but empty.
+
+        google.script.run.withSuccessHandler(res => {
+            console.log(res);
+            // Optionally show toast
+        }).archiveAllCompletedTasks();
+    }
+
     function removeEl(id) {
         const wrapper = document.querySelector(`.task-wrapper[data-id="${id}"]`);
         if (wrapper) {

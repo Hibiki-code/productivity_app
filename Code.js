@@ -1082,6 +1082,60 @@ function archiveTask(taskId) {
   return 'Archived';
 }
 
+function archiveAllCompletedTasks() {
+  const db = SpreadsheetApp.openById(CONFIG.TASK_DB_ID);
+  const sheet = getSafeSheet(db, CONFIG.SHEET_NAMES.TASKS);
+  if (!sheet) return 'Error: No Sheet';
+
+  const data = sheet.getDataRange().getValues();
+  // Col 7 = Done (Index 6), Col 8 = Archived (Index 7)
+  // Headers are in Row 1 (Index 0)
+
+  const updates = [];
+  const rowsToUpdate = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const isDone = (row[6] === true || row[6] === 'TRUE');
+    const isArchived = (row[7] === true || row[7] === 'TRUE');
+
+    if (isDone && !isArchived) {
+      // Mark for update
+      // We can update individually or batch. For GAS, batch is better but discontinuous rows are hard.
+      // Simplest robust way for "All":
+      // Just collect rows and update 1-by-1 or use logic.
+      // Ideally, map the whole column, update array in memory, and write back the whole column.
+    }
+  }
+
+  // Optimized Batch Update: Read Col 8 (Archived) and Col 7 (Done), Update Col 8 in memory, Write back Col 8.
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 'No Data';
+
+  const rangeStatus = sheet.getRange(2, 7, lastRow - 1, 1); // Col G
+  const rangeArchived = sheet.getRange(2, 8, lastRow - 1, 1); // Col H
+
+  const valsStatus = rangeStatus.getValues();
+  const valsArchived = rangeArchived.getValues();
+
+  let count = 0;
+  for (let i = 0; i < valsStatus.length; i++) {
+    const isDone = (valsStatus[i][0] === true || valsStatus[i][0] === 'TRUE');
+    const isArchived = (valsArchived[i][0] === true || valsArchived[i][0] === 'TRUE');
+
+    if (isDone && !isArchived) {
+      valsArchived[i][0] = true;
+      count++;
+    }
+  }
+
+  if (count > 0) {
+    rangeArchived.setValues(valsArchived);
+  }
+
+  return `Archived ${count} tasks.`;
+}
+
 function updateTaskDetails(task) {
   // task object: { id, name, importance, estTime, dueDate, description }
   const db = SpreadsheetApp.openById(CONFIG.TASK_DB_ID);
