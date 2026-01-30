@@ -795,6 +795,12 @@
             if (status === 'Inactive') status = 'Pending';
             let badge = (currentRoadmapFilter === 'All') ? badgeFn(status) : '';
 
+            // Metric Display Text
+            let metricText = '目標: ';
+            if (g.metricTitle) metricText += `${g.metricTitle} `;
+            metricText += `${target}`;
+            if (g.metricLabel) metricText += ` ${g.metricLabel}`;
+
             // Card HTML (Glassmorphism)
             html += `
                             <div class="card-glass goal-card" onclick="openGoalDetail('${g.id}')">
@@ -816,9 +822,7 @@
                                     <div style="font-size:12px; color:#666;">現在: <span
                                             style="font-weight:bold; color:#333;">${current}</span> <span
                                             style="font-size:10px;">${g.metricLabel || ''}</span></div>
-                                    <div style="font-size:12px; color:#999;">目標: <span
-                                            style="font-weight:bold;">${target}</span> <span
-                                            style="font-size:10px;">${g.metricLabel || ''}</span></div>
+                                    <div style="font-size:12px; color:#999;">${metricText}</div>
                                 </div>
 
                                 <div class="progress-container" style="height:10px; background:#f0f0f0;">
@@ -863,6 +867,7 @@
         const titleEl = document.getElementById('g-title');
         const visionEl = document.getElementById('g-vision');
         const metricEl = document.getElementById('g-metric-label'); // Corrected ID
+        const metricTitleEl = document.getElementById('g-metric-title'); // NEW
         const targetEl = document.getElementById('g-metric-target'); // Corrected ID
         const currentEl = document.getElementById('g-metric-current'); // Corrected ID
         const startEl = document.getElementById('g-start-date'); // Corrected ID
@@ -881,6 +886,7 @@
             titleEl.value = g.title;
             visionEl.value = g.vision;
             metricEl.value = g.metricLabel;
+            if (metricTitleEl) metricTitleEl.value = g.metricTitle || '';
             targetEl.value = g.metricTarget;
             currentEl.value = g.metricCurrent;
             startEl.value = g.startDate;
@@ -897,6 +903,7 @@
             titleEl.value = '';
             visionEl.value = '';
             metricEl.value = '';
+            if (metricTitleEl) metricTitleEl.value = '';
             targetEl.value = '';
             currentEl.value = '';
             startEl.value = new Date().toISOString().split('T')[0];
@@ -925,6 +932,7 @@
         const title = document.getElementById('g-title').value;
         const vision = document.getElementById('g-vision').value;
         const metric = document.getElementById('g-metric-label').value;
+        const metricTitle = document.getElementById('g-metric-title') ? document.getElementById('g-metric-title').value : '';
         const target = document.getElementById('g-metric-target').value;
         const current = document.getElementById('g-metric-current').value;
         const start = document.getElementById('g-start-date').value;
@@ -953,7 +961,9 @@
         // Optimistic UI Update
         const newGoal = {
             id: id || 'temp-' + Date.now(),
-            title, vision, metricLabel: metric,
+            title, vision,
+            metricTitle, // NEW
+            metricLabel: metric,
             metricTarget: Number(target),
             metricCurrent: Number(current),
             startDate: start,
@@ -979,7 +989,7 @@
                 window.loadedGoals = goals;
                 renderRoadmap();
             }).getGoalsV2();
-        }).saveGoalFull(id, title, vision, metric, target, current, start, end, status, projectId);
+        }).saveGoalFull(id, title, vision, metricTitle, metric, target, current, start, end, status, projectId);
     }
     window.saveGoal = saveGoal;
 

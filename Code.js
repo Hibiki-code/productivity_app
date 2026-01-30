@@ -2358,6 +2358,7 @@ function getGoalsV2() {
       return idx !== undefined ? row[idx] : undefined;
     };
 
+
     const gList = [];
 
     for (let i = 1; i < gData.length; i++) {
@@ -2391,6 +2392,7 @@ function getGoalsV2() {
 
       const title = getVal(r, 'title');
       const vision = getVal(r, 'vision');
+      const metricTitle = getVal(r, 'metric_title'); // NEW
       const metricLabel = getVal(r, 'metric_label');
       const metricTarget = getVal(r, 'metric_target');
       const metricCurrent = getVal(r, 'metric_current');
@@ -2403,6 +2405,7 @@ function getGoalsV2() {
         id: String(idVal),
         title: String(title || ''),
         vision: String(vision || ''),
+        metricTitle: String(metricTitle || ''), // NEW
         metricLabel: String(metricLabel || ''),
         metricTarget: Number(metricTarget) || 0,
         metricCurrent: Number(metricCurrent) || 0,
@@ -2528,13 +2531,13 @@ function createHeaderMap(headers) {
 
 
 // Unified Save Function (Create or Update)
-function saveGoalFull(id, title, vision, metric, target, current, start, end, status, projectId) {
+function saveGoalFull(id, title, vision, metricTitle, metric, target, current, start, end, status, projectId) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   let sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_GOALS);
 
   if (!sheet) {
     sheet = ss.insertSheet(CONFIG.SHEET_NAMES.DB_GOALS);
-    sheet.appendRow(['id', 'title', 'vision', 'metric_label', 'metric_target', 'metric_current', 'metric_begining', 'start_date', 'scheduled_end_date', 'status', 'created_at', 'project_id']);
+    sheet.appendRow(['id', 'title', 'vision', 'metric_title', 'metric_label', 'metric_target', 'metric_current', 'metric_begining', 'start_date', 'scheduled_end_date', 'status', 'created_at', 'project_id']);
   }
 
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
@@ -2563,6 +2566,7 @@ function saveGoalFull(id, title, vision, metric, target, current, start, end, st
     'id': finalId,
     'title': title,
     'vision': vision,
+    'metric_title': metricTitle, // NEW
     'metric_label': metric,
     'metric_target': target,
     'metric_current': current,
@@ -2627,7 +2631,7 @@ function updateGoalStatus(id, newStatus) {
 
 // Wrapper to keep old signature if needed (optional)
 function createGoal(title, vision, metric, target, current, start, end, projectId) {
-  return saveGoalFull(null, title, vision, metric, target, current, start, end, 'Active', projectId);
+  return saveGoalFull(null, title, vision, '', metric, target, current, start, end, 'Active', projectId);
 }
 
 function updateGoalProject(goalId, projectId) {

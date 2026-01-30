@@ -512,6 +512,8 @@
         div.setAttribute('data-has-guide', h.hasGuide ? 'true' : 'false');
         div.setAttribute('data-guide-text', h.guideText || '');
         div.setAttribute('data-guide-image', h.guideImage || '');
+        div.setAttribute('data-has-shortcut', h.hasShortcut ? 'true' : 'false');
+        div.setAttribute('data-shortcut-url', h.shortcutUrl || '');
 
         let iconContent = '💧';
         if (h.icon) {
@@ -667,6 +669,19 @@
 
             // 2. Title Update (Prioritized)
             const nameEl = item.querySelector('.habit-name');
+
+            // --- SHORTCUT LAUNCHER ---
+            if (newStatus > 0) {
+                const hasShortcut = (item.getAttribute('data-has-shortcut') === 'true');
+                const shortcutUrl = item.getAttribute('data-shortcut-url');
+                if (hasShortcut && shortcutUrl) {
+                    // Use setTimeout to ensure UI update renders first, and to separate execution stack
+                    setTimeout(() => {
+                        window.open(shortcutUrl, '_blank');
+                    }, 100);
+                }
+            }
+            // -------------------------
             if (nameEl) {
                 const resolvedOffTitle = offTitle || item.getAttribute('data-offense-title');
                 const resolvedDefTitle = defTitle || item.getAttribute('data-def-title');
