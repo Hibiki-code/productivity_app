@@ -48,6 +48,11 @@
 
         const current = Number(goal.metricCurrent) || 0;
         const target = Number(goal.metricTarget) || 0;
+
+        // Metric Title Logic
+        const mTitle = document.getElementById('gd-metric-title');
+        if (mTitle) mTitle.innerText = goal.metricTitle || '';
+
         document.getElementById('gd-current-val').innerText = current + (goal.metricLabel || '');
         document.getElementById('gd-target-val').innerText = '/ ' + target + (goal.metricLabel || '');
         const percent = (target > 0) ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
@@ -77,9 +82,49 @@
         document.getElementById('gd-history-list').innerHTML = '<div class="spinner"></div>';
         google.script.run.withSuccessHandler(window.renderGoalHistory).getGoalHistory(goalId);
 
+        // Initialize Status Buttons
+        selectGoalDetailStatus(goal.status, true); // true = init only, no save
+
         // Switch View
         document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
         document.getElementById('view-goal-detail').classList.add('active');
+    };
+
+    window.selectGoalDetailStatus = function (status, isInit = false) {
+        // UI Update
+        document.querySelectorAll('.gd-status-seg-btn').forEach(b => {
+            b.style.background = 'transparent';
+            b.style.color = '#666';
+            b.style.boxShadow = 'none';
+        });
+        const btnId = 'gd-status-' + status.toLowerCase();
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.style.background = 'white';
+            btn.style.color = '#333';
+            btn.style.boxShadow = '0 1px 4px rgba(0,0,0,0.1)';
+        }
+
+        if (isInit) return;
+
+        // Logic Update
+        const goalId = window.activeGoalDetailId;
+        if (!goalId) return;
+
+        console.log('Updating Status:', goalId, status);
+
+        // Optimistic Data Update
+        const goal = window.loadedGoals.find(g => g.id === goalId);
+        if (goal) {
+            goal.status = status;
+            window.activeGoalDetailData.status = status;
+        }
+
+        // Server Save
+        google.script.run.withSuccessHandler(res => {
+            console.log('Status Updated:', res);
+            renderRoadmap(); // Refresh List View
+        }).updateGoalStatus(goalId, status);
     };
 
     window.enableReflectionEdit = function () {

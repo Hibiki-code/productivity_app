@@ -797,7 +797,7 @@
 
             // Metric Display Text
             let metricText = '目標: ';
-            if (g.metricTitle) metricText += `${g.metricTitle} `;
+            // if (g.metricTitle) metricText += `${g.metricTitle} `; // Removed as per request
             metricText += `${target}`;
             if (g.metricLabel) metricText += ` ${g.metricLabel}`;
 
@@ -976,6 +976,19 @@
         if (id) {
             const idx = window.loadedGoals.findIndex(x => x.id === id);
             if (idx !== -1) window.loadedGoals[idx] = newGoal;
+
+            // If updating currently viewed goal detail
+            if (window.activeGoalDetailId === id) {
+                // Refresh Detail View Text Immediately
+                const titleEl = document.getElementById('gd-page-title');
+                if (titleEl) titleEl.innerText = title;
+                // Re-open/refresh to catch all changes
+                if (typeof window.openGoalDetail === 'function') {
+                    // Slight delay to ensure modal close animation finishes? No, immediate is fine.
+                    // But openGoalDetail expects data to be in loadedGoals, which we just updated.
+                    window.openGoalDetail(id, window.goalDetailFromView);
+                }
+            }
         } else {
             window.loadedGoals.push(newGoal);
         }
@@ -988,6 +1001,10 @@
             google.script.run.withSuccessHandler(goals => {
                 window.loadedGoals = goals;
                 renderRoadmap();
+                // Ensure detail view also gets latest server data if active
+                if (window.activeGoalDetailId) {
+                    // Optionally refresh again if sync might change calculated fields
+                }
             }).getGoalsV2();
         }).saveGoalFull(id, title, vision, metricTitle, metric, target, current, start, end, status, projectId);
     }
