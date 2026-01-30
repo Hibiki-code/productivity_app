@@ -303,5 +303,38 @@
     window.saveSleepLog = commitSleepLog;
     window.selectGoalStatus = selectGoalStatus; // Expose new function
 
+    // --- DEVICE DETECTION LOGIC ---
+    function getDeviceType() {
+        const ua = navigator.userAgent;
+        const touch = navigator.maxTouchPoints;
+
+        if (/iPhone|iPad|iPod/i.test(ua)) return { type: 'iOS', ua, touch };
+        if (/Android/i.test(ua)) return { type: 'Android', ua, touch };
+
+        // iOS Request Desktop Site often looks like Mac but has touch points
+        if (/Mac/i.test(ua) && touch > 0) return { type: 'iOS', ua, touch };
+
+        if (/Win/i.test(ua)) return { type: 'Windows', ua, touch };
+        if (/Mac/i.test(ua)) return { type: 'Mac', ua, touch };
+
+        return { type: 'Other', ua, touch };
+    }
+
+    // Init Device Display
+    (function () {
+        setTimeout(() => {
+            const res = getDeviceType();
+            const el = document.getElementById('device-debug-display');
+            if (el) {
+                // Display Type + start of UA for debug
+                el.innerText = `${res.type} [${res.ua.substring(0, 10)}... T:${res.touch}]`;
+                el.style.cursor = 'pointer';
+                el.style.color = '#aaa'; // Back to subtle gray
+                el.onclick = () => alert(`Type: ${res.type}\nTouchPoints: ${res.touch}\n\nUA: ${res.ua}`);
+            }
+            console.log('Device Detected:', res);
+        }, 500);
+    })();
+
     console.log('Part 3_1 End');
 </script>

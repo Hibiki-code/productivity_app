@@ -364,7 +364,13 @@
     };
 
     // --- STATE ---
-    let currentHabitDate = new Date().toLocaleDateString('en-CA');
+    let currentHabitDate = (function () {
+        const d = new Date();
+        if (d.getHours() < 3) {
+            d.setDate(d.getDate() - 1);
+        }
+        return d.toLocaleDateString('en-CA');
+    })();
     let habitCalendarCache = {};
     let currentDetailHabit = null; // Object
     let currentDetailYear = 0;

@@ -1606,7 +1606,7 @@ function logHabit(dateStr, habitIdOrName, status) {
 
   // 4. STATS UPDATE
   if (habitId) {
-    updateSingleHabitStreak(habitId, status);
+    // updateSingleHabitStreak(habitId, status); // DISABLED: Calculated by Sheet Formula
   }
   return 'Updated';
 }
@@ -1964,36 +1964,9 @@ function logSleep(dateStr, bedtime, wakeup) {
 
 
 function updateSingleHabitStreak(habitId, isDone) {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const statSheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_STATS);
-  if (!statSheet) return;
-
-  const data = statSheet.getDataRange().getValues();
-  // New Schema: id(0), title(1), current_streak(2), Rate30(3), RateAll(4)
-  let rowIndex = -1;
-  let currentStreak = 0;
-
-  for (let i = 1; i < data.length; i++) {
-    // Search by ID (Col A / Index 0)
-    if (String(data[i][0]) === String(habitId)) {
-      rowIndex = i + 1;
-      currentStreak = Number(data[i][2] || 0); // Col C is Index 2
-      break;
-    }
-  }
-
-  // Calculate Streak based on Log
-  const streak = calculateSingleStreak(habitId);
-
-  if (rowIndex === -1) {
-    // If not found in stats, try to find by Name (fallback) or append?
-    // User requests: "Search by Habit ID".
-    // If missing, we might need to append.
-    // statSheet.appendRow([habitId, 'Unknown', streak, 0, 0]);
-  } else {
-    // Update Col C (Index 2) -> Column 3
-    statSheet.getRange(rowIndex, 3).setValue(streak);
-  }
+  // DISABLED: Stats are now calculated via Spreadsheet Formulas.
+  console.log('Skipping app-side stats update for:', habitId);
+  return;
 }
 
 function calculateSingleStreak(habitId) {
