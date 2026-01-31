@@ -1120,7 +1120,10 @@
           style="font-size:22px; font-weight:800; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; flex:1;">
           Project Title
         </div>
-        <div class="add-btn-small" onclick="openRoadmapSelectionModal()">+</div>
+        <div onclick="openEditProjectModal()"
+          style="cursor:pointer; padding:5px; border-radius:50%; background:rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:center;">
+          <span class="material-symbols-rounded" style="font-size:24px; color:#555;">more_horiz</span>
+        </div>
       </div>
 
       <div id="pd-content" style="padding:20px 20px 100px;">
@@ -1128,7 +1131,10 @@
         <div id="pd-vision-card"
           style="background:#f9f9f9; padding:15px; border-radius:16px; margin-bottom:25px; color:#666; font-style:italic; line-height:1.6; border:1px solid #eee;">
         </div>
-        <h3 style="font-size:18px; font-weight:800; margin-bottom:15px; color:#444;">Roadmaps</h3>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+          <h3 style="font-size:18px; font-weight:800; margin:0; color:#444;">Roadmaps</h3>
+          <div class="add-btn-small" onclick="openRoadmapSelectionModal()">+</div>
+        </div>
         <div id="pd-roadmap-list"></div>
       </div>
     </div>
@@ -1402,7 +1408,7 @@
   <!-- PROJECT MODAL -->
   <div id="project-modal" class="modal-overlay" onclick="if(event.target===this) closeProjectModal()">
     <div class="modal-box">
-      <h3>プロジェクト作成</h3>
+      <h3>プロジェクト作成・編集</h3>
       <input type="hidden" id="p-id">
 
       <label style="font-size:12px; color:#999;">タイトル</label>
@@ -1650,14 +1656,7 @@
   <script id="ssr-data-habits" type="application/json"><?!= initialHabitsJson ?></script>
   <script id="ssr-data-error" type="application/json"><?!= ssrError ?></script>
 
-  <?!= include('js_part1_1'); ?>
-  <?!= include('js_part1_2'); ?>
-  <?!= include('js_part2'); ?>
-  <?!= include('js_part3_1'); ?>
-  <?!= include('js_part3_2'); ?>
-  <?!= include('js_part3_3'); ?>
-  <?!= include('icons'); ?>
-  <?!= include('emojis'); ?>
+
 
   <style>
     .cal-cell.status-failed {
@@ -2413,6 +2412,14 @@
       </div>
     </div>
   </div>
+  <?!= include('js_part1_1'); ?>
+  <?!= include('js_part1_2'); ?>
+  <?!= include('js_part2'); ?>
+  <?!= include('js_part3_1'); ?>
+  <?!= include('js_part3_2'); ?>
+  <?!= include('js_part3_3'); ?>
+  <?!= include('icons'); ?>
+  <?!= include('emojis'); ?>
 </body>
 
 </html>

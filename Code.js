@@ -2548,6 +2548,36 @@ function createProject(title, vision) {
   };
 }
 
+function updateProject(id, title, vision) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getSafeSheet(ss, CONFIG.SHEET_NAMES.DB_PROJECT);
+  if (!sheet) return null;
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return null;
+
+  const hMap = createHeaderMap(data[0]);
+  const idIdx = hMap['id'];
+  const titleIdx = hMap['title'];
+  const visionIdx = hMap['vision'];
+
+  if (idIdx === undefined) return null;
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idIdx]) === String(id)) {
+      if (titleIdx !== undefined) sheet.getRange(i + 1, titleIdx + 1).setValue(title);
+      if (visionIdx !== undefined) sheet.getRange(i + 1, visionIdx + 1).setValue(vision);
+
+      return {
+        id: id,
+        title: title,
+        vision: vision
+      };
+    }
+  }
+  return null;
+}
+
 // Helper for Header Mapping (Reusable)
 function createHeaderMap(headers) {
   const hMap = {};

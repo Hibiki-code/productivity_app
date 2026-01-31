@@ -1,4 +1,4 @@
-<script>
+
     console.log('Part 3_2 Start');
 
     window.openRoadmapSelectionModal = openRoadmapSelectionModal;
@@ -198,8 +198,7 @@
     }
 
     function openProjectModal() {
-        const idEl = document.getElementById('p-id');
-        if (idEl) idEl.value = ''; // Clear ID for new project
+        document.getElementById('p-id').value = ''; // Clear ID for new project
         document.getElementById('p-title').value = '';
         document.getElementById('p-vision').value = '';
         document.getElementById('project-modal').classList.add('open');
@@ -213,8 +212,7 @@
         const p = window.loadedProjects.find(x => String(x.id) === String(id));
         if (!p) return;
 
-        const idEl = document.getElementById('p-id');
-        if (idEl) idEl.value = p.id;
+        document.getElementById('p-id').value = p.id;
         document.getElementById('p-title').value = p.title;
         document.getElementById('p-vision').value = p.vision || '';
         document.getElementById('project-modal').classList.add('open');
@@ -229,8 +227,7 @@
     function saveProject() {
         const title = document.getElementById('p-title').value;
         const vision = document.getElementById('p-vision').value;
-        const idEl = document.getElementById('p-id');
-        const id = idEl ? idEl.value : '';
+        const id = document.getElementById('p-id').value;
 
         if (!title) {
             alert('タイトルを入力してください');
@@ -257,7 +254,7 @@
             }
 
             // Server Call
-            google.script.run.withSuccessHandler(function (serverProj) {
+            google.script.run.withSuccessHandler(serverProj => {
                 console.log('Update Complete', serverProj);
             }).updateProject(id, title, vision);
 
@@ -270,7 +267,7 @@
             window.loadedProjects.push(newProj);
             renderProjectsFromData(window.loadedProjects);
 
-            google.script.run.withSuccessHandler(function (serverProj) {
+            google.script.run.withSuccessHandler(serverProj => {
                 const idx = window.loadedProjects.findIndex(p => p.id === tempId);
                 if (idx >= 0 && serverProj) {
                     window.loadedProjects[idx] = serverProj;
@@ -472,7 +469,7 @@
         if (mapUrl) {
             window.open(mapUrl, '_blank');
         } else if (locationName) {
-            window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(locationName), '_blank');
+            window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}`, '_blank');
         }
     }
 
@@ -615,4 +612,3 @@
     window.autoSaveExperience = autoSaveExperience;
 
     console.log('Part 3_2 End - Full Restore (Projects + Exp Fetch + Exp Detail)');
-</script>
