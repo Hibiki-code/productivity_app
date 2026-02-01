@@ -173,8 +173,11 @@
         // Shortcut Init
         const hasShortcut = !!(currentDetailHabit.hasShortcut);
         document.getElementById('hs-shortcut-toggle').checked = hasShortcut;
-        document.getElementById('hs-shortcut-url').value = currentDetailHabit.shortcutUrl || '';
         toggleShortcutSettings();
+        // Load Device List if Toggle is On
+        if (hasShortcut) {
+            renderHabitShortcutList();
+        }
 
         // Icon Init 
         hsCurrentIcon = currentDetailHabit.icon || '';
@@ -273,16 +276,66 @@
         const isChecked = document.getElementById('hs-shortcut-toggle').checked;
         const container = document.getElementById('hs-shortcut-settings');
         container.style.display = isChecked ? 'block' : 'none';
+        if (isChecked) {
+            renderHabitShortcutList();
+        }
+    }
+
+    function renderHabitShortcutList() {
+        const list = document.getElementById('hs-shortcut-device-list');
+        list.innerHTML = '<div class="spinner"></div>';
+
+        // 1. Get Registered Devices
+        google.script.run
+            .withSuccessHandler(devices => {
+                list.innerHTML = '';
+                const shortcuts = currentDetailHabit.shortcuts || {};
+
+                if (devices.length === 0) {
+                    list.innerHTML = '<div style="color:#999;font-size:12px;">登録済み端末がありません</div>';
+                    return;
+                }
+
+                devices.forEach(d => {
+                    const url = shortcuts[d.id] || '';
+
+                    const row = document.createElement('div');
+                    row.style.cssText = 'background:#f9f9f9; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;';
+
+                    // Icon based on type
+                    let icon = 'devices';
+                    if (d.type === 'MOBILE') icon = 'smartphone';
+                    if (d.type === 'TABLET') icon = 'tablet_mac';
+                    if (d.type === 'DESKTOP') icon = 'computer';
+
+                    row.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:10px; flex:1;">
+                        <span class="material-symbols-rounded" style="color:#666;">${icon}</span>
+                        <div style="font-size:13px; font-weight:bold; color:#444;">${d.name}</div>
+                    </div>
+                    <input type="text" 
+                           class="hs-device-shortcut-input input-std" 
+                           data-device-id="${d.id}" 
+                           placeholder="https://..." 
+                           value="${url}" 
+                           style="width: 60%; font-size:12px; padding:5px;">
+                `;
+                    list.appendChild(row);
+                });
+            })
+            .withFailureHandler(err => {
+                list.innerHTML = '<div style="color:red;">Error: ' + err + '</div>';
+            })
+            .fetchDeviceList();
+    }
+
+    function editHabitShortcut(deviceId, deviceName, currentUrl) {
+        // Deprecated (Inline Input used)
     }
 
     function updateIconPreview() {
         const preview = document.getElementById('hs-icon-preview');
         // Simple logic: if in material list, render as material icon. Else assume emoji text.
-        // Or cleaner: check if string matching regex for emoji?
-        // Easiest is checking material list presence, but that might be slow if list is huge (it is).
-        // Material icons are usually snake_case words. Emojis are unicode.
-        // Let's assume regex /^[a-z0-9_]+$/ is material.
-
         const isMaterial = hsCurrentIcon && /^[a-z0-9_]+$/.test(hsCurrentIcon);
 
         if (hsCurrentIcon) {
@@ -308,13 +361,6 @@
         const newTime = document.getElementById('hs-time').value;
         const newBenefit = document.getElementById('hs-benefit').value;
 
-        // Logic: If toggle is OFF, should we clear the offense fields?
-        // Maybe? Or just ignore them?
-        // Better to clear them if user explicitly disabled.
-        // But if user just hides and shows, they might want to keep.
-        // For now, save what is in the fields if toggle is ON?
-        // Actually, if toggle ID is unchecked, we should probably save empty strings for offense.
-
         const isAdvanced = document.getElementById('hs-advanced-toggle').checked;
         const newOffense = isAdvanced ? document.getElementById('hs-offense-title').value : '';
         const newOffenseTime = isAdvanced ? document.getElementById('hs-offense-time').value : '';
@@ -324,12 +370,23 @@
         const guideImage = hasGuide ? hsCurrentGuideImageUrl : '';
 
         const hasShortcut = document.getElementById('hs-shortcut-toggle').checked;
-        const shortcutUrl = hasShortcut ? document.getElementById('hs-shortcut-url').value : '';
+        const shortcutUrlEL = document.getElementById('hs-shortcut-url');
+        const shortcutUrl = (hasShortcut && shortcutUrlEL) ? shortcutUrlEL.value : '';
+
+        // --- GATHER DEVICE SHORTCUTS ---
+        const shortcutsMap = {};
+        if (hasShortcut) {
+            const inputs = document.querySelectorAll('.hs-device-shortcut-input');
+            inputs.forEach(input => {
+                const did = input.getAttribute('data-device-id');
+                const val = input.value.trim();
+                shortcutsMap[did] = val;
+            });
+        }
 
         if (!newName) return;
 
         // --- OPTIMISTIC UI UPDATE ---
-        // 1. Update Global Current Object
         if (currentDetailHabit) {
             currentDetailHabit.name = newName;
             currentDetailHabit.sectionId = newSec;
@@ -349,19 +406,11 @@
             // Shortcut
             currentDetailHabit.hasShortcut = hasShortcut;
             currentDetailHabit.shortcutUrl = shortcutUrl;
-        }
 
-        // 2. Update Cache (List)
-        if (habitDataCache && habitDataCache.habits) {
-            const cached = habitDataCache.habits.find(h => h.id === currentDetailHabit.id);
-            if (cached) {
-                Object.assign(cached, currentDetailHabit);
-            }
+            // Mix in the new shortcuts map optimistically
+            if (!currentDetailHabit.shortcuts) currentDetailHabit.shortcuts = {};
+            Object.assign(currentDetailHabit.shortcuts, shortcutsMap);
         }
-
-        // 3. UI Refresh (Optional but nice)
-        // If we want to verify immediately, we could re-render list or detail. 
-        // But simply keeping state is enough for "re-open persistence".
 
         // Visual Feedback
         const btn = document.querySelector('#habit-settings-modal .btn-save');
@@ -401,7 +450,7 @@
                 btn.disabled = false;
             }
         }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon, newTime,
-            newBenefit, newOffense, newOffenseTime, hasGuide, guideText, guideImage, hasShortcut, shortcutUrl);
+            newBenefit, newOffense, newOffenseTime, hasGuide, guideText, guideImage, shortcutsMap);
     }
 
     // --- IMAGE LOGIC ---

@@ -133,6 +133,71 @@ function initDeviceDB() {
   }
 }
 
+// --- DEVICE SHORTCUT API ---
+
+function getHabitShortcuts(habitId) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('DB_HabitDeviceSettings');
+  if (!sheet) return {};
+
+  const data = sheet.getDataRange().getValues();
+  // Header: id, habitId, deviceId, shortcutUrl, shortcutType
+  const result = {};
+
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (String(r[1]) === String(habitId)) { // habitId match
+      const devId = String(r[2]);
+      const url = String(r[3]);
+      if (devId && url) {
+        result[devId] = url;
+      }
+    }
+  }
+  return result;
+}
+
+function saveHabitShortcut(habitId, deviceId, url) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('DB_HabitDeviceSettings');
+  if (!sheet) return { error: 'No DB' };
+
+  const data = sheet.getDataRange().getValues();
+  let rowIndex = -1;
+
+  // Find existing row for Habit+Device pair
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === String(habitId) && String(data[i][2]) === String(deviceId)) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex > 0) {
+    if (url) {
+      // Update
+      sheet.getRange(rowIndex, 4).setValue(url);
+    } else {
+      // Delete if empty URL provided? Or just clear?
+      // User might want to delete. Let's assume empty string = delete.
+      sheet.deleteRow(rowIndex);
+    }
+  } else {
+    // Insert new
+    if (url) {
+      const id = Utilities.getUuid();
+      sheet.appendRow([id, habitId, deviceId, url, 'URL']);
+    }
+  }
+
+  return getHabitShortcuts(habitId); // Return updated map
+}
+
+function deleteHabitShortcut(habitId, deviceId) {
+  return saveHabitShortcut(habitId, deviceId, '');
+}
+
+
 function registerDevice(data) {
   // data: { id, name, type, os, userAgent }
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
@@ -1420,10 +1485,31 @@ function getHabitStatus(dateStr) {
   };
 
 
+
+
+
+
+  // --- PRE-FETCH SHORTCUTS ---
+  const scSheet = ss.getSheetByName('DB_HabitDeviceSettings');
+  let scMap = {};
+  if (scSheet) {
+    const scData = scSheet.getDataRange().getValues();
+    // Header: id, habitId, deviceId, shortcutUrl, shortcutType
+    for (let i = 1; i < scData.length; i++) {
+      const hid = String(scData[i][1]);
+      const did = String(scData[i][2]);
+      const url = String(scData[i][3]);
+      if (!scMap[hid]) scMap[hid] = {};
+      scMap[hid][did] = url;
+    }
+  }
+
   const habits = defData.map(r => {
     // Correctly map DB_Habits columns to App keys
     const title = getVal(r, 'title', '');
     if (!title) return null;
+
+
 
     // Status check
     const isActiveVal = getVal(r, 'isActive', 'ACTIVE'); // 'ACTIVE' or TRUE
@@ -1444,8 +1530,8 @@ function getHabitStatus(dateStr) {
       hasGuide: (getVal(r, 'has_guide', false) === true),
       guideText: getVal(r, 'guide_text', ''),
       guideImage: getVal(r, 'guide_image', ''),
-      hasShortcut: (getVal(r, 'has_shortcut', false) === true),
-      shortcutUrl: getVal(r, 'shortcut_url', '')
+      hasShortcut: Object.keys(scMap[getVal(r, 'id', '')] || {}).length > 0,
+      shortcuts: scMap[getVal(r, 'id', '')] || {}
     };
   }).filter(h => h);
 
@@ -1553,6 +1639,22 @@ function getHabitStatus(dateStr) {
   // Frontend uses `currentDetailHabit.name` for lookup. 
   // We should change frontend to use `currentDetailHabit.id`.
 
+
+  // 3.5 Fetch All Shortcuts Efficiently
+  const allShortcuts = {};
+  const sheetShortcuts = ss.getSheetByName('DB_HabitDeviceSettings');
+  if (sheetShortcuts) {
+    const scData = sheetShortcuts.getDataRange().getValues();
+    // Skip header
+    for (let i = 1; i < scData.length; i++) {
+      const hId = String(scData[i][1]);
+      const dId = String(scData[i][2]);
+      const url = String(scData[i][3]);
+      if (!allShortcuts[hId]) allShortcuts[hId] = {};
+      allShortcuts[hId][dId] = url;
+    }
+  }
+
   // Merge
   const enrichedHabits = habits.map(h => {
     const s = statMap[h.id] || {}; // Lookup by ID
@@ -1560,7 +1662,8 @@ function getHabitStatus(dateStr) {
       ...h,
       streak: s.streak || 0,
       rate30: s.rate30 || 0,
-      status: todaysLog[h.id] || todaysLog[h.name] || 0
+      status: todaysLog[h.id] || todaysLog[h.name] || 0,
+      shortcuts: allShortcuts[h.id] || {}
     };
   });
 
@@ -2179,7 +2282,7 @@ function calculateStats() {
 }
 
 function getSchedule() {
-  return []; // Placeholder
+  return []; // Placeholder - I won't execute this yet.
 }
 
 function getSecretarySuggestions() { return ''; }
@@ -2322,7 +2425,7 @@ function reorderSections(idList) {
 }
 
 
-function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText, guideImage, hasShortcut, shortcutUrl) {
+function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText, guideImage, shortcutsMap) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = ss.getSheetByName('DB_Habits');
   const data = sheet.getDataRange().getValues();
@@ -2350,11 +2453,16 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
   if (newOffenseTitle !== undefined) ensureColumn('title_offense');
   if (newOffenseTime !== undefined) ensureColumn('time_offense');
 
+  let targetHabitId = null; // Capture for shortcuts
+
   let found = false;
   if (name) {
     for (let i = 1; i < data.length; i++) {
       if (data[i][hMap['title']] === name) {
         const row = i + 1;
+
+        if (hMap['id'] !== undefined) targetHabitId = data[i][hMap['id']];
+
         if (newName && newName !== name) sheet.getRange(row, hMap['title'] + 1).setValue(newName);
         if (sectionId) sheet.getRange(row, hMap['section'] + 1).setValue(sectionId);
         if (icon) sheet.getRange(row, hMap['icon'] + 1).setValue(icon);
@@ -2387,22 +2495,14 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
         }
 
         // Image URL
-        if (guideImage !== undefined) { // Could be empty string to clear
+        if (guideImage !== undefined) {
           ensureColumn('guide_image');
           sheet.getRange(row, hMap['guide_image'] + 1).setValue(guideImage);
         }
 
-        // Shortcut Feature
-        if (hasShortcut !== undefined) {
-          ensureColumn('has_shortcut');
-          sheet.getRange(row, hMap['has_shortcut'] + 1).setValue(hasShortcut);
-        }
-        if (shortcutUrl !== undefined) {
-          ensureColumn('shortcut_url');
-          sheet.getRange(row, hMap['shortcut_url'] + 1).setValue(shortcutUrl);
-        }
 
-        // Update At (Only if exists)
+
+        // Update At 
         if (hMap['updatedat'] !== undefined) {
           sheet.getRange(row, hMap['updatedat'] + 1).setValue(new Date());
         }
@@ -2416,23 +2516,22 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
   // --- NEW HABIT CREATION ---
   if (!found) {
     const newId = Utilities.getUuid();
+    targetHabitId = newId;
+
     const newRow = [];
-    // Initialize row with empty strings
+    // Fill empty
     for (let k = 0; k < headers.length; k++) newRow.push('');
 
-    // Fill known columns using hMap
-    newRow[hMap['id'] || 0] = newId;
-    newRow[hMap['title']] = newName;
+    // Map basic fields
+    if (hMap['id'] !== undefined) newRow[hMap['id']] = newId;
+    newRow[hMap['title']] = newName || name;
     newRow[hMap['section']] = sectionId || 'sec_morning';
-    newRow[hMap['icon']] = icon || 'water_drop';
-    newRow[hMap['isactive'] || 1] = 'ACTIVE'; // active/isActive mess. Assume 'active' or 'isActive'
-    // Check header for active
-    let activeIdx = hMap['isactive'];
-    if (activeIdx === undefined) activeIdx = hMap['active'];
-    if (activeIdx !== undefined) newRow[activeIdx] = 'ACTIVE';
+    newRow[hMap['icon']] = icon || 'star';
 
     if (hMap['benefit'] !== undefined) newRow[hMap['benefit']] = newBenefit || '';
+    if (hMap['isActive'] !== undefined) newRow[hMap['isActive']] = 'Active';
     if (hMap['time_needed'] !== undefined) newRow[hMap['time_needed']] = newTime || '';
+
     if (hMap['title_offense'] !== undefined) newRow[hMap['title_offense']] = newOffenseTitle || '';
     if (hMap['time_offense'] !== undefined) newRow[hMap['time_offense']] = newOffenseTime || '';
 
@@ -2440,18 +2539,26 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
     if (hMap['guide_text'] !== undefined) newRow[hMap['guide_text']] = guideText || '';
     if (hMap['guide_image'] !== undefined) newRow[hMap['guide_image']] = guideImage || '';
 
-    if (hMap['has_shortcut'] !== undefined) newRow[hMap['has_shortcut']] = hasShortcut || false;
-    if (hMap['shortcut_url'] !== undefined) newRow[hMap['shortcut_url']] = shortcutUrl || '';
 
-    if (hMap['createdat'] !== undefined) newRow[hMap['createdat']] = new Date();
 
     sheet.appendRow(newRow);
   }
 
-  // Return updated status to Frontend
-  // Use toDateString() to match doGet logic
-  return getHabitStatus(new Date().toDateString());
+  // --- BATCH SAVE SHORTCUTS ---
+  if (targetHabitId && shortcutsMap) {
+    try {
+      console.log('Saving Shortcuts Batch:', targetHabitId);
+      Object.keys(shortcutsMap).forEach(dId => {
+        // Helper
+        saveHabitShortcut(targetHabitId, dId, shortcutsMap[dId]);
+      });
+    } catch (e) { console.warn(e); }
+  }
+
+  // Return full updated status to refresh frontend cache immediately
+  return getHabitStatus();
 }
+
 
 
 
@@ -3520,3 +3627,58 @@ function uploadHabitImage(base64Data, mimeType, name) {
 }
 
 // EOF
+
+
+function migrateLegacyShortcuts() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+
+  // 1. Get Devices
+  const devSheet = ss.getSheetByName('DB_Devices');
+  if (!devSheet) return 'No DB_Devices found';
+  const devices = devSheet.getDataRange().getValues();
+  devices.shift(); // Header
+  const deviceIds = devices.map(d => d[0]); // [id, name...]
+
+  if (deviceIds.length === 0) return 'No devices registered. Cannot migrate.';
+
+  // 2. Get Habits with Legacy Shortcuts
+  const hSheet = ss.getSheetByName('DB_Habits');
+  const hData = hSheet.getDataRange().getValues();
+  const headers = hData.shift();
+
+  // Find col index
+  let urlIdx = -1;
+  let idIdx = -1;
+  headers.forEach((h, i) => {
+    if (h.toLowerCase() === 'shortcut_url' || h.toLowerCase() === 'url' || h.toLowerCase() === 'link') urlIdx = i;
+    if (h.toLowerCase() === 'id') idIdx = i;
+  });
+
+  // Fallback if not found by name (based on schema assumption)
+  if (urlIdx === -1) urlIdx = 9; // Approx
+  if (idIdx === -1) idIdx = 0;
+
+  const toMigrate = [];
+  hData.forEach(r => {
+    const url = r[urlIdx];
+    const hid = r[idIdx];
+    if (url && String(url).startsWith('http')) {
+      toMigrate.push({ hid, url });
+    }
+  });
+
+  // 3. Insert into DB_HabitDeviceSettings
+  const setSheet = ss.getSheetByName('DB_HabitDeviceSettings');
+  if (!setSheet) return 'No DB_HabitDeviceSettings found';
+
+  toMigrate.forEach(item => {
+    deviceIds.forEach(did => {
+      // Simple append - duplicates possible but harmless for migration of small data
+      const newId = 'mig_' + Math.floor(Math.random() * 100000);
+      setSheet.appendRow([newId, item.hid, did, item.url, 'migrated']);
+    });
+  });
+
+  return 'Migrated ' + toMigrate.length + ' shortcuts to ' + deviceIds.length + ' devices.';
+}
+

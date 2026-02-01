@@ -380,8 +380,8 @@
 
     let activeGoalDetailId = null;
     let activeGoalDetailData = null;
-    let habitDataCache = null; // { habits: [], sections: [] } for re-rendering
-    let loadedProjects = []; // New
+    window.habitDataCache = null; // { habits: [], sections: [] } for re-rendering
+    window.loadedProjects = []; // New
 
     // --- INIT ---
     window.onload = function () {

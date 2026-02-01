@@ -434,7 +434,7 @@
 
     function renderHabits(data) {
         // Cache Logic
-        habitDataCache = data;
+        window.habitDataCache = data;
         if (data.serverDate) { todayYear = data.serverDate.year; todayMonth = data.serverDate.month; }
         if (data.monthlyLogs) {
             const key = `${todayYear}-${todayMonth}`;
@@ -705,14 +705,34 @@
             // 2. Title Update (Prioritized)
             const nameEl = item.querySelector('.habit-name');
 
-            // --- SHORTCUT LAUNCHER ---
+            // --- SHORTCUT LAUNCHER (Device Specific) ---
             if (newStatus > 0) {
-                const hasShortcut = (item.getAttribute('data-has-shortcut') === 'true');
-                const shortcutUrl = item.getAttribute('data-shortcut-url');
-                if (hasShortcut && shortcutUrl) {
-                    // Use setTimeout to ensure UI update renders first, and to separate execution stack
+                let targetUrl = item.getAttribute('data-shortcut-url'); // Legacy fallback
+
+                // 1. Check Device Specific Shortcut
+                try {
+                    const hId = item.getAttribute('data-habit-id');
+
+                    if (hId && window.habitDataCache && window.habitDataCache.habits) {
+                        const h = window.habitDataCache.habits.find(x => x.id === hId);
+
+                        if (h && (h.shortcuts || h.shortcutsMap) && window.getDeviceId) {
+                            const dId = getDeviceId();
+                            const map = h.shortcuts || h.shortcutsMap || {};
+                            if (map[dId]) {
+                                targetUrl = map[dId];
+                                console.log('Using Device Shortcut:', dId, targetUrl);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Shortcut Lookup Err', e);
+                }
+
+                if (targetUrl) {
+                    // Use setTimeout to ensure UI update renders first
                     setTimeout(() => {
-                        window.open(shortcutUrl, '_blank');
+                        window.open(targetUrl, '_blank');
                     }, 100);
                 }
             }
