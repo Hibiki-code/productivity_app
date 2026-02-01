@@ -990,6 +990,11 @@
         <div>習慣 <span id="device-debug-display"
             style="font-size:12px; color:#aaa; margin-left:8px; font-weight:normal;"></span></div>
         <div style="display:flex; gap:15px; align-items:center;">
+          <!-- Device Settings Icon -->
+          <div onclick="showDeviceSettingsModal()"
+            style="font-size:20px; color:#aaa; cursor:pointer; display:flex; align-items:center;">
+            <span class="material-symbols-rounded">settings_devices</span>
+          </div>
           <div id="habit-date-display" style="font-size:16px; font-weight:600; color:var(--text-sub);"></div>
           <div class="add-btn-small" onclick="openAddHabitModal()">+</div>
         </div>
@@ -2419,6 +2424,7 @@
   <?!= include('js_part3_2'); ?>
   <?!= include('js_part3_3'); ?>
   <?!= include('icons'); ?>
+  <?!= include('js_part_device'); ?>
   <?!= include('emojis'); ?>
 </body>
 

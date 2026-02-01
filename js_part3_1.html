@@ -327,7 +327,7 @@
             const el = document.getElementById('device-debug-display');
             if (el) {
                 // Display Type + start of UA for debug
-                el.innerText = `${res.type} [${res.ua.substring(0, 10)}... T:${res.touch}]`;
+                el.innerText = `${res.type} [${(res.ua || '').substring(0, 10)}... T:${res.touch}]`;
                 el.style.cursor = 'pointer';
                 el.style.color = '#aaa'; // Back to subtle gray
                 el.onclick = () => alert(`Type: ${res.type}\nTouchPoints: ${res.touch}\n\nUA: ${res.ua}`);

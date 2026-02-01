@@ -97,6 +97,124 @@ function initAppSchema() {
   if (typeof migrateHabitHeadersToIds === 'function') {
     try { migrateHabitHeadersToIds(); } catch (e) { console.warn('Migration warning', e); }
   }
+
+  // Device DB Init
+  initDeviceDB();
+}
+
+/**
+ * DEVICE MANAGEMENT API
+ */
+function initDeviceDB() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+
+  // 1. DB_Devices
+  let sheetDev = ss.getSheetByName('DB_Devices');
+  if (!sheetDev) {
+    sheetDev = ss.insertSheet('DB_Devices');
+    // Schema: id, name, type, os, userAgent, lastActive, status
+    sheetDev.appendRow(['id', 'name', 'type', 'os', 'userAgent', 'lastActive', 'status']);
+  }
+
+  // 2. DB_HabitDeviceSettings
+  let sheetSet = ss.getSheetByName('DB_HabitDeviceSettings');
+  if (!sheetSet) {
+    sheetSet = ss.insertSheet('DB_HabitDeviceSettings');
+    // Schema: id, habitId, deviceId, shortcutUrl, shortcutType
+    sheetSet.appendRow(['id', 'habitId', 'deviceId', 'shortcutUrl', 'shortcutType']);
+  }
+
+  // 3. DB_DeviceLogs
+  let sheetLog = ss.getSheetByName('DB_DeviceLogs');
+  if (!sheetLog) {
+    sheetLog = ss.insertSheet('DB_DeviceLogs');
+    // Schema: logId, deviceId, timestamp, type, jsonPayload
+    sheetLog.appendRow(['logId', 'deviceId', 'timestamp', 'type', 'jsonPayload']);
+  }
+}
+
+function registerDevice(data) {
+  // data: { id, name, type, os, userAgent }
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('DB_Devices');
+  if (!sheet) return { error: 'No DB_Devices' };
+
+  const id = data.id;
+  if (!id) return { error: 'No ID' };
+
+  const finder = sheet.getRange("A:A").createTextFinder(id).matchEntireCell(true);
+  const cell = finder.findNext();
+
+  const timestamp = new Date();
+
+  if (cell) {
+    // Update existing
+    const row = cell.getRow();
+    // Update Name if provided (forcing name update usually implies re-registration or user edit)
+    if (data.name) sheet.getRange(row, 2).setValue(data.name);
+    // Update OS/UA always
+    sheet.getRange(row, 3).setValue(data.type);
+    sheet.getRange(row, 4).setValue(data.os);
+    sheet.getRange(row, 5).setValue(data.userAgent);
+    sheet.getRange(row, 6).setValue(timestamp);
+    sheet.getRange(row, 7).setValue('ACTIVE');
+    return { status: 'Updated', name: sheet.getRange(row, 2).getValue() };
+  } else {
+    // New Registration
+    // id, name, type, os, userAgent, lastActive, status
+    sheet.appendRow([
+      id,
+      data.name || 'Unknown Device',
+      data.type,
+      data.os,
+      data.userAgent,
+      timestamp,
+      'ACTIVE'
+    ]);
+    return { status: 'Registered', name: data.name };
+  }
+}
+
+function getDeviceStatus(deviceId) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('DB_Devices');
+  if (!sheet) return null;
+
+  const finder = sheet.getRange("A:A").createTextFinder(deviceId).matchEntireCell(true);
+  const cell = finder.findNext();
+
+  if (!cell) return 'UNKNOWN';
+
+  const row = cell.getRow();
+  const name = sheet.getRange(row, 2).getValue();
+  // We can return more details if needed
+  return { status: 'REGISTERED', name: name };
+}
+
+function fetchDeviceList() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('DB_Devices');
+
+  // Guard: No Sheet (Should not happen if init works)
+  if (!sheet) {
+    return [{ id: 'ERR', name: 'DB_Devices Missing', type: 'SYS', os: 'ERR', lastActive: '' }];
+  }
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) {
+    return []; // Truly empty
+  }
+
+  // Remove header
+  const rows = data.slice(1);
+  return rows.map(r => ({
+    id: String(r[0]),
+    name: String(r[1]),
+    type: String(r[2]),
+    os: String(r[3]),
+    // Convert Date to String on server to prevent JSON serialization issues
+    lastActive: (r[5] instanceof Date) ? Utilities.formatDate(r[5], CONFIG.TIMEZONE, 'MM/dd HH:mm') : String(r[5])
+  }));
 }
 
 // ... (Other functions irrelevant to replace)

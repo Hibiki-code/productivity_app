@@ -1,0 +1,347 @@
+<script>
+    console.log('Device Manager v1.0');
+
+    // --- DEVICE ID LOGIC ---
+    function getDeviceId() {
+        let id = localStorage.getItem('app_device_id');
+        if (!id) {
+            id = 'dev-' + crypto.randomUUID();
+            localStorage.setItem('app_device_id', id);
+            console.log('Generated New Device ID:', id);
+        }
+        return id;
+    }
+
+    function setDeviceId(newId) {
+        localStorage.setItem('app_device_id', newId);
+        console.log('Device ID updated manually:', newId);
+    }
+
+    function getDeviceType() {
+        const ua = navigator.userAgent;
+        const platform = navigator.platform;
+        const maxTouchPoints = navigator.maxTouchPoints || 0;
+
+        if (/Android/i.test(ua)) return 'Android';
+        if (/iPhone/i.test(ua)) return 'iOS';
+
+        // iPad often reports as Mac, but has touch points
+        if (/Mac/i.test(ua) || /Mac/i.test(platform)) {
+            if (maxTouchPoints > 0) return 'iPad';
+            return 'macOS';
+        }
+
+        if (/Win/i.test(ua)) return 'Windows';
+        return 'Other';
+    }
+
+    function checkDeviceRegistration() {
+        const id = getDeviceId();
+        const ua = navigator.userAgent;
+        const os = getDeviceType();
+        const type = (os === 'iOS' || os === 'Android') ? 'MOBILE' : ((os === 'iPad') ? 'TABLET' : 'DESKTOP');
+
+        console.log('Checking Device:', id, os);
+
+        // Server verify
+        google.script.run.withSuccessHandler(res => {
+            console.log('Device Verify Result:', res);
+
+            if (res === 'UNKNOWN') {
+                // Not Registered -> Show Popup
+                showDeviceRegistrationModal(id, os, type);
+            } else if (res && res.status === 'REGISTERED') {
+                // Registered -> Silent Update (Heartbeat)
+                google.script.run.registerDevice({
+                    id: id,
+                    type: type, // Update type/os/ua in case it changed (e.g. browser update) 
+                    os: os,
+                    userAgent: ua
+                });
+                console.log('Device Recognized as:', res.name);
+            }
+        }).getDeviceStatus(id);
+    }
+
+    // --- UI LOGIC ---
+    function showDeviceRegistrationModal(currentId, os, type) {
+        // IF modal not exists, inject
+        if (!document.getElementById('device-reg-modal')) {
+            const modalHtml = `
+            <div id="device-reg-modal" class="modal-overlay" style="z-index:9999;">
+                <div class="modal-box" style="max-width:400px; width:90%; padding:20px;">
+                    <h3 style="margin-top:0; margin-bottom:10px;">新しい端末を検出 📱</h3>
+                    <p style="margin-bottom:20px; color:#666; font-size:14px; line-height:1.5;">
+                        この端末はまだ登録されていません。<br>
+                        登録して、ショートカット設定などを管理できるようにしますか？
+                    </p>
+                    
+                    <label style="font-size:12px; font-weight:bold; color:#555;">端末名 (Name)</label>
+                    <input type="text" id="drm-name" class="input-std" placeholder="名前を入力" value="${os} ${type}" style="margin-bottom:20px;">
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        <button class="btn-sec" onclick="closeDeviceRegModal()">後で</button>
+                        <button class="btn-save" onclick="doRegisterDevice()">登録する</button>
+                    </div>
+
+                    <div style="margin-top:25px; border-top:1px solid #eee; padding-top:15px; text-align:center;">
+                        <p style="font-size:11px; color:#999; margin-bottom:10px;">すでに登録済みの端末ですか？</p>
+                        <button class="btn-sec" onclick="showDeviceMergeList()" style="width:100%; font-size:13px; border:1px solid #ddd;">
+                            📲 既存の端末IDを使う (ログイン)
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- MERGE LIST MODAL -->
+            <div id="device-merge-modal" class="modal-overlay" style="z-index:10000; display:none;">
+                <div class="modal-box" style="height:400px; display:flex; flex-direction:column;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h3 style="margin:0;">既存のアカウントを選択</h3>
+                        <span onclick="closeDeviceMergeModal()" style="font-size:24px; cursor:pointer; color:#999;">&times;</span>
+                    </div>
+                    <div id="drm-list" style="flex:1; overflow-y:auto;">Loading...</div>
+                </div>
+            </div>`;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+
+        const modal = document.getElementById('device-reg-modal');
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+    }
+
+    // --- SETTINGS UI ---
+    function showDeviceSettingsModal() {
+        if (!document.getElementById('device-settings-modal')) {
+            const modalHtml = `
+            <div id="device-settings-modal" class="modal-overlay" style="z-index:9999;">
+                <div class="modal-container" style="max-width:500px;">
+                    <div class="modal-header">
+                        <h2>端末設定 ⚙️</h2>
+                        <span class="close-btn" onclick="closeDeviceSettingsModal()">×</span>
+                    </div>
+                    <div class="modal-body" id="dsm-body">
+                        <div class="spinner"></div> <!-- Loading State -->
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-secondary" onclick="closeDeviceSettingsModal()">閉じる</button>
+                        <button class="btn-primary" onclick="saveDeviceSettings()">保存</button>
+                    </div>
+                </div>
+            </div>`;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+
+        const modal = document.getElementById('device-settings-modal');
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+
+        loadDeviceSettingsData();
+    }
+
+    function closeDeviceSettingsModal() {
+        const modal = document.getElementById('device-settings-modal');
+        if (modal) {
+            modal.classList.remove('open');
+            modal.style.display = 'none';
+        }
+    }
+
+    function loadDeviceSettingsData() {
+        const id = getDeviceId();
+        const body = document.getElementById('dsm-body');
+
+        google.script.run.withSuccessHandler(res => {
+            if (!res || res === 'UNKNOWN') {
+                body.innerHTML = '<p>登録情報が見つかりません</p>';
+                return;
+            }
+            // Render Form
+            body.innerHTML = `
+                <div class="input-group">
+                    <label>端末名 (表示名)</label>
+                    <input type="text" id="dsm-name" value="${res.name}" class="input-std">
+                </div>
+                
+                <div style="background:#f9f9f9; padding:10px; border-radius:8px; margin-top:15px;">
+                    <label style="font-size:11px; color:#999; display:block; margin-bottom:5px;">SYSTEM INFO</label>
+                    <div style="font-size:12px; color:#555; font-family:monospace;">
+                        ID: ${id}<br>
+                        STATUS: REGISTERED<br>
+                    </div>
+                </div>
+
+                <div style="margin-top:20px; border-top:1px solid #eee; padding-top:15px;">
+                     <button class="btn-secondary" onclick="showDeviceMergeList()" style="width:100%; font-size:13px; color:#d32f2f; border-color:#ef5350;">
+                        ⚠ 別の端末IDに切り替える (再紐付け)
+                     </button>
+                </div>
+            `;
+        }).getDeviceStatus(id);
+    }
+
+    function saveDeviceSettings() {
+        const name = document.getElementById('dsm-name').value;
+        const id = getDeviceId();
+        const ua = navigator.userAgent;
+        const os = getDeviceType();
+        const type = (os === 'iOS' || os === 'Android') ? 'MOBILE' : ((os === 'iPad') ? 'TABLET' : 'DESKTOP');
+
+        if (!name) return;
+
+        const data = {
+            id: id,
+            name: name,
+            type: type,
+            os: os,
+            userAgent: ua
+        };
+
+        const btn = document.querySelector('#device-settings-modal .btn-primary');
+        btn.innerText = '保存中...';
+
+        google.script.run.withSuccessHandler(res => {
+            alert('保存しました');
+            btn.innerText = '保存';
+            closeDeviceSettingsModal();
+        }).registerDevice(data);
+    }
+
+
+    function closeDeviceRegModal() {
+        const modal = document.getElementById('device-reg-modal');
+        if (modal) {
+            modal.classList.remove('open');
+            modal.style.display = 'none';
+        }
+    }
+
+    function doRegisterDevice() {
+        const name = document.getElementById('drm-name').value;
+        if (!name) { alert('端末名を入力してください'); return; }
+
+        const id = getDeviceId();
+        const ua = navigator.userAgent;
+        const os = getDeviceType();
+        const type = (os === 'iOS' || os === 'Android') ? 'MOBILE' : ((os === 'iPad') ? 'TABLET' : 'DESKTOP');
+
+        // Loading state
+        const btn = document.querySelector('#device-reg-modal .btn-primary');
+        const originalText = btn.innerText;
+        btn.innerText = '登録中...';
+        btn.disabled = true;
+
+        const data = {
+            id: id,
+            name: name,
+            type: type,
+            os: os,
+            userAgent: ua
+        };
+
+        google.script.run.withSuccessHandler(res => {
+            alert('登録しました: ' + res.name);
+            closeDeviceRegModal();
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }).registerDevice(data);
+    }
+
+    // --- MERGE LOGIC ---
+    function showDeviceMergeList() {
+        // 1. Ensure Modal Exists
+        if (!document.getElementById('device-merge-modal')) {
+            // Re-use logic or inject just the merge modal? 
+            // It is usually injected by showDeviceRegistrationModal. 
+            // But if called from Settings, Reg modal might not exist.
+            const modalHtml = `
+            <div id="device-merge-modal" class="modal-overlay" style="z-index:9999;">
+                <div class="modal-box" style="max-width:400px; width:90%; padding:20px; display:flex; flex-direction:column; max-height:80vh;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h3 style="margin:0;">既存のアカウントを選択</h3>
+                        <div onclick="document.getElementById('device-merge-modal').classList.remove('open');document.getElementById('device-merge-modal').style.display='none';" style="font-size:24px; cursor:pointer;">&times;</div>
+                    </div>
+                    <div id="drm-list" style="overflow-y:auto; flex:1;"></div>
+                </div>
+            </div>`;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+
+        const listModal = document.getElementById('device-merge-modal');
+        listModal.style.display = 'flex';
+        listModal.classList.add('open');
+
+        const container = document.getElementById('drm-list');
+        container.innerHTML = '<div class="spinner"></div>';
+
+        google.script.run
+            .withFailureHandler(err => {
+                alert("SERVER ERROR: " + err); // Better debug
+                container.innerHTML = '<p style="color:red; font-size:12px;">エラーが発生しました: ' + err + '</p>';
+            })
+            .withSuccessHandler(devices => {
+                // Debug removed
+                container.innerHTML = '';
+                if (!devices || devices.length === 0) {
+                    container.innerHTML = '<p>登録済み端末はありません</p>';
+                    return;
+                }
+                // ...
+                devices.forEach(d => {
+                    // ...
+                    const div = document.createElement('div');
+                    let timeStr = '--';
+                    if (d.lastActive) {
+                        try {
+                            const date = new Date(d.lastActive);
+                            timeStr = (date.getMonth() + 1) + '/' + date.getDate() + ' ' + date.getHours() + ':' + date.getMinutes();
+                        } catch (e) { }
+                    }
+
+                    div.className = 'card-item';
+                    div.style.padding = '15px';
+                    div.style.borderBottom = '1px solid #eee';
+                    div.style.cursor = 'pointer';
+                    div.style.display = 'flex';
+                    div.style.justifyContent = 'space-between';
+                    div.style.alignItems = 'center';
+
+                    div.innerHTML = `
+                    <div>
+                        <div style="font-weight:bold; font-size:16px; color:#333;">${d.name}</div>
+                        <div style="font-size:11px; color:#999;">${d.type} / ${d.os}</div>
+                    </div>
+                    <div style="font-size:10px; color:#ccc;">${timeStr}</div>
+                `;
+                    div.onclick = () => doMergeDevice(d.id, d.name);
+                    container.appendChild(div);
+                });
+            }).fetchDeviceList();
+    }
+
+    function closeDeviceMergeModal() {
+        document.getElementById('device-merge-modal').style.display = 'none';
+        document.getElementById('device-merge-modal').classList.remove('open');
+    }
+
+    function doMergeDevice(targetId, targetName) {
+        if (!confirm(`本当にこのブラウザを「${targetName}」として登録しますか？\n(現在のIDは破棄されます)`)) return;
+
+        setDeviceId(targetId);
+        alert(`設定しました。\n以後、このブラウザは「${targetName}」として認識されます。`);
+
+        closeDeviceMergeModal();
+        closeDeviceRegModal();
+
+        // Trigger check again to perform heartbeat/update UA
+        checkDeviceRegistration();
+    }
+
+    // Init on Load
+    window.addEventListener('load', () => {
+        // Delay slightly to allow main app to settle
+        setTimeout(checkDeviceRegistration, 1500);
+    });
+
+</script>
