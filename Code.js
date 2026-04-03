@@ -98,191 +98,9 @@ function initAppSchema() {
     try { migrateHabitHeadersToIds(); } catch (e) { console.warn('Migration warning', e); }
   }
 
-  // Device DB Init
-  initDeviceDB();
-}
-
-/**
- * DEVICE MANAGEMENT API
- */
-function initDeviceDB() {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-
-  // 1. DB_Devices
-  let sheetDev = ss.getSheetByName('DB_Devices');
-  if (!sheetDev) {
-    sheetDev = ss.insertSheet('DB_Devices');
-    // Schema: id, name, type, os, userAgent, lastActive, status
-    sheetDev.appendRow(['id', 'name', 'type', 'os', 'userAgent', 'lastActive', 'status']);
-  }
-
-  // 2. DB_HabitDeviceSettings
-  let sheetSet = ss.getSheetByName('DB_HabitDeviceSettings');
-  if (!sheetSet) {
-    sheetSet = ss.insertSheet('DB_HabitDeviceSettings');
-    // Schema: id, habitId, deviceId, shortcutUrl, shortcutType
-    sheetSet.appendRow(['id', 'habitId', 'deviceId', 'shortcutUrl', 'shortcutType']);
-  }
-
-  // 3. DB_DeviceLogs
-  let sheetLog = ss.getSheetByName('DB_DeviceLogs');
-  if (!sheetLog) {
-    sheetLog = ss.insertSheet('DB_DeviceLogs');
-    // Schema: logId, deviceId, timestamp, type, jsonPayload
-    sheetLog.appendRow(['logId', 'deviceId', 'timestamp', 'type', 'jsonPayload']);
-  }
-}
-
-// --- DEVICE SHORTCUT API ---
-
-function getHabitShortcuts(habitId) {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('DB_HabitDeviceSettings');
-  if (!sheet) return {};
-
-  const data = sheet.getDataRange().getValues();
-  // Header: id, habitId, deviceId, shortcutUrl, shortcutType
-  const result = {};
-
-  for (let i = 1; i < data.length; i++) {
-    const r = data[i];
-    if (String(r[1]) === String(habitId)) { // habitId match
-      const devId = String(r[2]);
-      const url = String(r[3]);
-      if (devId && url) {
-        result[devId] = url;
-      }
-    }
-  }
-  return result;
-}
-
-function saveHabitShortcut(habitId, deviceId, url) {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('DB_HabitDeviceSettings');
-  if (!sheet) return { error: 'No DB' };
-
-  const data = sheet.getDataRange().getValues();
-  let rowIndex = -1;
-
-  // Find existing row for Habit+Device pair
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]) === String(habitId) && String(data[i][2]) === String(deviceId)) {
-      rowIndex = i + 1;
-      break;
-    }
-  }
-
-  if (rowIndex > 0) {
-    if (url) {
-      // Update
-      sheet.getRange(rowIndex, 4).setValue(url);
-    } else {
-      // Delete if empty URL provided? Or just clear?
-      // User might want to delete. Let's assume empty string = delete.
-      sheet.deleteRow(rowIndex);
-    }
-  } else {
-    // Insert new
-    if (url) {
-      const id = Utilities.getUuid();
-      sheet.appendRow([id, habitId, deviceId, url, 'URL']);
-    }
-  }
-
-  return getHabitShortcuts(habitId); // Return updated map
-}
-
-function deleteHabitShortcut(habitId, deviceId) {
-  return saveHabitShortcut(habitId, deviceId, '');
 }
 
 
-function registerDevice(data) {
-  // data: { id, name, type, os, userAgent }
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('DB_Devices');
-  if (!sheet) return { error: 'No DB_Devices' };
-
-  const id = data.id;
-  if (!id) return { error: 'No ID' };
-
-  const finder = sheet.getRange("A:A").createTextFinder(id).matchEntireCell(true);
-  const cell = finder.findNext();
-
-  const timestamp = new Date();
-
-  if (cell) {
-    // Update existing
-    const row = cell.getRow();
-    // Update Name if provided (forcing name update usually implies re-registration or user edit)
-    if (data.name) sheet.getRange(row, 2).setValue(data.name);
-    // Update OS/UA always
-    sheet.getRange(row, 3).setValue(data.type);
-    sheet.getRange(row, 4).setValue(data.os);
-    sheet.getRange(row, 5).setValue(data.userAgent);
-    sheet.getRange(row, 6).setValue(timestamp);
-    sheet.getRange(row, 7).setValue('ACTIVE');
-    return { status: 'Updated', name: sheet.getRange(row, 2).getValue() };
-  } else {
-    // New Registration
-    // id, name, type, os, userAgent, lastActive, status
-    sheet.appendRow([
-      id,
-      data.name || 'Unknown Device',
-      data.type,
-      data.os,
-      data.userAgent,
-      timestamp,
-      'ACTIVE'
-    ]);
-    return { status: 'Registered', name: data.name };
-  }
-}
-
-function getDeviceStatus(deviceId) {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('DB_Devices');
-  if (!sheet) return null;
-
-  const finder = sheet.getRange("A:A").createTextFinder(deviceId).matchEntireCell(true);
-  const cell = finder.findNext();
-
-  if (!cell) return 'UNKNOWN';
-
-  const row = cell.getRow();
-  const name = sheet.getRange(row, 2).getValue();
-  // We can return more details if needed
-  return { status: 'REGISTERED', name: name };
-}
-
-function fetchDeviceList() {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('DB_Devices');
-
-  // Guard: No Sheet (Should not happen if init works)
-  if (!sheet) {
-    return [{ id: 'ERR', name: 'DB_Devices Missing', type: 'SYS', os: 'ERR', lastActive: '' }];
-  }
-
-  const data = sheet.getDataRange().getValues();
-  if (data.length < 2) {
-    return []; // Truly empty
-  }
-
-  // Remove header
-  const rows = data.slice(1);
-  return rows.map(r => ({
-    id: String(r[0]),
-    name: String(r[1]),
-    type: String(r[2]),
-    os: String(r[3]),
-    // Convert Date to String on server to prevent JSON serialization issues
-    lastActive: (r[5] instanceof Date) ? Utilities.formatDate(r[5], CONFIG.TIMEZONE, 'MM/dd HH:mm') : String(r[5])
-  }));
-}
-
-// ... (Other functions irrelevant to replace)
 
 // --- AI AGENT ---
 
@@ -2425,7 +2243,7 @@ function reorderSections(idList) {
 }
 
 
-function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText, guideImage, shortcutsMap) {
+function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText, guideImage) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = ss.getSheetByName('DB_Habits');
   const data = sheet.getDataRange().getValues();
@@ -2544,16 +2362,7 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
     sheet.appendRow(newRow);
   }
 
-  // --- BATCH SAVE SHORTCUTS ---
-  if (targetHabitId && shortcutsMap) {
-    try {
-      console.log('Saving Shortcuts Batch:', targetHabitId);
-      Object.keys(shortcutsMap).forEach(dId => {
-        // Helper
-        saveHabitShortcut(targetHabitId, dId, shortcutsMap[dId]);
-      });
-    } catch (e) { console.warn(e); }
-  }
+
 
   // Return full updated status to refresh frontend cache immediately
   return getHabitStatus();

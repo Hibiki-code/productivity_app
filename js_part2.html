@@ -170,15 +170,6 @@
 
         toggleGuideSettings();
 
-        // Shortcut Init
-        const hasShortcut = !!(currentDetailHabit.hasShortcut);
-        document.getElementById('hs-shortcut-toggle').checked = hasShortcut;
-        toggleShortcutSettings();
-        // Load Device List if Toggle is On
-        if (hasShortcut) {
-            renderHabitShortcutList();
-        }
-
         // Icon Init 
         hsCurrentIcon = currentDetailHabit.icon || '';
         updateIconPreview();
@@ -208,9 +199,7 @@
             offenseTime: '',
             hasGuide: false,
             guideText: '',
-            guideImage: '',
-            hasShortcut: false,
-            shortcutUrl: ''
+            guideImage: ''
         };
 
         document.getElementById('habit-settings-modal').style.display = 'flex';
@@ -239,11 +228,6 @@
         updateGuideImagePreview();
         toggleGuideSettings();
 
-        // Shortcut
-        document.getElementById('hs-shortcut-toggle').checked = false;
-        document.getElementById('hs-shortcut-url').value = '';
-        toggleShortcutSettings();
-
         // Icon
         hsCurrentIcon = 'water_drop';
         updateIconPreview();
@@ -270,67 +254,6 @@
         const isChecked = document.getElementById('hs-guide-toggle').checked;
         const container = document.getElementById('hs-guide-settings');
         container.style.display = isChecked ? 'block' : 'none';
-    }
-
-    function toggleShortcutSettings() {
-        const isChecked = document.getElementById('hs-shortcut-toggle').checked;
-        const container = document.getElementById('hs-shortcut-settings');
-        container.style.display = isChecked ? 'block' : 'none';
-        if (isChecked) {
-            renderHabitShortcutList();
-        }
-    }
-
-    function renderHabitShortcutList() {
-        const list = document.getElementById('hs-shortcut-device-list');
-        list.innerHTML = '<div class="spinner"></div>';
-
-        // 1. Get Registered Devices
-        google.script.run
-            .withSuccessHandler(devices => {
-                list.innerHTML = '';
-                const shortcuts = currentDetailHabit.shortcuts || {};
-
-                if (devices.length === 0) {
-                    list.innerHTML = '<div style="color:#999;font-size:12px;">登録済み端末がありません</div>';
-                    return;
-                }
-
-                devices.forEach(d => {
-                    const url = shortcuts[d.id] || '';
-
-                    const row = document.createElement('div');
-                    row.style.cssText = 'background:#f9f9f9; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;';
-
-                    // Icon based on type
-                    let icon = 'devices';
-                    if (d.type === 'MOBILE') icon = 'smartphone';
-                    if (d.type === 'TABLET') icon = 'tablet_mac';
-                    if (d.type === 'DESKTOP') icon = 'computer';
-
-                    row.innerHTML = `
-                    <div style="display:flex; align-items:center; gap:10px; flex:1;">
-                        <span class="material-symbols-rounded" style="color:#666;">${icon}</span>
-                        <div style="font-size:13px; font-weight:bold; color:#444;">${d.name}</div>
-                    </div>
-                    <input type="text" 
-                           class="hs-device-shortcut-input input-std" 
-                           data-device-id="${d.id}" 
-                           placeholder="https://..." 
-                           value="${url}" 
-                           style="width: 60%; font-size:12px; padding:5px;">
-                `;
-                    list.appendChild(row);
-                });
-            })
-            .withFailureHandler(err => {
-                list.innerHTML = '<div style="color:red;">Error: ' + err + '</div>';
-            })
-            .fetchDeviceList();
-    }
-
-    function editHabitShortcut(deviceId, deviceName, currentUrl) {
-        // Deprecated (Inline Input used)
     }
 
     function updateIconPreview() {
@@ -369,21 +292,6 @@
         const guideText = hasGuide ? document.getElementById('hs-guide-text').value : '';
         const guideImage = hasGuide ? hsCurrentGuideImageUrl : '';
 
-        const hasShortcut = document.getElementById('hs-shortcut-toggle').checked;
-        const shortcutUrlEL = document.getElementById('hs-shortcut-url');
-        const shortcutUrl = (hasShortcut && shortcutUrlEL) ? shortcutUrlEL.value : '';
-
-        // --- GATHER DEVICE SHORTCUTS ---
-        const shortcutsMap = {};
-        if (hasShortcut) {
-            const inputs = document.querySelectorAll('.hs-device-shortcut-input');
-            inputs.forEach(input => {
-                const did = input.getAttribute('data-device-id');
-                const val = input.value.trim();
-                shortcutsMap[did] = val;
-            });
-        }
-
         if (!newName) return;
 
         // --- OPTIMISTIC UI UPDATE ---
@@ -402,14 +310,6 @@
             currentDetailHabit.hasGuide = hasGuide;
             currentDetailHabit.guideText = guideText;
             currentDetailHabit.guideImage = guideImage;
-
-            // Shortcut
-            currentDetailHabit.hasShortcut = hasShortcut;
-            currentDetailHabit.shortcutUrl = shortcutUrl;
-
-            // Mix in the new shortcuts map optimistically
-            if (!currentDetailHabit.shortcuts) currentDetailHabit.shortcuts = {};
-            Object.assign(currentDetailHabit.shortcuts, shortcutsMap);
         }
 
         // Visual Feedback
@@ -450,7 +350,7 @@
                 btn.disabled = false;
             }
         }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon, newTime,
-            newBenefit, newOffense, newOffenseTime, hasGuide, guideText, guideImage, shortcutsMap);
+            newBenefit, newOffense, newOffenseTime, hasGuide, guideText, guideImage);
     }
 
     // --- IMAGE LOGIC ---

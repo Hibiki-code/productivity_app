@@ -43,30 +43,31 @@
 
 ## 3. 開発運用ルール (Rules of Engagement)
 
-### ルール1: デプロイプロセス
-
-**⚠️ 厳守事項: Main環境へのデプロイおよびMainブランチへのマージは、ユーザーの明示的な許可なしに絶対に行ってはならない。**
-**特に、「機能が完成したから気を利かせてMainへ反映する」という行為は厳禁とする。**
-**必ず「Main環境へ反映してください」という、ユーザーからの独立した明確な指示（プロンプト）を待つこと。**
-**「承認」と「デプロイ指示」は別物として扱う。**
-
-1. **開発 (Dev)**:
-    * `git checkout -b feature/xxx`
-    * [.clasp.json](file:///c:/Users/hbksk/.gemini/antigravity/scratch/productivity_app/.clasp.json) = **Dev ID**
-    * `clasp push` -> 動作確認
-2. **本番リリース (User Approval Required)**:
-    * ユーザー承認を得る。
-    * `main` へマージ。
-    * [.clasp.json](file:///c:/Users/hbksk/.gemini/antigravity/scratch/productivity_app/.clasp.json) = **Main ID** に書き換え。
-    * `clasp push` -> `clasp deploy`。
-    * **直ちに Dev ID に戻す**。
-
-### ルール2: ファイル管理
+### ルール1: ファイル管理
 
 * **`clasp pull` 前**: ローカルの `*.gs` ファイルを削除する。
 * **`clasp push` 前**: 重複 (`.gs` と [.js](file:///c:/Users/hbksk/.gemini/antigravity/scratch/productivity_app/Code.js)) があれば `.gs` を削除する。
 
----
+### ルール2: AIを用いた基本開発サイクル (AI Chat Lifecycle)
+
+新しくAIチャットを開いた場合や、タスクを実行する際のLifeOSのプログラム管理の基本工程は以下の通りとする。AIはこの原則に従い、ユーザーへ提案・誘導を行うこと。
+
+1. **ブランチ作成**: 常にgitで新しいブランチを作成し、その中で作業を行う。（直接mainブランチを触らない）
+2. **反映と確認**: 作業内容をWebアプリ（Dev環境）に反映する（`clasp push`）。
+3. **成功時 (問題なし)**:
+   * 作業がひと段落し、アプリの動作に問題が無ければ、現在のAIチャットでの作業は終了とする。
+   * ユーザーに「新しいAIチャットを開いて次のタスクを進めてください」と案内し、このチャットを終える。
+4. **失敗時 (問題発生・リバート)**:
+   * 重大なバグや問題が発生し、すぐの解決が困難または袋小路に入った場合は、Webアプリのプログラムを `main` ブランチの（正常に動いていた）内容に戻す。
+   * 作業していたブランチは削除（破棄）する。
+   * その後、ユーザーに「新しいAIチャットを開いて、条件を整理してから再試行してください」と案内する。
+
+###
+
+**WebアプリのURL**:
+    *`git checkout -b feature/xxx`
+    * [.clasp.json](file:///c:/Users/hbksk/.gemini/antigravity/scratch/productivity_app/.clasp.json) = **Dev ID**
+    * `clasp push` -> 動作確認
 
 ## 4. コーディングガイドライン (Coding Standards)
 

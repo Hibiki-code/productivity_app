@@ -547,8 +547,7 @@
         div.setAttribute('data-has-guide', h.hasGuide ? 'true' : 'false');
         div.setAttribute('data-guide-text', h.guideText || '');
         div.setAttribute('data-guide-image', h.guideImage || '');
-        div.setAttribute('data-has-shortcut', h.hasShortcut ? 'true' : 'false');
-        div.setAttribute('data-shortcut-url', h.shortcutUrl || '');
+
 
         let iconContent = '💧';
         if (h.icon) {
@@ -705,38 +704,7 @@
             // 2. Title Update (Prioritized)
             const nameEl = item.querySelector('.habit-name');
 
-            // --- SHORTCUT LAUNCHER (Device Specific) ---
-            if (newStatus > 0) {
-                let targetUrl = item.getAttribute('data-shortcut-url'); // Legacy fallback
 
-                // 1. Check Device Specific Shortcut
-                try {
-                    const hId = item.getAttribute('data-habit-id');
-
-                    if (hId && window.habitDataCache && window.habitDataCache.habits) {
-                        const h = window.habitDataCache.habits.find(x => x.id === hId);
-
-                        if (h && (h.shortcuts || h.shortcutsMap) && window.getDeviceId) {
-                            const dId = getDeviceId();
-                            const map = h.shortcuts || h.shortcutsMap || {};
-                            if (map[dId]) {
-                                targetUrl = map[dId];
-                                console.log('Using Device Shortcut:', dId, targetUrl);
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.warn('Shortcut Lookup Err', e);
-                }
-
-                if (targetUrl) {
-                    // Use setTimeout to ensure UI update renders first
-                    setTimeout(() => {
-                        window.open(targetUrl, '_blank');
-                    }, 100);
-                }
-            }
-            // -------------------------
             if (nameEl) {
                 const resolvedOffTitle = offTitle || item.getAttribute('data-offense-title');
                 const resolvedDefTitle = defTitle || item.getAttribute('data-def-title');
