@@ -39,6 +39,10 @@ function doGet(e) {
     const result = debugHabitStatus();
     return ContentService.createTextOutput(result);
   }
+  if (e && e.parameter && e.parameter.migrate === 'fix_streaks') {
+    const result = forceRecalculateAllStreaks();
+    return ContentService.createTextOutput(result);
+  }
 
   // 2. NORMAL APP VIEW
   const template = HtmlService.createTemplateFromFile('index');
@@ -1475,7 +1479,8 @@ function getHabitStatus(dateStr) {
 
   // Merge
   const enrichedHabits = habits.map(h => {
-    const s = statMap[h.id] || {}; // Lookup by ID
+    // Lookup by ID first, then fallback to Name
+    const s = statMap[h.id] || statMap[h.name] || {}; 
     return {
       ...h,
       streak: s.streak || 0,
@@ -1645,7 +1650,7 @@ function logHabit(dateStr, habitIdOrName, status) {
 
   // 4. STATS UPDATE
   if (habitId) {
-    // updateSingleHabitStreak(habitId, status); // DISABLED: Calculated by Sheet Formula
+    updateSingleHabitStreak(habitId, status); 
   }
   return 'Updated';
 }
@@ -2003,9 +2008,42 @@ function logSleep(dateStr, bedtime, wakeup) {
 
 
 function updateSingleHabitStreak(habitId, isDone) {
-  // DISABLED: Stats are now calculated via Spreadsheet Formulas.
-  console.log('Skipping app-side stats update for:', habitId);
-  return;
+  const streak = calculateSingleStreak(habitId);
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const statSheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_STATS);
+  if (!statSheet) return;
+
+  const data = statSheet.getDataRange().getValues();
+  let foundRow = -1;
+  let habitNameForFallback = '';
+  
+  // Try to find Name for fallback
+  const dbHabitSheet = ss.getSheetByName('DB_Habits');
+  if (dbHabitSheet) {
+    const dbData = dbHabitSheet.getDataRange().getValues();
+    for (let i = 1; i < dbData.length; i++) {
+      if (String(dbData[i][0]) === String(habitId)) {
+        habitNameForFallback = dbData[i][1];
+        break;
+      }
+    }
+  }
+
+  // Stats Schema: id(0), title(1), current_streak(2), Rate30(3), RateAll(4)
+  for (let i = 1; i < data.length; i++) {
+    // Check ID match OR Name match (if ID is missing)
+    if (String(data[i][0]) === String(habitId) || (habitNameForFallback && String(data[i][0]) === String(habitNameForFallback))) {
+      foundRow = i + 1;
+      break;
+    }
+  }
+
+  if (foundRow !== -1) {
+    statSheet.getRange(foundRow, 3).setValue(streak); // col 3 is current_streak
+  } else {
+    // Append minimal habit data if missing.
+    statSheet.appendRow([habitId, '', streak, 0, 0]);
+  }
 }
 
 function calculateSingleStreak(habitId) {
@@ -2018,7 +2056,25 @@ function calculateSingleStreak(habitId) {
   const headers = data[0];
 
   // Header should be ID now
-  const colIndex = headers.indexOf(habitId);
+  let colIndex = headers.indexOf(habitId);
+  if (colIndex === -1) {
+    // Fallback: lookup habitName from DB_Habits and check headers again
+    const dbHabitSheet = ss.getSheetByName('DB_Habits');
+    if (dbHabitSheet) {
+      const dbData = dbHabitSheet.getDataRange().getValues();
+      let foundName = null;
+      for (let i = 1; i < dbData.length; i++) { // Skip header
+        if (String(dbData[i][0]) === String(habitId)) { // Assuming ID is col 0
+          foundName = dbData[i][1]; // Assuming Title is col 1
+          break;
+        }
+      }
+      if (foundName) {
+        colIndex = headers.indexOf(foundName);
+      }
+    }
+  }
+  
   if (colIndex === -1) return 0;
 
   // Extract dates for this habit
@@ -2055,48 +2111,45 @@ function calculateSingleStreak(habitId) {
 
 function calculateStats() {
   // Keeping for periodic updates if needed
+  forceRecalculateAllStreaks();
+}
+
+/**
+ * 強制的に全習慣の連続記録を再計算し、HABIT_STATS を修復する
+ */
+function forceRecalculateAllStreaks() {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const logSheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_LOG);
-  const data = logSheet.getDataRange().getValues();
-  const headers = data[0];
-
-  const stats = {};
-
-  for (let c = 1; c < headers.length; c++) {
-    const hName = headers[c];
-    const dates = [];
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][c] >= 1 || data[i][c] === true || data[i][c] === 'TRUE') {
-        const d = new Date(data[i][0]);
-        if (!isNaN(d.getTime())) dates.push(Utilities.formatDate(d, CONFIG.TIMEZONE, 'yyyy-MM-dd'));
-      }
-    }
-    dates.sort();
-
-    let streak = 0;
-    let today = new Date();
-    let check = Utilities.formatDate(today, CONFIG.TIMEZONE, 'yyyy-MM-dd');
-
-    if (dates.indexOf(check) === -1) {
-      today.setDate(today.getDate() - 1);
-      check = Utilities.formatDate(today, CONFIG.TIMEZONE, 'yyyy-MM-dd');
-    }
-
-    while (dates.indexOf(check) !== -1) {
-      streak++;
-      today.setDate(today.getDate() - 1);
-      check = Utilities.formatDate(today, CONFIG.TIMEZONE, 'yyyy-MM-dd');
-    }
-    stats[hName] = { streak: streak };
+  const statSheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_STATS);
+  const dbSheet = ss.getSheetByName('DB_Habits');
+  
+  if (!statSheet || !dbSheet) return 'Missing Sheets';
+  
+  const dbData = dbSheet.getDataRange().getValues();
+  // 1行目はヘッダーなのでスキップしてID一覧を作成
+  const habits = [];
+  for (let i = 1; i < dbData.length; i++) {
+    const id = String(dbData[i][0]).trim();
+    if (id) habits.push(id);
   }
 
-  const statSheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_STATS);
+  // 古い統計シートの中身をクリア（数式エラーごと消す）
   statSheet.clearContents();
-  statSheet.appendRow(['Habit', 'Streak', 'Rate30', 'RateAll']);
+  statSheet.appendRow(['Habit_ID', 'Streak', 'Rate30', 'RateAll']);
 
-  Object.keys(stats).forEach(h => {
-    statSheet.appendRow([h, stats[h].streak, 0, 0]);
+  let count = 0;
+  // 各習慣の連続日数を計算して書き込み
+  habits.forEach(habitId => {
+    let streak = 0;
+    try {
+      streak = calculateSingleStreak(habitId);
+    } catch(err) {
+      console.warn("Streak calc error for " + habitId, err);
+    }
+    statSheet.appendRow([habitId, streak, 0, 0]);
+    count++;
   });
+
+  return `Recalculated streaks for ${count} habits. Spreadsheets updated to use ID keys.`;
 }
 
 function getSchedule() {
