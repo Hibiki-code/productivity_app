@@ -325,9 +325,26 @@
 
             if (updatedData && updatedData.habits) {
                 console.log('Habit Definition Saved, Updating Cache', updatedData);
+
+                // Preserve current DOM status values before re-render
+                // so that today's completion state is not lost
+                const currentStatusMap = {};
+                document.querySelectorAll('.habit-item[data-habit-id]').forEach(el => {
+                    const hId = el.getAttribute('data-habit-id');
+                    const st = parseInt(el.getAttribute('data-status') || 0);
+                    if (hId) currentStatusMap[hId] = st;
+                });
+
+                // Merge preserved status into the returned data
+                updatedData.habits.forEach(h => {
+                    if (currentStatusMap[h.id] !== undefined) {
+                        h.status = currentStatusMap[h.id];
+                    }
+                });
+
                 habitDataCache = updatedData;
 
-                // Re-render
+                // Re-render with status preserved
                 renderHabits(updatedData);
 
                 // Also update currentDetailHabit if needed (though it was optimistic)
@@ -336,7 +353,8 @@
                     if (fresh) currentDetailHabit = fresh;
                 }
             } else {
-                fetchHabits();
+                // Pass currentHabitDate so the correct day's status is fetched
+                fetchHabits(currentHabitDate);
             }
 
             if (btn) {

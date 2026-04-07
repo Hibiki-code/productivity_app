@@ -2421,7 +2421,9 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
 
 
   // Return full updated status to refresh frontend cache immediately
-  return getHabitStatus();
+  // Use today's date in JST so habit completion states are preserved
+  const todayStr = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  return getHabitStatus(todayStr);
 }
 
 
