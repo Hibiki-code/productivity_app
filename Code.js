@@ -53,7 +53,11 @@ function doGet(e) {
   // Server-Side Rendering (SSR) of Initial Data
   try {
     const tasks = getTasks();
-    const habits = getHabitStatus(new Date().toDateString());
+    // Use JST-aware 3AM cutoff (same logic as frontend currentHabitDate)
+    const _ssrNow = new Date();
+    const _ssrHour = parseInt(Utilities.formatDate(_ssrNow, CONFIG.TIMEZONE, 'HH'));
+    if (_ssrHour < 3) _ssrNow.setDate(_ssrNow.getDate() - 1);
+    const habits = getHabitStatus(_ssrNow.toDateString());
 
     template.initialTasksJson = JSON.stringify(tasks).replace(/</g, '\\u003c');
     template.initialHabitsJson = JSON.stringify(habits).replace(/</g, '\\u003c');

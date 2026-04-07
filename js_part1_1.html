@@ -371,6 +371,14 @@
         }
         return d.toLocaleDateString('en-CA');
     })();
+
+    // Helper: returns the "effective" date for habit recording
+    // (same 3AM cutoff logic as currentHabitDate initialization)
+    function getEffectiveHabitDate() {
+        const d = new Date();
+        if (d.getHours() < 3) d.setDate(d.getDate() - 1);
+        return d.toLocaleDateString('en-CA');
+    }
     let habitCalendarCache = {};
     let currentDetailHabit = null; // Object
     let currentDetailYear = 0;
@@ -429,12 +437,12 @@
                 renderHabits(rawHabits);
             } else {
                 // Fallback
-                fetchHabits(new Date().toLocaleDateString('en-CA'));
+                fetchHabits(getEffectiveHabitDate());
             }
         } catch (e) {
             console.error("SSR Parse Error", e);
             fetchTasks();
-            fetchHabits(new Date().toLocaleDateString('en-CA'));
+            fetchHabits(getEffectiveHabitDate());
         }
 
         // Preload Projects
