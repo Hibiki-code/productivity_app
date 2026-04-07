@@ -277,6 +277,9 @@ function getCalendarEvents(dateStr) {
 
 // --- AI SMART SCHEDULING ---
 function getSmartSchedule(dateStr) {
+  // [PAUSE] Schedule Feature is paused.
+  return [];
+
   // 1. Get Base Events
   const events = getCalendarEvents(dateStr);
   // Mark regular events
