@@ -314,11 +314,16 @@
     function updateHabitSectionCounts() {
         const sections = document.querySelectorAll('.habit-list-container');
         let totalCheked = 0;
+        let totalActiveCount = 0;
 
         sections.forEach(sec => {
             const id = sec.id.replace('list-habit-', '');
             const countEl = document.getElementById('count-' + id);
             const children = sec.querySelectorAll('.habit-item').length;
+
+            if (id !== 'checked') {
+                totalActiveCount += children;
+            }
 
             // Universal Hiding Logic: If section has no habits, hide its wrapper.
             // ID pattern: list-habit-{id} -> sec-wrapper-{id}
@@ -340,6 +345,41 @@
         // Also update the header count for checked if separate
         const checkedCountEl = document.getElementById('count-habit-checked');
         if (checkedCountEl) checkedCountEl.innerText = (totalCheked > 0) ? `(${totalCheked})` : '';
+
+        // --- Congratulations Logic ---
+        let congratsEl = document.getElementById('habit-congrats-bg');
+        if (!congratsEl) {
+            congratsEl = document.createElement('div');
+            congratsEl.id = 'habit-congrats-bg';
+            congratsEl.innerHTML = `
+                <div style="text-align: center; padding: 60px 20px; opacity: 0; transition: opacity 0.8s ease;">
+                    <div style="font-size: 50px; margin-bottom: 15px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));">🎉</div>
+                    <div style="font-size: 26px; font-weight: 900; background: linear-gradient(135deg, #FFD700 0%, #FF8C00 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 2px; margin-bottom: 8px;">
+                        CONGRATULATIONS!
+                    </div>
+                    <div style="font-size: 14px; font-weight: bold; color: #999;">
+                        本日の習慣をすべて達成しました！
+                    </div>
+                </div>
+            `;
+            // Insert AFTER the checked section
+            const checkedSec = document.getElementById('sec-wrapper-checked');
+            if (checkedSec && checkedSec.parentNode) {
+                checkedSec.parentNode.insertBefore(congratsEl, checkedSec.nextSibling);
+            }
+        }
+        
+        if (totalActiveCount === 0 && totalCheked > 0) {
+            congratsEl.style.display = 'block';
+            setTimeout(() => {
+                const inner = congratsEl.firstElementChild;
+                if (inner) inner.style.opacity = '1';
+            }, 50);
+        } else {
+            congratsEl.style.display = 'none';
+            const inner = congratsEl.firstElementChild;
+            if (inner) inner.style.opacity = '0';
+        }
     }
 
     // Explicit global expose

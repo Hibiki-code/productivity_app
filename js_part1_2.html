@@ -888,32 +888,7 @@
         input.style.backgroundColor = '#FFF8E1';
     }
 
-    function updateHabitSectionCounts() {
-        const sections = habitDataCache ? habitDataCache.sections : [];
-        sections.forEach(sec => {
-            const listId = 'list-habit-' + sec.id;
-            const wrapperId = 'sec-wrapper-' + sec.id;
-            const countId = 'count-' + sec.id;
-
-            const listContainer = document.querySelector('#' + listId + ' > div');
-            if (!listContainer) return;
-
-            const count = listContainer.children.length;
-            const countEl = document.getElementById(countId);
-            const wrapperEl = document.getElementById(wrapperId);
-
-            if (countEl) countEl.innerText = '(' + count + ')';
-
-            // Auto Hide Logic (keep wrapper in DOM but hide)
-            if (wrapperEl) {
-                if (count === 0) {
-                    wrapperEl.style.display = 'none';
-                } else {
-                    wrapperEl.style.display = 'block';
-                }
-            }
-        });
-    }
+    // updateHabitSectionCounts was moved to js_part3_1.html
 
     // --- HABIT DETAIL & CALENDAR ---
     function openHabitDetail(habit) {
