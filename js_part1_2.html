@@ -547,6 +547,7 @@
         div.setAttribute('data-has-guide', h.hasGuide ? 'true' : 'false');
         div.setAttribute('data-guide-text', h.guideText || '');
         div.setAttribute('data-guide-image', h.guideImage || '');
+        div.setAttribute('data-guide-youtube', h.guideYoutube || '');
 
 
         let iconContent = '💧';
@@ -611,6 +612,9 @@
             } else if (habitName.endsWith('日記')) {
                 openJournalModal(habitName, item);
                 return; // STOP here. Wait for modal save.
+            } else if (habitName === '一日一善') {
+                openGoodDeedModal(habitName, item);
+                return; // STOP
             }
             // Guide Check
             const hasGuide = (item.dataset.hasGuide === 'true');
@@ -627,6 +631,7 @@
     // --- GUIDE MODAL LOGIC ---
     let pendingGuideItem = null;
     let pendingGuideName = '';
+    window.currentGuideAudio = null;
 
     function openGuideModal(name, item) {
         const modal = document.getElementById('habit-guide-modal');
@@ -634,10 +639,87 @@
         const titleEl = document.getElementById('hgm-title');
 
         if (modal && contentEl && item) {
-            const text = item.dataset.guideText || 'ガイドなし';
+            let text = item.dataset.guideText || 'ガイドなし';
+            
+            // Audio Parsing Logic
+            const audioRegex = /(https?:\/\/[^\s]+?\.(?:mp3|m4a|wav))/i;
+            const match = text.match(audioRegex);
+            let audioUrl = null;
+            if (match) {
+                audioUrl = match[1];
+                text = text.replace(audioUrl, '').trim(); // Remove URL from text
+            }
+
             // Simple basic markdown-ish process: \n -> <br>
-            const html = text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
+            let html = text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
+            if (html === '') html = ' '; // Prevents CSS layout collapse if empty text
             contentEl.innerHTML = html;
+
+            // Audio Player Append
+            if (audioUrl) {
+                const playerHtml = `
+                <div class="custom-audio-player" id="gd-audio-container">
+                    <audio id="gd-audio-el" src="${audioUrl}"></audio>
+                    <div class="audio-controls">
+                        <button class="audio-btn" onclick="skipGuideAudio(-10)">
+                            <span class="material-symbols-rounded" style="font-size:28px;">replay_10</span>
+                        </button>
+                        <button class="audio-btn audio-play-btn" id="gd-audio-play-btn" onclick="toggleGuideAudio()">
+                            <span class="material-symbols-rounded" style="font-size:32px;">play_arrow</span>
+                        </button>
+                        <button class="audio-btn" onclick="skipGuideAudio(10)">
+                            <span class="material-symbols-rounded" style="font-size:28px;">forward_10</span>
+                        </button>
+                    </div>
+                    <div class="audio-progress-container">
+                        <span id="gd-audio-time-current">0:00</span>
+                        <input type="range" class="audio-slider" id="gd-audio-progress" value="0" min="0" max="100">
+                        <span id="gd-audio-time-total">0:00</span>
+                    </div>
+                </div>`;
+                contentEl.insertAdjacentHTML('beforeend', playerHtml);
+
+                const audioEl = document.getElementById('gd-audio-el');
+                const playBtn = document.getElementById('gd-audio-play-btn');
+                const progressBar = document.getElementById('gd-audio-progress');
+                const timeCurrent = document.getElementById('gd-audio-time-current');
+                const timeTotal = document.getElementById('gd-audio-time-total');
+                window.currentGuideAudio = audioEl;
+
+                const formatTime = (timeInSecs) => {
+                    if (isNaN(timeInSecs)) return "0:00";
+                    const m = Math.floor(timeInSecs / 60);
+                    const s = Math.floor(timeInSecs % 60);
+                    return `${m}:${s.toString().padStart(2, '0')}`;
+                };
+
+                audioEl.addEventListener('loadedmetadata', () => {
+                    progressBar.max = Math.floor(audioEl.duration);
+                    timeTotal.innerText = formatTime(audioEl.duration);
+                });
+
+                audioEl.addEventListener('timeupdate', () => {
+                    progressBar.value = Math.floor(audioEl.currentTime);
+                    timeCurrent.innerText = formatTime(audioEl.currentTime);
+                });
+
+                progressBar.addEventListener('input', () => {
+                    audioEl.currentTime = progressBar.value;
+                });
+
+                audioEl.addEventListener('play', () => {
+                    playBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:32px;">pause</span>';
+                });
+
+                audioEl.addEventListener('pause', () => {
+                    playBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:32px;">play_arrow</span>';
+                });
+
+                audioEl.addEventListener('ended', () => {
+                    playBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:32px;">play_arrow</span>';
+                    progressBar.value = 0;
+                });
+            }
 
             // Image Append
             const guideImg = item.dataset.guideImage;
@@ -649,6 +731,26 @@
                 imgEl.style.borderRadius = '8px';
                 imgEl.style.border = '1px solid #eee';
                 contentEl.appendChild(imgEl);
+            }
+
+            // YouTube Append
+            const guideYoutube = item.dataset.guideYoutube;
+            if (guideYoutube) {
+                let videoId = '';
+                const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+                const match = guideYoutube.match(ytRegex);
+                if (match && match[1]) {
+                    videoId = match[1];
+                }
+                
+                if (videoId) {
+                    const ytHtml = `
+                    <div style="margin-top:15px; position:relative; padding-bottom:56.25%; height:0; overflow:hidden; border-radius:8px; border:1px solid #eee;">
+                        <iframe style="position:absolute; top:0; left:0; width:100%; height:100%;" src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                    </div>
+                    `;
+                    contentEl.insertAdjacentHTML('beforeend', ytHtml);
+                }
             }
 
             if (titleEl) titleEl.innerText = name;
@@ -663,7 +765,27 @@
         }
     }
 
+    function toggleGuideAudio() {
+        if (window.currentGuideAudio) {
+            if (window.currentGuideAudio.paused) {
+                window.currentGuideAudio.play();
+            } else {
+                window.currentGuideAudio.pause();
+            }
+        }
+    }
+
+    function skipGuideAudio(seconds) {
+        if (window.currentGuideAudio) {
+            window.currentGuideAudio.currentTime += seconds;
+        }
+    }
+
     function closeGuideModal() {
+        if (window.currentGuideAudio) {
+            window.currentGuideAudio.pause();
+            window.currentGuideAudio = null;
+        }
         document.getElementById('habit-guide-modal').classList.remove('open');
         pendingGuideItem = null;
     }
@@ -765,10 +887,10 @@
                     if (!window.habitCalendarCache) window.habitCalendarCache = {};
                     if (!habitCalendarCache[hId]) habitCalendarCache[hId] = {};
 
-                    const today = new Date();
-                    const y = today.getFullYear();
-                    const m = today.getMonth() + 1;
-                    const d = today.getDate();
+                    const targetDate = new Date(currentHabitDate);
+                    const y = targetDate.getFullYear();
+                    const m = targetDate.getMonth() + 1;
+                    const d = targetDate.getDate();
                     const key = `${y}-${m}`;
 
                     if (!habitCalendarCache[hId][key]) habitCalendarCache[hId][key] = {};

@@ -1356,9 +1356,9 @@ function getHabitStatus(dateStr) {
       offenseTitle: getVal(r, 'title_offense', ''),
       offenseTime: getVal(r, 'time_offense', ''),
       hasGuide: (getVal(r, 'has_guide', false) === true),
-      hasGuide: (getVal(r, 'has_guide', false) === true),
       guideText: getVal(r, 'guide_text', ''),
       guideImage: getVal(r, 'guide_image', ''),
+      guideYoutube: getVal(r, 'guide_youtube', ''),
       hasShortcut: Object.keys(scMap[getVal(r, 'id', '')] || {}).length > 0,
       shortcuts: scMap[getVal(r, 'id', '')] || {}
     };
@@ -2303,7 +2303,7 @@ function reorderSections(idList) {
 }
 
 
-function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText, guideImage) {
+function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText, guideImage, guideYoutube) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = ss.getSheetByName('DB_Habits');
   const data = sheet.getDataRange().getValues();
@@ -2378,6 +2378,12 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
           sheet.getRange(row, hMap['guide_image'] + 1).setValue(guideImage);
         }
 
+        // YouTube URL
+        if (guideYoutube !== undefined) {
+          ensureColumn('guide_youtube');
+          sheet.getRange(row, hMap['guide_youtube'] + 1).setValue(guideYoutube);
+        }
+
 
 
         // Update At 
@@ -2407,7 +2413,8 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
     newRow[hMap['icon']] = icon || 'star';
 
     if (hMap['benefit'] !== undefined) newRow[hMap['benefit']] = newBenefit || '';
-    if (hMap['isActive'] !== undefined) newRow[hMap['isActive']] = 'Active';
+    if (hMap['isactive'] !== undefined) newRow[hMap['isactive']] = 'ACTIVE';
+    if (hMap['createdat'] !== undefined) newRow[hMap['createdat']] = new Date();
     if (hMap['time_needed'] !== undefined) newRow[hMap['time_needed']] = newTime || '';
 
     if (hMap['title_offense'] !== undefined) newRow[hMap['title_offense']] = newOffenseTitle || '';
@@ -2416,6 +2423,7 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
     if (hMap['has_guide'] !== undefined) newRow[hMap['has_guide']] = hasGuide || false;
     if (hMap['guide_text'] !== undefined) newRow[hMap['guide_text']] = guideText || '';
     if (hMap['guide_image'] !== undefined) newRow[hMap['guide_image']] = guideImage || '';
+    if (hMap['guide_youtube'] !== undefined) newRow[hMap['guide_youtube']] = guideYoutube || '';
 
 
 

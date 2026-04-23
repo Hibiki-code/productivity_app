@@ -209,6 +209,55 @@
         // Backend expects ID now
         google.script.run.logHabitText(currentHabitDate, id, text);
     }
+    
+    /* --- GOOD DEED MODAL LOGIC --- */
+    function openGoodDeedModal(name, item) {
+        const modal = document.getElementById('good-deed-modal');
+        if (!modal) return;
+        pendingJournalItem = item;
+        pendingJournalName = name;
+        pendingJournalId = item ? item.getAttribute('data-habit-id') : null;
+
+        // Reset Inputs
+        const input = document.getElementById('gd-modal-input');
+        if (input) input.value = '';
+
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+
+        // Auto-focus
+        if (input) setTimeout(() => input.focus(), 100);
+    }
+
+    function closeGoodDeedModal() {
+        const modal = document.getElementById('good-deed-modal');
+        if (modal) {
+            modal.classList.remove('open');
+            modal.style.display = 'none';
+        }
+        pendingJournalItem = null;
+        pendingJournalName = '';
+        pendingJournalId = null;
+    }
+
+    function submitGoodDeed() {
+        if (!pendingJournalItem) return;
+        const text = document.getElementById('gd-modal-input').value;
+        const name = pendingJournalName;
+        const item = pendingJournalItem;
+        const id = pendingJournalId;
+
+        closeGoodDeedModal();
+        // Force update to Done (Level 1)
+        processHabitToggle(item, name, 1, false, true);
+
+        // Backend expects ID now
+        google.script.run.logHabitText(currentHabitDate, id, text);
+    }
+    
+    window.openGoodDeedModal = openGoodDeedModal;
+    window.closeGoodDeedModal = closeGoodDeedModal;
+    window.submitGoodDeed = submitGoodDeed;
 
     /* --- SLEEP MODAL LOGIC (NUCLEAR FIX 3: CLOCK UI) --- */
 

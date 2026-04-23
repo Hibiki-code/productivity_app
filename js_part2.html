@@ -46,6 +46,7 @@
             if (!habitCalendarCache[hId]) habitCalendarCache[hId] = {};
 
             const today = new Date();
+            if (today.getHours() < 3) today.setDate(today.getDate() - 1);
             const tY = today.getFullYear();
             const tM = today.getMonth() + 1;
             const tD = today.getDate();
@@ -99,6 +100,7 @@
         for (let i = 0; i < firstDay; i++) container.appendChild(document.createElement('div'));
 
         const today = new Date();
+        if (today.getHours() < 3) today.setDate(today.getDate() - 1);
         today.setHours(0, 0, 0, 0);
         const start = currentDetailHabit.startDate ? new Date(currentDetailHabit.startDate) : new Date('2024-01-01');
         start.setHours(0, 0, 0, 0);
@@ -160,8 +162,10 @@
         // Guide Init
         const hasGuide = !!(currentDetailHabit.hasGuide);
         const guideText = currentDetailHabit.guideText || '';
+        const guideYoutube = currentDetailHabit.guideYoutube || '';
         document.getElementById('hs-guide-toggle').checked = hasGuide;
         document.getElementById('hs-guide-text').value = guideText;
+        document.getElementById('hs-guide-youtube-link').value = guideYoutube;
 
         // Image Init
         hsCurrentGuideImageUrl = currentDetailHabit.guideImage || '';
@@ -199,7 +203,8 @@
             offenseTime: '',
             hasGuide: false,
             guideText: '',
-            guideImage: ''
+            guideImage: '',
+            guideYoutube: ''
         };
 
         document.getElementById('habit-settings-modal').style.display = 'flex';
@@ -223,6 +228,7 @@
         // Guide
         document.getElementById('hs-guide-toggle').checked = false;
         document.getElementById('hs-guide-text').value = '';
+        document.getElementById('hs-guide-youtube-link').value = '';
         hsCurrentGuideImageUrl = '';
         document.getElementById('hs-guide-image-text').value = '';
         updateGuideImagePreview();
@@ -291,6 +297,7 @@
         const hasGuide = document.getElementById('hs-guide-toggle').checked;
         const guideText = hasGuide ? document.getElementById('hs-guide-text').value : '';
         const guideImage = hasGuide ? hsCurrentGuideImageUrl : '';
+        const guideYoutube = hasGuide ? document.getElementById('hs-guide-youtube-link').value : '';
 
         if (!newName) return;
 
@@ -310,6 +317,7 @@
             currentDetailHabit.hasGuide = hasGuide;
             currentDetailHabit.guideText = guideText;
             currentDetailHabit.guideImage = guideImage;
+            currentDetailHabit.guideYoutube = guideYoutube;
         }
 
         // Visual Feedback
@@ -368,7 +376,7 @@
                 btn.disabled = false;
             }
         }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon, newTime,
-            newBenefit, newOffense, newOffenseTime, hasGuide, guideText, guideImage);
+            newBenefit, newOffense, newOffenseTime, hasGuide, guideText, guideImage, guideYoutube);
     }
 
     // --- IMAGE LOGIC ---
