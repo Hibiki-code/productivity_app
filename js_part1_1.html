@@ -339,7 +339,8 @@
 
         document.querySelectorAll('.nav-item').forEach(n => {
             n.classList.remove('active');
-            if (n.innerHTML.includes(id) || (id === 'tasks' && n.innerHTML.includes('done_all')) || (id === 'habits' &&
+            const onclickAttr = n.getAttribute('onclick') || '';
+            if (onclickAttr.includes("'" + id + "'") || n.innerHTML.toLowerCase().includes(id.toLowerCase()) || (id === 'tasks' && n.innerHTML.includes('done_all')) || (id === 'habits' &&
                 n.innerHTML.includes('water_drop'))) {
                 n.classList.add('active');
             }
@@ -462,7 +463,8 @@
         document.querySelectorAll('.nav-item').forEach(n => {
             n.classList.remove('active');
             // Try to match
-            if (n.innerHTML.includes(id) || (id === 'tasks' && n.innerHTML.includes('done_all')) || (id === 'habits' &&
+            const onclickAttr = n.getAttribute('onclick') || '';
+            if (onclickAttr.includes("'" + id + "'") || n.innerHTML.toLowerCase().includes(id.toLowerCase()) || (id === 'tasks' && n.innerHTML.includes('done_all')) || (id === 'habits' &&
                 n.innerHTML.includes('water_drop'))) {
                 n.classList.add('active');
             }
