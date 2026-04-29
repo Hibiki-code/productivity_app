@@ -470,6 +470,24 @@
       color: #333;
     }
 
+    .date-item .date-num {
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      box-sizing: border-box;
+      font-weight: bold;
+      transition: all 0.3s ease;
+    }
+
+    .date-item .date-num.perfect-day {
+      border-color: var(--warm-orange, orange);
+      color: var(--warm-orange, orange);
+    }
+
     /* Modals */
     .modal-fullscreen {
       position: fixed;

@@ -1298,6 +1298,7 @@ function getHabitStatus(dateStr) {
     section: 3,
     benefit: 4,
     isactive: 5,
+    createdat: 6,
     text_input: 7,
     time_needed: 8,
     title_offense: 9
@@ -1345,12 +1346,21 @@ function getHabitStatus(dateStr) {
     // User might use 'ACTIVE' string or boolean TRUE. Screenshot shows 'ACTIVE'.
     if (String(isActiveVal).toUpperCase() !== 'ACTIVE' && isActiveVal !== true) return null;
 
+    const createdAtRaw = getVal(r, 'createdAt', '');
+    let createdAt = '';
+    if (createdAtRaw) {
+      if (createdAtRaw instanceof Date) createdAt = createdAtRaw.toISOString();
+      else createdAt = new Date(createdAtRaw).toISOString();
+    }
+
     return {
       id: getVal(r, 'id', ''),
       name: title, // Map 'title' to Internal 'name'
       icon: getVal(r, 'icon', 'water_drop'),
       sectionId: getVal(r, 'section', 'sec_morning'),
       benefit: getVal(r, 'benefit', ''),
+      isActive: true,
+      createdAt: createdAt,
       hasTextInput: (getVal(r, 'text_input', false) === true),
       time: getVal(r, 'time_needed', ''),
       offenseTitle: getVal(r, 'title_offense', ''),
@@ -1390,6 +1400,7 @@ function getHabitStatus(dateStr) {
   habits.forEach(h => monthlyLogs[h.name] = {});
 
   const todaysLog = {};
+  const recentLogs = {};
 
   // Helper to normalize Date from Sheet (which might be Object or String)
   const normalizeDate = (d) => {
@@ -1452,6 +1463,25 @@ function getHabitStatus(dateStr) {
         }
       }
     }
+
+    // Collect 14-day Data for Date Strip
+    const diffTime = targetDate.getTime() - rDate.getTime();
+    const diffDays = diffTime / (1000 * 3600 * 24);
+    if (diffDays >= -7 && diffDays <= 14) {
+      const ymd = Utilities.formatDate(rDate, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+      if (!recentLogs[ymd]) recentLogs[ymd] = {};
+      for (let c = 1; c < logHeaders.length; c++) {
+        const hName = logHeaders[c];
+        const val = logData[i][c];
+        let status = 0;
+        if (val == 2) status = 2;
+        else if (val == 1 || val === true || val === 'TRUE') status = 1;
+
+        if (status > (recentLogs[ymd][hName] || 0)) {
+          recentLogs[ymd][hName] = status;
+        }
+      }
+    }
   }
 
   // REFACTOR: Map keys from IDs to Names for Frontend? 
@@ -1502,6 +1532,7 @@ function getHabitStatus(dateStr) {
     sections: sections,
     log: todaysLog,
     monthlyLogs: monthlyLogs,
+    recentLogs: recentLogs,
     serverDate: { year: targetYear, month: targetMonth + 1 }
   };
 }

@@ -413,6 +413,7 @@
 
             const el = document.createElement('div');
             el.className = 'date-item' + (isToday ? ' active' : '');
+            el.dataset.ymd = ymd;
             el.onclick = () => {
                 document.querySelectorAll('.date-item').forEach(e => e.classList.remove('active'));
                 el.classList.add('active');
@@ -526,6 +527,43 @@
             } else {
                 checkedSec.style.display = 'none';
             }
+        }
+
+        // --- UPDATE DATE STRIP PERFECT DAYS ---
+        if (data.recentLogs) {
+            document.querySelectorAll('.date-item').forEach(el => {
+                const ymd = el.dataset.ymd;
+                if (!ymd) return;
+                
+                const logsForDay = data.recentLogs[ymd] || {};
+                let allAchieved = true;
+                let activeHabitCount = 0;
+                
+                data.habits.forEach(h => {
+                    if (h.createdAt) {
+                        const createdDate = new Date(h.createdAt);
+                        const checkDate = new Date(ymd);
+                        // Only require the habit if it was created on or before the checkDate (with some leniency)
+                        if (checkDate.getTime() < createdDate.getTime() - 86400000) {
+                            return; 
+                        }
+                    }
+                    activeHabitCount++;
+                    const s = logsForDay[h.id] || logsForDay[h.name] || 0;
+                    if (s < 1) {
+                        allAchieved = false;
+                    }
+                });
+                
+                const numEl = el.querySelector('.date-num');
+                if (numEl) {
+                    if (allAchieved && activeHabitCount > 0) {
+                        numEl.classList.add('perfect-day');
+                    } else {
+                        numEl.classList.remove('perfect-day');
+                    }
+                }
+            });
         }
     }
 
