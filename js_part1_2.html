@@ -828,12 +828,13 @@
             let updatedStreak = null;
 
             const streakEl = item.querySelector('.habit-stats-right > div:first-child');
+            const isWeeklyItem = (item.dataset.sectionId === 'sec_weekly');
             if (streakEl) {
                 let currentStreak = parseInt(streakEl.innerText) || 0;
                 if (wasDone !== isDoneNow) {
                     if (!wasDone && isDoneNow) currentStreak++;
                     if (wasDone && !isDoneNow) currentStreak = Math.max(0, currentStreak - 1);
-                    streakEl.innerText = currentStreak + '日';
+                    streakEl.innerText = currentStreak + (isWeeklyItem ? '週' : '日');
                     // Update Source of Truth in DOM
                     item.setAttribute('data-current-streak', currentStreak);
                 }
@@ -844,7 +845,8 @@
             if (window.currentDetailHabit && currentDetailHabit.name === habitName) {
                 const detailStreakEl = document.getElementById('detail-streak');
                 if (detailStreakEl && updatedStreak !== null) {
-                    detailStreakEl.innerText = updatedStreak + ' 日';
+                    const isWeeklyDetail = (item.dataset.sectionId === 'sec_weekly');
+                    detailStreakEl.innerText = updatedStreak + (isWeeklyDetail ? ' 週' : ' 日');
                 }
             }
 
@@ -1054,7 +1056,10 @@
         if (liveItem && liveItem.hasAttribute('data-current-streak')) {
             liveStreak = parseInt(liveItem.getAttribute('data-current-streak')) || 0;
         }
-        if (streakEl) streakEl.innerText = `${liveStreak} 日`;
+        if (streakEl) {
+            const isWeeklyDetail = (habit.sectionId === 'sec_weekly');
+            streakEl.innerText = `${liveStreak} ${isWeeklyDetail ? '週' : '日'}`;
+        }
 
         const rateEl = document.getElementById('detail-rate');
         if (rateEl) rateEl.innerText = `${habit.rate30 || 0}% `;

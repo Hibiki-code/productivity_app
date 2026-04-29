@@ -2163,6 +2163,26 @@ function updateSingleHabitStreak(habitId, isDone) {
 
 function calculateSingleStreak(habitId) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+
+  // --- Weekly habit branch ---
+  try {
+    const dbHabitsSheet = ss.getSheetByName('DB_Habits');
+    if (dbHabitsSheet) {
+      const dbData = dbHabitsSheet.getDataRange().getValues();
+      const dbHeaders = dbData[0].map(h => String(h).trim().toLowerCase());
+      const idIdx = dbHeaders.indexOf('id');
+      const secIdx = dbHeaders.indexOf('section');
+      if (idIdx !== -1 && secIdx !== -1) {
+        for (let ri = 1; ri < dbData.length; ri++) {
+          if (String(dbData[ri][idIdx]) === String(habitId) &&
+              String(dbData[ri][secIdx]) === 'sec_weekly') {
+            return calculateWeeklyStreak(habitId);
+          }
+        }
+      }
+    }
+  } catch (e) { console.warn('Weekly streak branch error:', e); }
+
   const logSheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_LOG);
   if (!logSheet) return 0;
 
@@ -2221,6 +2241,84 @@ function calculateSingleStreak(habitId) {
     today.setDate(today.getDate() - 1);
     check = Utilities.formatDate(today, timeZone, 'yyyy-MM-dd');
   }
+  return streak;
+}
+
+/**
+ * Weekly習慣の連続記録を週単位で計算する。
+ * 「先週まで」の連続週数を返す（今週が未達成でも先週までの記録は維持される）。
+ * 今週が達成済みの場合はその週も含めてカウントする。
+ */
+function calculateWeeklyStreak(habitId) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const logSheet = ss.getSheetByName('DB_HabitLogs');
+  if (!logSheet) return 0;
+
+  const data = logSheet.getDataRange().getValues();
+  if (data.length <= 1) return 0;
+
+  const headers = data[0].map(h => String(h).trim().toLowerCase());
+  const dateIdx   = headers.indexOf('date');
+  const habitIdx  = headers.indexOf('habitid');
+  const valueIdx  = headers.indexOf('value');
+  const statusIdx = headers.indexOf('status');
+
+  if (dateIdx === -1 || habitIdx === -1) return 0;
+
+  const tz = CONFIG.TIMEZONE;
+
+  // 達成した週の日曜日（週開始）を Set で収集
+  const achievedWeeks = new Set();
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (String(row[habitIdx]) !== String(habitId)) continue;
+
+    const val    = valueIdx  !== -1 ? Number(row[valueIdx])  : 0;
+    const status = statusIdx !== -1 ? String(row[statusIdx]) : '';
+    const achieved = val >= 1 || status === 'DONE' || status === 'ADVANCED';
+    if (!achieved) continue;
+
+    let d;
+    if (row[dateIdx] instanceof Date) d = row[dateIdx];
+    else d = new Date(row[dateIdx]);
+    if (!d || isNaN(d.getTime())) continue;
+
+    // その週の日曜日を求める
+    const dow = d.getDay(); // 0=Sun
+    const sun = new Date(d);
+    sun.setDate(d.getDate() - dow);
+    sun.setHours(0, 0, 0, 0);
+    achievedWeeks.add(Utilities.formatDate(sun, tz, 'yyyy-MM-dd'));
+  }
+
+  if (achievedWeeks.size === 0) return 0;
+
+  // 今週の日曜日を求める
+  const now = new Date();
+  const currentSun = new Date(now);
+  currentSun.setDate(now.getDate() - now.getDay());
+  currentSun.setHours(0, 0, 0, 0);
+
+  // 今週達成済みか確認
+  const currentSunStr = Utilities.formatDate(currentSun, tz, 'yyyy-MM-dd');
+  const thisWeekDone = achievedWeeks.has(currentSunStr);
+
+  // カウント開始週：今週が達成済みなら今週から、そうでなければ先週から
+  const startSun = new Date(currentSun);
+  if (!thisWeekDone) {
+    startSun.setDate(startSun.getDate() - 7); // 先週の日曜へ
+  }
+
+  // 連続週数をカウント（過去へ遡る）
+  let streak = 0;
+  const checkSun = new Date(startSun);
+  while (true) {
+    const checkStr = Utilities.formatDate(checkSun, tz, 'yyyy-MM-dd');
+    if (!achievedWeeks.has(checkStr)) break;
+    streak++;
+    checkSun.setDate(checkSun.getDate() - 7);
+  }
+
   return streak;
 }
 
