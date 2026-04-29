@@ -86,6 +86,17 @@
 
         const year = currentDetailYear;
         const month = currentDetailMonth;
+        const isWeekly = (currentDetailHabit && currentDetailHabit.sectionId === 'sec_weekly');
+
+        // --- Helper: get status value from a date across months ---
+        function getStatus(y, m, d) {
+            const key = `${y}-${m}`;
+            const hId = currentDetailHabit.id;
+            if (habitCalendarCache[hId] && habitCalendarCache[hId][key]) {
+                return habitCalendarCache[hId][key][d];
+            }
+            return undefined;
+        }
 
         // Headers
         ['日', '月', '火', '水', '木', '金', '土'].forEach(d => {
@@ -95,9 +106,12 @@
         });
 
         const daysInMonth = new Date(year, month, 0).getDate();
-        const firstDay = new Date(year, month - 1, 1).getDay();
+        const firstDay = new Date(year, month - 1, 1).getDay(); // 0=Sun
 
-        for (let i = 0; i < firstDay; i++) container.appendChild(document.createElement('div'));
+        // Days in previous month
+        const prevMonthYear = month === 1 ? year - 1 : year;
+        const prevMonth = month === 1 ? 12 : month - 1;
+        const daysInPrevMonth = new Date(prevMonthYear, prevMonth, 0).getDate();
 
         const today = new Date();
         if (today.getHours() < 3) today.setDate(today.getDate() - 1);
@@ -105,6 +119,22 @@
         const start = currentDetailHabit.startDate ? new Date(currentDetailHabit.startDate) : new Date('2024-01-01');
         start.setHours(0, 0, 0, 0);
 
+        // --- Render prev-month overflow days ---
+        for (let i = 0; i < firstDay; i++) {
+            const d = daysInPrevMonth - firstDay + 1 + i;
+            const cell = document.createElement('div');
+            cell.className = 'cal-cell cal-cell-other-month';
+            cell.innerText = d;
+
+            const currentDate = new Date(prevMonthYear, prevMonth - 1, d);
+            if (currentDate <= today && currentDate >= start) {
+                const status = getStatus(prevMonthYear, prevMonth, d);
+                _applyCalCellStatus(cell, status, currentDate, today, isWeekly);
+            }
+            container.appendChild(cell);
+        }
+
+        // --- Render current month days ---
         for (let d = 1; d <= daysInMonth; d++) {
             const cell = document.createElement('div');
             cell.className = 'cal-cell';
@@ -114,25 +144,55 @@
             if (current > today) {
                 cell.style.opacity = '0.3';
             } else if (current < start) {
-                // Before Start 
+                // before habit start
             } else {
                 const status = map[d];
-                // Status 2=Offense Done (Red in Calendar per plan)
-                // Status 1=Defense Done (Green in Calendar)
-
-                if (status === 2) {
-                    cell.classList.add('status-advanced'); // Red 
-                } else if (status === 1) {
-                    cell.classList.add('status-done'); // Green 
-                } else if (current.getTime() === today.getTime()) {
-                    cell.classList.add('status-today-incomplete');
-                } else {
-                    cell.classList.add('status-failed');
-                }
+                _applyCalCellStatus(cell, status, current, today, isWeekly);
             }
             container.appendChild(cell);
         }
+
+        // --- Render next-month overflow days (fill remaining cells to complete the last week) ---
+        const totalCells = firstDay + daysInMonth;
+        const remainder = totalCells % 7;
+        if (remainder !== 0) {
+            const nextMonthYear = month === 12 ? year + 1 : year;
+            const nextMonth = month === 12 ? 1 : month + 1;
+            const nextDaysNeeded = 7 - remainder;
+            for (let d = 1; d <= nextDaysNeeded; d++) {
+                const cell = document.createElement('div');
+                cell.className = 'cal-cell cal-cell-other-month';
+                cell.innerText = d;
+
+                const currentDate = new Date(nextMonthYear, nextMonth - 1, d);
+                if (currentDate <= today && currentDate >= start) {
+                    const status = getStatus(nextMonthYear, nextMonth, d);
+                    _applyCalCellStatus(cell, status, currentDate, today, isWeekly);
+                }
+                container.appendChild(cell);
+            }
+        }
     }
+
+    // Apply visual status classes to a calendar cell
+    function _applyCalCellStatus(cell, status, current, today, isWeekly) {
+        if (status === 2) {
+            cell.classList.add('status-advanced');
+        } else if (status === 1) {
+            cell.classList.add('status-done');
+        } else if (status === 'W') {
+            // Weekly: same-week highlight (light orange background rectangle)
+            cell.classList.add('status-week-highlight');
+        } else if (current.getTime() === today.getTime()) {
+            cell.classList.add('status-today-incomplete');
+        } else {
+            if (!isWeekly) {
+                // Only daily habits show grey "failed" dots
+                cell.classList.add('status-failed');
+            }
+        }
+    }
+
 
     // --- SETTINGS LOGIC --- 
     let hsCurrentIcon = '';

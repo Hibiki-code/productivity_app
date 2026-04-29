@@ -634,6 +634,26 @@
       /* existing styles... */
     }
 
+    /* Weekly habit: same-week highlight - light orange rectangle */
+    .cal-cell.status-week-highlight {
+      background: rgba(255, 152, 0, 0.12) !important;
+      color: #E65100 !important;
+      border-radius: 6px !important;  /* rectangle, not circle */
+      border: 1.5px solid rgba(255, 152, 0, 0.35) !important;
+    }
+
+    /* Overflow days from prev/next month */
+    .cal-cell.cal-cell-other-month {
+      color: #ccc;
+      font-weight: 400;
+    }
+    .cal-cell.cal-cell-other-month.status-done {
+      opacity: 0.6;
+    }
+    .cal-cell.cal-cell-other-month.status-week-highlight {
+      opacity: 0.6;
+    }
+
     /* Completed Habit Styling */
     /* Completed Habit Styling - REMOVED OPACITY/FILTER */
     #list-habit-checked .task-item,

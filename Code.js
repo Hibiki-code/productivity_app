@@ -1963,9 +1963,13 @@ function getHabitCalendar(habitId, year, month) {
   const dates = sheet.getRange(startRow, 1, numRows, 1).getValues();
   const values = sheet.getRange(startRow, colIndex + 1, numRows, 1).getValues();
 
-  // For Weekly habits: collect all achieved week-start dates first
-  const achievedWeekStarts = new Set(); // Set of Sun-date timestamps
+  // For Weekly habits: collect achieved dates (actual day) and their week ranges
   if (isWeeklyHabit) {
+    // achievedDates: Set of 'yyyy-MM-dd' strings for days the habit was actually logged
+    // achievedWeekStarts: Set of Sun timestamps for weeks that contain at least one achievement
+    const achievedDates = new Set();
+    const achievedWeekStarts = new Set();
+
     for (let i = 0; i < numRows; i++) {
       const rawDate = dates[i][0];
       const val = values[i][0];
@@ -1975,15 +1979,22 @@ function getHabitCalendar(habitId, year, month) {
       if (rawDate instanceof Date) d = rawDate;
       else if (typeof rawDate === 'string') d = new Date(rawDate);
       if (!d || isNaN(d.getTime())) continue;
-      // Find Sunday of that week
-      const dow = d.getDay(); // 0=Sun
+
+      // Record the exact achieved date
+      const achievedYMD = Utilities.formatDate(d, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+      achievedDates.add(achievedYMD);
+
+      // Record the week start (Sunday)
+      const dow = d.getDay();
       const sun = new Date(d);
       sun.setDate(d.getDate() - dow);
       sun.setHours(0, 0, 0, 0);
       achievedWeekStarts.add(sun.getTime());
     }
 
-    // Now populate result: for each achieved week, mark all 7 days = 1
+    // Populate result:
+    //   achieved day  → 1  (solid orange circle)
+    //   other days in the same week → 'W' (week-highlight: light orange background)
     achievedWeekStarts.forEach(sunTs => {
       for (let di = 0; di < 7; di++) {
         const day = new Date(sunTs + di * 86400000);
@@ -1991,7 +2002,12 @@ function getHabitCalendar(habitId, year, month) {
         const m = day.getMonth() + 1;
         const key = `${y}-${m}`;
         if (!result[key]) result[key] = {};
-        result[key][day.getDate()] = 1;
+        const dayYMD = Utilities.formatDate(day, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+        if (achievedDates.has(dayYMD)) {
+          result[key][day.getDate()] = 1;    // actual achievement day
+        } else {
+          result[key][day.getDate()] = 'W';  // same-week highlight
+        }
       }
     });
 
