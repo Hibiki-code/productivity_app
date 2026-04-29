@@ -321,7 +321,8 @@
             const countEl = document.getElementById('count-' + id);
             const children = sec.querySelectorAll('.habit-item').length;
 
-            if (id !== 'checked') {
+            // Exclude Weekly and Checked sections from daily completion count
+            if (id !== 'checked' && id !== 'sec_weekly') {
                 totalActiveCount += children;
             }
 

@@ -463,16 +463,17 @@
             const div = document.createElement('div');
             div.className = 'section-habit';
             div.id = 'sec-wrapper-' + sec.id;
-            div.innerHTML = `
+        div.innerHTML = `
             <div class="section-header" onclick="toggleHabitSection('${sec.id}')">
-                <div>${sec.name} <span id="count-${sec.id}" style="font-size:0.9em; opacity:0.8;"></span></div>
+                <div>${sec.id === 'sec_weekly' ? '📅 Weekly <span style="font-size:10px; background:#FF9500; color:white; padding:2px 7px; border-radius:10px; font-weight:bold; margin-left:4px;">週次</span>' : sec.name + ' <span id="count-' + sec.id + '" style="font-size:0.9em; opacity:0.8;"></span>'}</div>
+                ${sec.id === 'sec_weekly' ? '<span id="count-' + sec.id + '" style="display:none;"></span>' : ''}
                 <div class="toggle-icon">∧</div>
             </div>
             <div id="list-habit-${sec.id}" class="habit-list-container">
                 <div><!-- Inner --></div>
             </div>
             `;
-            root.appendChild(div);
+        root.appendChild(div);
         });
 
         // Clear Checked
@@ -496,6 +497,7 @@
             // 2-Level Logic: Only Status 2 (Offense Done) moves to "Completed" area.
 
             const isAdvanced = !!h.offenseTitle;
+            const isWeeklyHabit = (h.sectionId === 'sec_weekly');
             // Robust Status Check (Handle string 'DONE' or number)
             let s = h.status;
             if (s === 'DONE') s = (isAdvanced ? 2 : 1); // Infer numeric status if string
@@ -506,7 +508,12 @@
 
             const isDone = isAdvanced ? (s === 2) : (s >= 1);
 
-            if (isDone) {
+            // Weekly habits: always stay in sec_weekly section (never move to checked area)
+            if (isWeeklyHabit) {
+                const div = createHabitCard(h, false); // createHabitCard handles done styling internally
+                const container = document.querySelector('#list-habit-sec_weekly > div');
+                if (container) container.appendChild(div);
+            } else if (isDone) {
                 const div = createHabitCard(h, true); // Pass resolved isDone state
                 div.classList.add('done'); // FORCE ADD CLASS
                 const target = document.querySelector('#list-habit-checked > div');
@@ -547,11 +554,13 @@
                 let allAchieved = true;
                 let activeHabitCount = 0;
                 
-                data.habits.forEach(h => {
+                // Exclude Weekly habits from "perfect day" calculation
+                const dailyHabits = data.habits.filter(h => h.sectionId !== 'sec_weekly');
+                
+                dailyHabits.forEach(h => {
                     if (h.createdAt) {
                         const createdDate = new Date(h.createdAt);
                         const checkDate = new Date(ymd);
-                        // Only require the habit if it was created on or before the checkDate (with some leniency)
                         if (checkDate.getTime() < createdDate.getTime() - 86400000) {
                             return; 
                         }
@@ -578,14 +587,18 @@
     function createHabitCard(h, isMovedToDone) {
         const div = document.createElement('div');
         const isAdvancedActive = (h.status >= 1 && h.offenseTitle);
+        const isWeeklyHabit = (h.sectionId === 'sec_weekly');
 
-        div.className = 'habit-item' + (isMovedToDone ? ' done' : '') + (isAdvancedActive ? ' status-advanced' :
+        // For Weekly habits, "done" means status >= 1 (achieved this week)
+        const effectiveIsDone = isWeeklyHabit ? (h.status >= 1) : isMovedToDone;
+
+        div.className = 'habit-item' + (effectiveIsDone ? ' done' : '') + (isAdvancedActive ? ' status-advanced' :
             '');
         div.onclick = () => openHabitDetail(h);
 
         // Data attributes
-        div.setAttribute('data-habit-id', h.id); // Valid ID for lookup
-        div.setAttribute('data-current-streak', h.streak || 0); // Source of Truth
+        div.setAttribute('data-habit-id', h.id);
+        div.setAttribute('data-current-streak', h.streak || 0);
         div.setAttribute('data-status', h.status || 0);
         div.setAttribute('data-offense-title', h.offenseTitle || '');
         div.setAttribute('data-def-title', h.name || '');
@@ -612,14 +625,21 @@
         // Escape single quotes in h.name for the onclick handler
         const safeName = (h.name || '').replace(/'/g, "\\'");
 
+        // Weekly habit: show "今週済み" badge instead of streak
+        const statsHtml = isWeeklyHabit
+            ? (h.status >= 1
+                ? `<div style="font-size:12px; font-weight:bold; color:#FF9500; text-align:center;">✓ 今週済み</div>`
+                : `<div style="font-size:11px; color:#bbb; text-align:center;">今週未達成</div>`)
+            : `<div style="font-size:16px; font-weight:bold; color:var(--primary)">${h.streak || 0}日</div>
+               <div style="font-size:10px; color:#999">現在の連続</div>`;
+
         div.innerHTML = `
             <div class="habit-icon">${iconContent}</div>
             <div class="habit-info">
                 <div class="habit-name" id="${nameElId}">${displayTitle}</div>
             </div>
             <div class="habit-stats-right">
-                <div style="font-size:16px; font-weight:bold; color:var(--primary)">${h.streak || 0}日</div>
-                <div style="font-size:10px; color:#999">現在の連続</div>
+                ${statsHtml}
             </div>
             <div class="habit-check-area" onclick="event.stopPropagation(); toggleHabit(this, '${safeName}')">
                 <div class="check-circle"></div>
@@ -866,9 +886,16 @@
 
 
             // 6. Move Logic
+            const isWeeklyHabit = (item.dataset.sectionId === 'sec_weekly');
+            // Weekly habits stay in their section — they don't move to the checked area
             const isDone = isAdvanced ? (newStatus === 2) : (newStatus >= 1);
-            const targetListId = isDone ? 'list-habit-checked' : ('list-habit-' + (item.dataset.sectionId ||
-                'sec_other'));
+            let targetListId;
+            if (isWeeklyHabit) {
+                targetListId = 'list-habit-sec_weekly'; // Always stay in Weekly section
+            } else {
+                targetListId = isDone ? 'list-habit-checked' : ('list-habit-' + (item.dataset.sectionId ||
+                    'sec_other'));
+            }
 
             const currentParentId = item.parentElement.parentElement ? item.parentElement.parentElement.id : '';
             if (currentParentId && currentParentId !== targetListId) {

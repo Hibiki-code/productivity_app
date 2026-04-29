@@ -1514,15 +1514,58 @@ function getHabitStatus(dateStr) {
     }
   }
 
+  // --- WEEKLY HABIT: Compute this week's range (Sun-Sat in JST) ---
+  const nowJST = new Date();
+  const nowHour = parseInt(Utilities.formatDate(nowJST, CONFIG.TIMEZONE, 'HH'));
+  if (nowHour < 3) nowJST.setDate(nowJST.getDate() - 1);
+  const todayJST = Utilities.formatDate(nowJST, CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  const dayOfWeek = parseInt(Utilities.formatDate(nowJST, CONFIG.TIMEZONE, 'u')) % 7; // 0=Sun,1=Mon,...,6=Sat
+  const weekStartDate = new Date(nowJST);
+  weekStartDate.setDate(nowJST.getDate() - dayOfWeek);
+  const weekEndDate = new Date(weekStartDate);
+  weekEndDate.setDate(weekStartDate.getDate() + 6);
+
+  // Build set of YMD strings for this week
+  const thisWeekYMDs = new Set();
+  for (let di = 0; di <= 6; di++) {
+    const d = new Date(weekStartDate);
+    d.setDate(weekStartDate.getDate() + di);
+    thisWeekYMDs.add(Utilities.formatDate(d, CONFIG.TIMEZONE, 'yyyy-MM-dd'));
+  }
+
+  // Scan recentLogs (covers 14 days) for Weekly habits achieved this week
+  const weeklyAchievedMap = {}; // habitId/name -> achieved YMD or null
+  habits.forEach(h => {
+    if (h.sectionId !== 'sec_weekly') return;
+    // Check recentLogs for any day this week where status >= 1
+    let achievedYMD = null;
+    thisWeekYMDs.forEach(ymd => {
+      if (achievedYMD) return;
+      const dayLog = recentLogs[ymd] || {};
+      const st = dayLog[h.id] || dayLog[h.name] || 0;
+      if (st >= 1) achievedYMD = ymd;
+    });
+    weeklyAchievedMap[h.id] = achievedYMD;
+  });
+
   // Merge
   const enrichedHabits = habits.map(h => {
     // Lookup by ID first, then fallback to Name
-    const s = statMap[h.id] || statMap[h.name] || {}; 
+    const s = statMap[h.id] || statMap[h.name] || {};
+    let finalStatus = todaysLog[h.id] || todaysLog[h.name] || 0;
+
+    // For Weekly habits, override status with "achieved this week?"
+    if (h.sectionId === 'sec_weekly') {
+      const achievedYMD = weeklyAchievedMap[h.id];
+      finalStatus = achievedYMD ? 1 : 0;
+    }
+
     return {
       ...h,
       streak: s.streak || 0,
       rate30: s.rate30 || 0,
-      status: todaysLog[h.id] || todaysLog[h.name] || 0,
+      status: finalStatus,
+      weeklyAchievedDate: (h.sectionId === 'sec_weekly') ? (weeklyAchievedMap[h.id] || null) : null,
       shortcuts: allShortcuts[h.id] || {}
     };
   });
@@ -1836,13 +1879,31 @@ function DEPRECATED_logHabitText(dateStr, habitName, text) {
   return 'Logged Text';
 }
 
-function getHabitCalendar(habitName, year, month) {
+function getHabitCalendar(habitId, year, month) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = ss.getSheetByName(CONFIG.SHEET_NAMES.HABIT_LOG);
 
+  // Check if this habit is a Weekly habit
+  let isWeeklyHabit = false;
+  try {
+    const defSheet = ss.getSheetByName('DB_Habits');
+    if (defSheet) {
+      const defData = defSheet.getDataRange().getValues();
+      const defHeaders = defData[0].map(h => String(h).trim().toLowerCase());
+      const secIdx = defHeaders.indexOf('section');
+      const idIdx = defHeaders.indexOf('id');
+      for (let ri = 1; ri < defData.length; ri++) {
+        if (String(defData[ri][idIdx]) === habitId && String(defData[ri][secIdx]) === 'sec_weekly') {
+          isWeeklyHabit = true;
+          break;
+        }
+      }
+    }
+  } catch (e) { console.warn('Weekly check error:', e); }
+
   // Header Check
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const colIndex = headers.indexOf(habitName); // habitName passed here should be ID if we update caller
+  const colIndex = headers.indexOf(habitId);
 
   if (colIndex === -1) return {};
 
@@ -1864,23 +1925,17 @@ function getHabitCalendar(habitName, year, month) {
   });
 
   // 2. Robust Search Strategy
-  // We want to read ~90-100 rows starting from M-1.
-  // If M-1 missing, try M. If M missing, try M+1.
-
   let startRow = -1;
-  const searchOrder = [-1, 0, 1]; // Order of priority to find "Anchor"
+  const searchOrder = [-1, 0, 1];
 
-  // Search Helper: Tries "yyyy/MM" AND "yyyy-MM"
   const findStartRowForMonth = (y, m) => {
     const slash = `${y}/${String(m).padStart(2, '0')}`;
     const hyphen = `${y}-${String(m).padStart(2, '0')}`;
 
-    // Try Slash
     let finder = sheet.getRange("A:A").createTextFinder(slash);
     let found = finder.findNext();
     if (found) return found.getRow();
 
-    // Try Hyphen
     finder = sheet.getRange("A:A").createTextFinder(hyphen);
     found = finder.findNext();
     if (found) return found.getRow();
@@ -1893,20 +1948,11 @@ function getHabitCalendar(habitName, year, month) {
     const row = findStartRowForMonth(y, m);
     if (row) {
       startRow = row;
-      // If we found M or M+1 (but missed M-1), we still read from there.
-      // But to be safe, if we found M, we *could* try to read 30 rows back?
-      // No, safer to just read forward from what we found. 
-      // If M-1 is empty, data starts at M. Reading from M covers M and M+1.
       break;
     }
   }
 
-  // If absolutely no logs found for M-1, M, M+1 range
-  if (startRow === -1) {
-    // Return the empty initialized result. 
-    // This is CRITICAL: Frontend will cache these as "empty" and stop spinning.
-    return result;
-  }
+  if (startRow === -1) return result;
 
   // 3. Read Data (Approx 100 rows -> ~3 months)
   const maxRows = sheet.getLastRow();
@@ -1917,16 +1963,50 @@ function getHabitCalendar(habitName, year, month) {
   const dates = sheet.getRange(startRow, 1, numRows, 1).getValues();
   const values = sheet.getRange(startRow, colIndex + 1, numRows, 1).getValues();
 
+  // For Weekly habits: collect all achieved week-start dates first
+  const achievedWeekStarts = new Set(); // Set of Sun-date timestamps
+  if (isWeeklyHabit) {
+    for (let i = 0; i < numRows; i++) {
+      const rawDate = dates[i][0];
+      const val = values[i][0];
+      const status = (val == 2) ? 2 : ((val == 1 || val === true || val === 'TRUE') ? 1 : 0);
+      if (status < 1) continue;
+      let d;
+      if (rawDate instanceof Date) d = rawDate;
+      else if (typeof rawDate === 'string') d = new Date(rawDate);
+      if (!d || isNaN(d.getTime())) continue;
+      // Find Sunday of that week
+      const dow = d.getDay(); // 0=Sun
+      const sun = new Date(d);
+      sun.setDate(d.getDate() - dow);
+      sun.setHours(0, 0, 0, 0);
+      achievedWeekStarts.add(sun.getTime());
+    }
+
+    // Now populate result: for each achieved week, mark all 7 days = 1
+    achievedWeekStarts.forEach(sunTs => {
+      for (let di = 0; di < 7; di++) {
+        const day = new Date(sunTs + di * 86400000);
+        const y = day.getFullYear();
+        const m = day.getMonth() + 1;
+        const key = `${y}-${m}`;
+        if (!result[key]) result[key] = {};
+        result[key][day.getDate()] = 1;
+      }
+    });
+
+    return result;
+  }
+
+  // Normal (daily) habit
   for (let i = 0; i < numRows; i++) {
     const rawDate = dates[i][0];
     const val = values[i][0];
 
-    // Parse Date Robustly
     let d;
     if (rawDate instanceof Date) {
       d = rawDate;
     } else if (typeof rawDate === 'string') {
-      // Try standard parse
       d = new Date(rawDate);
     }
 
@@ -1935,9 +2015,6 @@ function getHabitCalendar(habitName, year, month) {
       const m = d.getMonth() + 1;
       const key = `${y}-${m}`;
 
-      // Only populate if within our interest window? 
-      // No, populate everything found in the buffer.
-      // But ensure we initialized the key if it wasn't there (e.g. M+2 read by accident)
       if (!result[key]) result[key] = {};
 
       result[key][d.getDate()] = (val == 2) ? 2 : ((val == 1 || val === true || val === 'TRUE') ? 1 : 0);
@@ -2213,7 +2290,8 @@ function setupHabitSectionsDB() {
       ['sec_morning', '朝', 1],
       ['sec_afternoon', '昼', 2],
       ['sec_evening', '夜', 3],
-      ['sec_other', 'その他', 4]
+      ['sec_other', 'その他', 4],
+      ['sec_weekly', 'Weekly', 99]
     ];
     // Write defaults
     secSheet.getRange(2, 1, defaults.length, 3).setValues(defaults);
@@ -2269,7 +2347,16 @@ function getHabitSections() {
   if (!sheet) return [];
   const data = sheet.getDataRange().getValues();
   data.shift(); // Header
-  return data.map(r => ({ id: r[0], name: r[1], order: r[2] })).sort((a, b) => a.order - b.order);
+  const sections = data.map(r => ({ id: r[0], name: r[1], order: r[2] })).sort((a, b) => a.order - b.order);
+
+  // Auto-add sec_weekly if missing
+  const hasWeekly = sections.some(s => s.id === 'sec_weekly');
+  if (!hasWeekly) {
+    sheet.appendRow(['sec_weekly', 'Weekly', 99]);
+    sections.push({ id: 'sec_weekly', name: 'Weekly', order: 99 });
+  }
+
+  return sections;
 }
 
 function saveHabitSection(id, name, order) {
