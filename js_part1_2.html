@@ -465,8 +465,7 @@
             div.id = 'sec-wrapper-' + sec.id;
         div.innerHTML = `
             <div class="section-header" onclick="toggleHabitSection('${sec.id}')">
-                <div>${sec.id === 'sec_weekly' ? '📅 Weekly <span style="font-size:10px; background:#FF9500; color:white; padding:2px 7px; border-radius:10px; font-weight:bold; margin-left:4px;">週次</span>' : sec.name + ' <span id="count-' + sec.id + '" style="font-size:0.9em; opacity:0.8;"></span>'}</div>
-                ${sec.id === 'sec_weekly' ? '<span id="count-' + sec.id + '" style="display:none;"></span>' : ''}
+                <div>${sec.id === 'sec_weekly' ? '📅 Weekly <span id="count-' + sec.id + '" style="display:none;"></span>' : sec.name + ' <span id="count-' + sec.id + '" style="font-size:0.9em; opacity:0.8;"></span>'}</div>
                 <div class="toggle-icon">∧</div>
             </div>
             <div id="list-habit-${sec.id}" class="habit-list-container">
@@ -625,11 +624,13 @@
         // Escape single quotes in h.name for the onclick handler
         const safeName = (h.name || '').replace(/'/g, "\\'");
 
-        // Weekly habit: show "今週済み" badge instead of streak
+        // Weekly habit: show streak in weeks instead of days
         const statsHtml = isWeeklyHabit
             ? (h.status >= 1
-                ? `<div style="font-size:12px; font-weight:bold; color:#FF9500; text-align:center;">✓ 今週済み</div>`
-                : `<div style="font-size:11px; color:#bbb; text-align:center;">今週未達成</div>`)
+                ? `<div style="font-size:16px; font-weight:bold; color:#FF9500">1週</div>
+                   <div style="font-size:10px; color:#999">今週達成</div>`
+                : `<div style="font-size:16px; font-weight:bold; color:#ccc">--</div>
+                   <div style="font-size:10px; color:#bbb">今週未達成</div>`)
             : `<div style="font-size:16px; font-weight:bold; color:var(--primary)">${h.streak || 0}日</div>
                <div style="font-size:10px; color:#999">現在の連続</div>`;
 
