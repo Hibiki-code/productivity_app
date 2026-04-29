@@ -339,7 +339,18 @@
             }
 
             if (countEl) {
-                countEl.innerText = (children > 0) ? `(${children})` : '';
+                if (id === 'sec_weekly') {
+                    // Weekly: count unachieved habits (no 'done' class)
+                    const undoneCount = sec.querySelectorAll('.habit-item:not(.done)').length;
+                    if (undoneCount > 0) {
+                        countEl.innerText = `(${undoneCount})`;
+                        countEl.style.display = '';
+                    } else {
+                        countEl.style.display = 'none';
+                    }
+                } else {
+                    countEl.innerText = (children > 0) ? `(${children})` : '';
+                }
             }
         });
 

@@ -465,7 +465,7 @@
             div.id = 'sec-wrapper-' + sec.id;
         div.innerHTML = `
             <div class="section-header" onclick="toggleHabitSection('${sec.id}')">
-                <div>${sec.id === 'sec_weekly' ? '📅 Weekly <span id="count-' + sec.id + '" style="display:none;"></span>' : sec.name + ' <span id="count-' + sec.id + '" style="font-size:0.9em; opacity:0.8;"></span>'}</div>
+                <div>${sec.id === 'sec_weekly' ? '📅 Weekly <span id="count-' + sec.id + '" style="font-size:0.9em; opacity:0.8; display:none;"></span>' : sec.name + ' <span id="count-' + sec.id + '" style="font-size:0.9em; opacity:0.8;"></span>'}</div>
                 <div class="toggle-icon">∧</div>
             </div>
             <div id="list-habit-${sec.id}" class="habit-list-container">
@@ -508,10 +508,24 @@
             const isDone = isAdvanced ? (s === 2) : (s >= 1);
 
             // Weekly habits: always stay in sec_weekly section (never move to checked area)
+            // Achieved weekly habits go to the bottom, unachieved ones to the top
             if (isWeeklyHabit) {
+                const weeklyDone = (h.status >= 1);
                 const div = createHabitCard(h, false); // createHabitCard handles done styling internally
                 const container = document.querySelector('#list-habit-sec_weekly > div');
-                if (container) container.appendChild(div);
+                if (container) {
+                    if (weeklyDone) {
+                        container.appendChild(div); // 達成済み → 末尾
+                    } else {
+                        // 未達成 → 先頭（達成済み要素の前）
+                        const firstDone = container.querySelector('.habit-item.done');
+                        if (firstDone) {
+                            container.insertBefore(div, firstDone);
+                        } else {
+                            container.appendChild(div);
+                        }
+                    }
+                }
             } else if (isDone) {
                 const div = createHabitCard(h, true); // Pass resolved isDone state
                 div.classList.add('done'); // FORCE ADD CLASS
@@ -896,7 +910,36 @@
             }
 
             const currentParentId = item.parentElement.parentElement ? item.parentElement.parentElement.id : '';
-            if (currentParentId && currentParentId !== targetListId) {
+
+            if (isWeeklyHabit) {
+                // Weekly: 達成 → 末尾へ、未達成 → 先頭へ（セクション内で並び替え）
+                const weeklyContainer = document.querySelector('#list-habit-sec_weekly > div');
+                if (weeklyContainer) {
+                    item.style.transition = 'all 0.3s ease';
+                    item.style.opacity = '0';
+                    item.style.transform = 'scale(0.9)';
+                    setTimeout(() => {
+                        if (isDone) {
+                            weeklyContainer.appendChild(item); // 末尾
+                        } else {
+                            // 未達成 → 最初の達成済み要素の前に挿入
+                            const firstDone = weeklyContainer.querySelector('.habit-item.done');
+                            if (firstDone) {
+                                weeklyContainer.insertBefore(item, firstDone);
+                            } else {
+                                weeklyContainer.appendChild(item);
+                            }
+                        }
+                        updateHabitSectionCounts();
+                        requestAnimationFrame(() => {
+                            item.style.opacity = '1';
+                            item.style.transform = 'scale(1)';
+                        });
+                    }, 300);
+                } else {
+                    updateHabitSectionCounts();
+                }
+            } else if (currentParentId && currentParentId !== targetListId) {
                 const targetContainer = document.querySelector('#' + targetListId + ' > div');
                 if (targetContainer) {
                     item.style.transition = 'all 0.3s ease';
