@@ -485,6 +485,14 @@
         if (!data.habits) { updateHabitSectionCounts(); return; }
 
         data.habits.forEach(h => {
+            if (h.createdAt) {
+                const createdDate = new Date(h.createdAt);
+                const checkDate = new Date(currentHabitDate);
+                if (checkDate.getTime() < createdDate.getTime() - 86400000) {
+                    return; // Do not display habits created after this date
+                }
+            }
+            
             // 2-Level Logic: Only Status 2 (Offense Done) moves to "Completed" area.
 
             const isAdvanced = !!h.offenseTitle;
