@@ -624,13 +624,10 @@
         // Escape single quotes in h.name for the onclick handler
         const safeName = (h.name || '').replace(/'/g, "\\'");
 
-        // Weekly habit: show streak in weeks instead of days
+        // Weekly habit: show streak in weeks
         const statsHtml = isWeeklyHabit
-            ? (h.status >= 1
-                ? `<div style="font-size:16px; font-weight:bold; color:#FF9500">1週</div>
-                   <div style="font-size:10px; color:#999">今週達成</div>`
-                : `<div style="font-size:16px; font-weight:bold; color:#ccc">--</div>
-                   <div style="font-size:10px; color:#bbb">今週未達成</div>`)
+            ? `<div style="font-size:16px; font-weight:bold; color:var(--primary)">${h.streak || 0}週</div>
+               <div style="font-size:10px; color:#999">現在の連続</div>`
             : `<div style="font-size:16px; font-weight:bold; color:var(--primary)">${h.streak || 0}日</div>
                <div style="font-size:10px; color:#999">現在の連続</div>`;
 
