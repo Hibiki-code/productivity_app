@@ -1398,8 +1398,19 @@ function getHabitStatus(dateStr) {
   const targetMonth = targetDate.getMonth(); // 0-11
   const targetDateNum = targetDate.getDate();
 
+  let pYear = targetYear;
+  let pMonth = targetMonth - 1;
+  if (pMonth < 0) {
+    pMonth = 11;
+    pYear--;
+  }
+
   const monthlyLogs = {};
-  habits.forEach(h => monthlyLogs[h.name] = {});
+  const prevMonthlyLogs = {};
+  habits.forEach(h => {
+    monthlyLogs[h.name] = {};
+    prevMonthlyLogs[h.name] = {};
+  });
 
   const todaysLog = {};
   const recentLogs = {};
@@ -1462,6 +1473,21 @@ function getHabitStatus(dateStr) {
         const currentMonthVal = monthlyLogs[hName][rDay] || 0;
         if (status > currentMonthVal) {
           monthlyLogs[hName][rDay] = status;
+        }
+      }
+    } else if (rYear === pYear && rMonth === pMonth) {
+      for (let c = 1; c < logHeaders.length; c++) {
+        const hName = logHeaders[c];
+        const val = logData[i][c];
+        let status = 0;
+        if (val == 2) status = 2;
+        else if (val == 1 || val === true || val === 'TRUE') status = 1;
+
+        if (!prevMonthlyLogs[hName]) prevMonthlyLogs[hName] = {};
+
+        const prevMonthVal = prevMonthlyLogs[hName][rDay] || 0;
+        if (status > prevMonthVal) {
+          prevMonthlyLogs[hName][rDay] = status;
         }
       }
     }
@@ -1577,6 +1603,7 @@ function getHabitStatus(dateStr) {
     sections: sections,
     log: todaysLog,
     monthlyLogs: monthlyLogs,
+    prevMonthlyLogs: prevMonthlyLogs,
     recentLogs: recentLogs,
     serverDate: { year: targetYear, month: targetMonth + 1 }
   };

@@ -32,7 +32,7 @@
             renderGrid(habitCalendarCache[hId][key]);
 
             // Background Fetch (Prefetch neighbors)
-            fetchCalendarData(y, m, false);
+            fetchCalendarData(y, m, true);
         } else {
             document.getElementById('detail-cal-grid').innerHTML = '<div style="padding:20px; text-align:center; color:#999;">Loading...</div>';
             fetchCalendarData(y, m, true);

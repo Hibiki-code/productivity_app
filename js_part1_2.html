@@ -445,6 +445,17 @@
                 habitCalendarCache[hId][key] = data.monthlyLogs[hId];
             });
         }
+        if (data.prevMonthlyLogs) {
+            let pYear = todayYear;
+            let pMonth = todayMonth - 1;
+            if (pMonth < 1) { pMonth = 12; pYear--; }
+            const prevKey = `${pYear}-${pMonth}`;
+
+            Object.keys(data.prevMonthlyLogs).forEach(hId => {
+                if (!habitCalendarCache[hId]) habitCalendarCache[hId] = {};
+                habitCalendarCache[hId][prevKey] = data.prevMonthlyLogs[hId];
+            });
+        }
 
         const root = document.getElementById('habit-sections-root');
         if (!root) return;
