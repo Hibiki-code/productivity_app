@@ -9,6 +9,7 @@
     let pendingJournalItem = null;
     let pendingJournalName = '';
     let pendingJournalId = null;
+    window.isInitialHabitLoad = true;
 
     function openProgressModal(id, current, title) {
         currentProgressGoalId = id;
@@ -341,7 +342,29 @@
             if (countEl) {
                 if (id === 'sec_weekly') {
                     // Weekly: count unachieved habits (no 'done' class)
+                    const totalHabits = sec.querySelectorAll('.habit-item').length;
                     const undoneCount = sec.querySelectorAll('.habit-item:not(.done)').length;
+                    const statusEl = document.getElementById('status-sec_weekly');
+                    const listEl = document.getElementById('list-habit-sec_weekly');
+                    const checkedSec = document.getElementById('sec-wrapper-checked');
+
+                    if (totalHabits > 0 && undoneCount === 0) {
+                        if (statusEl) statusEl.innerText = 'Completed!!';
+                        // Collapse on initial load
+                        if (window.isInitialHabitLoad && listEl && !listEl.classList.contains('collapsed')) {
+                            listEl.classList.add('collapsed');
+                            const icon = wrapper.querySelector('.toggle-icon');
+                            if (icon) icon.style.transform = 'rotate(180deg)';
+                        }
+                    } else {
+                        if (statusEl) statusEl.innerText = '';
+                    }
+
+                    // ALWAYS move below checked if it exists (per user request for layout)
+                    if (checkedSec && checkedSec.nextSibling !== wrapper) {
+                        checkedSec.parentNode.insertBefore(wrapper, checkedSec.nextSibling);
+                    }
+
                     if (undoneCount > 0) {
                         countEl.innerText = `(${undoneCount})`;
                         countEl.style.display = '';
@@ -377,12 +400,14 @@
             // Insert AFTER the checked section
             const checkedSec = document.getElementById('sec-wrapper-checked');
             if (checkedSec && checkedSec.parentNode) {
-                checkedSec.parentNode.insertBefore(congratsEl, checkedSec.nextSibling);
+                // Insert at the very bottom
+                checkedSec.parentNode.appendChild(congratsEl);
             }
         }
         
         if (totalActiveCount === 0 && totalCheked > 0) {
             congratsEl.style.display = 'block';
+            if (congratsEl.parentNode) congratsEl.parentNode.appendChild(congratsEl);
             setTimeout(() => {
                 const inner = congratsEl.firstElementChild;
                 if (inner) inner.style.opacity = '1';

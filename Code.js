@@ -1368,6 +1368,8 @@ function getHabitStatus(dateStr) {
       hasGuide: (getVal(r, 'has_guide', false) === true),
       guideText: getVal(r, 'guide_text', ''),
       guideImage: getVal(r, 'guide_image', ''),
+      guideImage2: getVal(r, 'guide_image2', ''),
+      guideImage3: getVal(r, 'guide_image3', ''),
       guideYoutube: getVal(r, 'guide_youtube', ''),
       hasShortcut: Object.keys(scMap[getVal(r, 'id', '')] || {}).length > 0,
       shortcuts: scMap[getVal(r, 'id', '')] || {}
@@ -2535,7 +2537,7 @@ function reorderSections(idList) {
 }
 
 
-function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText, guideImage, guideYoutube) {
+function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit, newOffenseTitle, newOffenseTime, hasGuide, guideText, guideImage, guideYoutube, guideImage2, guideImage3) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = ss.getSheetByName('DB_Habits');
   const data = sheet.getDataRange().getValues();
@@ -2604,10 +2606,18 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
           sheet.getRange(row, hMap['guide_text'] + 1).setValue(guideText);
         }
 
-        // Image URL
+        // Image URLs
         if (guideImage !== undefined) {
           ensureColumn('guide_image');
           sheet.getRange(row, hMap['guide_image'] + 1).setValue(guideImage);
+        }
+        if (guideImage2 !== undefined) {
+          ensureColumn('guide_image2');
+          sheet.getRange(row, hMap['guide_image2'] + 1).setValue(guideImage2);
+        }
+        if (guideImage3 !== undefined) {
+          ensureColumn('guide_image3');
+          sheet.getRange(row, hMap['guide_image3'] + 1).setValue(guideImage3);
         }
 
         // YouTube URL
@@ -2648,6 +2658,16 @@ function saveHabitDefinition(name, newName, sectionId, icon, newTime, newBenefit
     if (hMap['isactive'] !== undefined) newRow[hMap['isactive']] = 'ACTIVE';
     if (hMap['createdat'] !== undefined) newRow[hMap['createdat']] = new Date();
     if (hMap['time_needed'] !== undefined) newRow[hMap['time_needed']] = newTime || '';
+    
+    // Guide defaults for new habit
+    if (hasGuide) {
+      if (hMap['has_guide'] !== undefined) newRow[hMap['has_guide']] = true;
+      if (hMap['guide_text'] !== undefined) newRow[hMap['guide_text']] = guideText || '';
+      if (hMap['guide_image'] !== undefined) newRow[hMap['guide_image']] = guideImage || '';
+      if (hMap['guide_image2'] !== undefined) newRow[hMap['guide_image2']] = guideImage2 || '';
+      if (hMap['guide_image3'] !== undefined) newRow[hMap['guide_image3']] = guideImage3 || '';
+      if (hMap['guide_youtube'] !== undefined) newRow[hMap['guide_youtube']] = guideYoutube || '';
+    }
 
     if (hMap['title_offense'] !== undefined) newRow[hMap['title_offense']] = newOffenseTitle || '';
     if (hMap['time_offense'] !== undefined) newRow[hMap['time_offense']] = newOffenseTime || '';

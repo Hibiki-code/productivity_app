@@ -1607,28 +1607,69 @@
         <textarea id="hs-guide-text" class="input-std" rows="6"
           placeholder="例: 1. 姿勢を正す&#13;&#10;2. 腹式呼吸を5分間..."></textarea>
 
-        <!-- Image Upload UI -->
-        <div style="margin-top:10px;">
-          <label style="font-size:12px; color:#999; display:block; margin-bottom:5px;">参考画像 (アップロード または URL貼り付け)</label>
-
-          <!-- URL Input -->
+        <!-- Image 1 -->
+        <div style="margin-top:10px; border:1px solid #eee; padding:10px; border-radius:8px;">
+          <label style="font-size:12px; color:#999; display:block; margin-bottom:5px;">参考画像 1</label>
           <input type="text" id="hs-guide-image-text" class="input-std" placeholder="https://..."
-            style="margin-bottom:8px; font-size:12px;" onchange="handleGuideImageTextChange()">
-
+            style="margin-bottom:8px; font-size:12px;" onchange="handleGuideImageTextChange(0)">
           <div style="display:flex; gap:10px; align-items:center;">
             <input type="file" id="hs-guide-image-input" accept="image/*" style="display:none;"
-              onchange="handleGuideImageSelect()">
+              onchange="handleGuideImageSelect(0)">
             <button class="btn-sec" onclick="document.getElementById('hs-guide-image-input').click()"
               style="padding:5px 10px; font-size:12px;">
               <span class="material-symbols-rounded"
-                style="font-size:16px; vertical-align:middle;">add_photo_alternate</span> ドライブにアップロード
+                style="font-size:16px; vertical-align:middle;">add_photo_alternate</span> ドライブに
             </button>
             <span id="hs-guide-image-status" style="font-size:11px; color:#999;"></span>
           </div>
           <div id="hs-guide-image-preview" style="margin-top:10px; display:none;">
             <img id="hs-guide-image-img" src=""
-              style="max-width:100%; max-height:150px; border-radius:8px; border:1px solid #ddd;">
-            <div style="font-size:10px; color:red; cursor:pointer;" onclick="clearGuideImage()">× 画像を削除</div>
+              style="max-width:100%; max-height:100px; border-radius:8px; border:1px solid #ddd;">
+            <div style="font-size:10px; color:red; cursor:pointer;" onclick="clearGuideImage(0)">× 画像を削除</div>
+          </div>
+        </div>
+
+        <!-- Image 2 -->
+        <div style="margin-top:10px; border:1px solid #eee; padding:10px; border-radius:8px;">
+          <label style="font-size:12px; color:#999; display:block; margin-bottom:5px;">参考画像 2</label>
+          <input type="text" id="hs-guide-image-text2" class="input-std" placeholder="https://..."
+            style="margin-bottom:8px; font-size:12px;" onchange="handleGuideImageTextChange(1)">
+          <div style="display:flex; gap:10px; align-items:center;">
+            <input type="file" id="hs-guide-image-input2" accept="image/*" style="display:none;"
+              onchange="handleGuideImageSelect(1)">
+            <button class="btn-sec" onclick="document.getElementById('hs-guide-image-input2').click()"
+              style="padding:5px 10px; font-size:12px;">
+              <span class="material-symbols-rounded"
+                style="font-size:16px; vertical-align:middle;">add_photo_alternate</span> ドライブに
+            </button>
+            <span id="hs-guide-image-status2" style="font-size:11px; color:#999;"></span>
+          </div>
+          <div id="hs-guide-image-preview2" style="margin-top:10px; display:none;">
+            <img id="hs-guide-image-img2" src=""
+              style="max-width:100%; max-height:100px; border-radius:8px; border:1px solid #ddd;">
+            <div style="font-size:10px; color:red; cursor:pointer;" onclick="clearGuideImage(1)">× 画像を削除</div>
+          </div>
+        </div>
+
+        <!-- Image 3 -->
+        <div style="margin-top:10px; border:1px solid #eee; padding:10px; border-radius:8px;">
+          <label style="font-size:12px; color:#999; display:block; margin-bottom:5px;">参考画像 3</label>
+          <input type="text" id="hs-guide-image-text3" class="input-std" placeholder="https://..."
+            style="margin-bottom:8px; font-size:12px;" onchange="handleGuideImageTextChange(2)">
+          <div style="display:flex; gap:10px; align-items:center;">
+            <input type="file" id="hs-guide-image-input3" accept="image/*" style="display:none;"
+              onchange="handleGuideImageSelect(2)">
+            <button class="btn-sec" onclick="document.getElementById('hs-guide-image-input3').click()"
+              style="padding:5px 10px; font-size:12px;">
+              <span class="material-symbols-rounded"
+                style="font-size:16px; vertical-align:middle;">add_photo_alternate</span> ドライブに
+            </button>
+            <span id="hs-guide-image-status3" style="font-size:11px; color:#999;"></span>
+          </div>
+          <div id="hs-guide-image-preview3" style="margin-top:10px; display:none;">
+            <img id="hs-guide-image-img3" src=""
+              style="max-width:100%; max-height:100px; border-radius:8px; border:1px solid #ddd;">
+            <div style="font-size:10px; color:red; cursor:pointer;" onclick="clearGuideImage(2)">× 画像を削除</div>
           </div>
         </div>
 
@@ -1806,8 +1847,6 @@
 
     /* Dim Completed Items */
     .habit-item.done {
-      opacity: 0.5;
-      /* filter: grayscale(100%); REMOVED per user request */
       transition: all 0.3s ease;
     }
 

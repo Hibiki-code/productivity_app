@@ -127,9 +127,16 @@
             cell.innerText = d;
 
             const currentDate = new Date(prevMonthYear, prevMonth - 1, d);
-            if (currentDate <= today && currentDate >= start) {
+            
+            if (currentDate > today) {
+                cell.style.opacity = '0.3';
+            }
+
+            if (currentDate >= start) {
                 const status = getStatus(prevMonthYear, prevMonth, d);
-                _applyCalCellStatus(cell, status, currentDate, today, isWeekly);
+                if (currentDate <= today || (isWeekly && status === 'W')) {
+                    _applyCalCellStatus(cell, status, currentDate, today, isWeekly);
+                }
             }
             container.appendChild(cell);
         }
@@ -143,11 +150,15 @@
 
             if (current > today) {
                 cell.style.opacity = '0.3';
-            } else if (current < start) {
+            }
+            
+            if (current < start) {
                 // before habit start
             } else {
-                const status = map[d];
-                _applyCalCellStatus(cell, status, current, today, isWeekly);
+                const status = map ? map[d] : undefined;
+                if (current <= today || (isWeekly && status === 'W')) {
+                    _applyCalCellStatus(cell, status, current, today, isWeekly);
+                }
             }
             container.appendChild(cell);
         }
@@ -165,9 +176,16 @@
                 cell.innerText = d;
 
                 const currentDate = new Date(nextMonthYear, nextMonth - 1, d);
-                if (currentDate <= today && currentDate >= start) {
+                
+                if (currentDate > today) {
+                    cell.style.opacity = '0.3';
+                }
+
+                if (currentDate >= start) {
                     const status = getStatus(nextMonthYear, nextMonth, d);
-                    _applyCalCellStatus(cell, status, currentDate, today, isWeekly);
+                    if (currentDate <= today || (isWeekly && status === 'W')) {
+                        _applyCalCellStatus(cell, status, currentDate, today, isWeekly);
+                    }
                 }
                 container.appendChild(cell);
             }
@@ -228,9 +246,17 @@
         document.getElementById('hs-guide-youtube-link').value = guideYoutube;
 
         // Image Init
-        hsCurrentGuideImageUrl = currentDetailHabit.guideImage || '';
-        document.getElementById('hs-guide-image-text').value = hsCurrentGuideImageUrl; // Set Input
-        updateGuideImagePreview();
+        hsCurrentGuideImageUrls = [
+            currentDetailHabit.guideImage || '',
+            currentDetailHabit.guideImage2 || '',
+            currentDetailHabit.guideImage3 || ''
+        ];
+        document.getElementById('hs-guide-image-text').value = hsCurrentGuideImageUrls[0];
+        document.getElementById('hs-guide-image-text2').value = hsCurrentGuideImageUrls[1];
+        document.getElementById('hs-guide-image-text3').value = hsCurrentGuideImageUrls[2];
+        updateGuideImagePreview(0);
+        updateGuideImagePreview(1);
+        updateGuideImagePreview(2);
 
         toggleGuideSettings();
 
@@ -264,6 +290,8 @@
             hasGuide: false,
             guideText: '',
             guideImage: '',
+            guideImage2: '',
+            guideImage3: '',
             guideYoutube: ''
         };
 
@@ -289,9 +317,13 @@
         document.getElementById('hs-guide-toggle').checked = false;
         document.getElementById('hs-guide-text').value = '';
         document.getElementById('hs-guide-youtube-link').value = '';
-        hsCurrentGuideImageUrl = '';
+        hsCurrentGuideImageUrls = ['', '', ''];
         document.getElementById('hs-guide-image-text').value = '';
-        updateGuideImagePreview();
+        document.getElementById('hs-guide-image-text2').value = '';
+        document.getElementById('hs-guide-image-text3').value = '';
+        updateGuideImagePreview(0);
+        updateGuideImagePreview(1);
+        updateGuideImagePreview(2);
         toggleGuideSettings();
 
         // Icon
@@ -356,7 +388,9 @@
 
         const hasGuide = document.getElementById('hs-guide-toggle').checked;
         const guideText = hasGuide ? document.getElementById('hs-guide-text').value : '';
-        const guideImage = hasGuide ? hsCurrentGuideImageUrl : '';
+        const guideImage = hasGuide ? hsCurrentGuideImageUrls[0] : '';
+        const guideImage2 = hasGuide ? hsCurrentGuideImageUrls[1] : '';
+        const guideImage3 = hasGuide ? hsCurrentGuideImageUrls[2] : '';
         const guideYoutube = hasGuide ? document.getElementById('hs-guide-youtube-link').value : '';
 
         if (!newName) return;
@@ -377,6 +411,8 @@
             currentDetailHabit.hasGuide = hasGuide;
             currentDetailHabit.guideText = guideText;
             currentDetailHabit.guideImage = guideImage;
+            currentDetailHabit.guideImage2 = guideImage2;
+            currentDetailHabit.guideImage3 = guideImage3;
             currentDetailHabit.guideYoutube = guideYoutube;
         }
 
@@ -436,23 +472,25 @@
                 btn.disabled = false;
             }
         }).saveHabitDefinition(currentDetailHabit.name, newName, newSec, hsCurrentIcon, newTime,
-            newBenefit, newOffense, newOffenseTime, hasGuide, guideText, guideImage, guideYoutube);
+            newBenefit, newOffense, newOffenseTime, hasGuide, guideText, guideImage, guideYoutube, guideImage2, guideImage3);
     }
 
     // --- IMAGE LOGIC ---
-    let hsCurrentGuideImageUrl = '';
+    let hsCurrentGuideImageUrls = ['', '', ''];
 
-    function handleGuideImageTextChange() {
-        const val = document.getElementById('hs-guide-image-text').value;
-        hsCurrentGuideImageUrl = val;
-        updateGuideImagePreview();
+    function handleGuideImageTextChange(index) {
+        const suffix = index === 0 ? '' : (index + 1);
+        const val = document.getElementById('hs-guide-image-text' + suffix).value;
+        hsCurrentGuideImageUrls[index] = val;
+        updateGuideImagePreview(index);
     }
 
-    function handleGuideImageSelect() {
-        const input = document.getElementById('hs-guide-image-input');
+    function handleGuideImageSelect(index) {
+        const suffix = index === 0 ? '' : (index + 1);
+        const input = document.getElementById('hs-guide-image-input' + suffix);
         if (input.files && input.files[0]) {
             const file = input.files[0];
-            const status = document.getElementById('hs-guide-image-status');
+            const status = document.getElementById('hs-guide-image-status' + suffix);
 
             // Limit size? 5MB
             if (file.size > 5 * 1024 * 1024) {
@@ -473,37 +511,47 @@
                         alert(url);
                         status.innerText = 'エラー';
                     } else {
-                        hsCurrentGuideImageUrl = url;
-                        document.getElementById('hs-guide-image-text').value = url; // Update Text Input
+                        hsCurrentGuideImageUrls[index] = url;
+                        document.getElementById('hs-guide-image-text' + suffix).value = url; // Update Text Input
                         status.innerText = '完了';
-                        updateGuideImagePreview();
+                        updateGuideImagePreview(index);
                     }
-                }).uploadHabitImage(base64, type, currentDetailHabit.name || 'new');
+                }).uploadHabitImage(base64, type, (currentDetailHabit.name || 'new') + '_' + (index + 1));
             };
             reader.readAsDataURL(file);
         }
     }
 
-    function updateGuideImagePreview() {
-        const preview = document.getElementById('hs-guide-image-preview');
-        const img = document.getElementById('hs-guide-image-img');
+    function updateGuideImagePreview(index) {
+        const suffix = index === 0 ? '' : (index + 1);
+        const preview = document.getElementById('hs-guide-image-preview' + suffix);
+        const img = document.getElementById('hs-guide-image-img' + suffix);
+        const status = document.getElementById('hs-guide-image-status' + suffix);
 
-        if (hsCurrentGuideImageUrl) {
-            img.src = hsCurrentGuideImageUrl;
+        const url = hsCurrentGuideImageUrls[index];
+
+        if (url) {
+            img.src = url;
             preview.style.display = 'block';
-            document.getElementById('hs-guide-image-status').innerText = '設定済み';
+            if (status) status.innerText = '設定済み';
         } else {
             preview.style.display = 'none';
-            document.getElementById('hs-guide-image-status').innerText = '未選択';
+            if (status) status.innerText = '未選択';
         }
     }
 
-    function clearGuideImage() {
-        hsCurrentGuideImageUrl = '';
-        document.getElementById('hs-guide-image-input').value = ''; // Reset input
-        document.getElementById('hs-guide-image-text').value = ''; // Reset text
-        document.getElementById('hs-guide-image-status').innerText = '';
-        updateGuideImagePreview();
+    function clearGuideImage(index) {
+        const suffix = index === 0 ? '' : (index + 1);
+        hsCurrentGuideImageUrls[index] = '';
+        const input = document.getElementById('hs-guide-image-input' + suffix);
+        const text = document.getElementById('hs-guide-image-text' + suffix);
+        const status = document.getElementById('hs-guide-image-status' + suffix);
+        
+        if (input) input.value = ''; // Reset file input
+        if (text) text.value = ''; // Reset text input
+        if (status) status.innerText = '';
+        
+        updateGuideImagePreview(index);
     }
 
     // --- ICON PICKER ---

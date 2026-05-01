@@ -465,7 +465,7 @@
             div.id = 'sec-wrapper-' + sec.id;
         div.innerHTML = `
             <div class="section-header" onclick="toggleHabitSection('${sec.id}')">
-                <div>${sec.id === 'sec_weekly' ? '📅 Weekly <span id="count-' + sec.id + '" style="font-size:0.9em; opacity:0.8; display:none;"></span>' : sec.name + ' <span id="count-' + sec.id + '" style="font-size:0.9em; opacity:0.8;"></span>'}</div>
+                <div>${sec.id === 'sec_weekly' ? '📅 Weekly <span id="count-' + sec.id + '" style="font-size:0.9em; opacity:0.8; display:none;"></span> <span id="status-' + sec.id + '" style="font-size:0.8em; color:#4CAF50; font-weight:bold; margin-left:5px;"></span>' : sec.name + ' <span id="count-' + sec.id + '" style="font-size:0.9em; opacity:0.8;"></span>'}</div>
                 <div class="toggle-icon">∧</div>
             </div>
             <div id="list-habit-${sec.id}" class="habit-list-container">
@@ -558,43 +558,47 @@
         }
 
         // --- UPDATE DATE STRIP PERFECT DAYS ---
-        if (data.recentLogs) {
-            document.querySelectorAll('.date-item').forEach(el => {
-                const ymd = el.dataset.ymd;
-                if (!ymd) return;
-                
-                const logsForDay = data.recentLogs[ymd] || {};
-                let allAchieved = true;
-                let activeHabitCount = 0;
-                
-                // Exclude Weekly habits from "perfect day" calculation
-                const dailyHabits = data.habits.filter(h => h.sectionId !== 'sec_weekly');
-                
-                dailyHabits.forEach(h => {
-                    if (h.createdAt) {
-                        const createdDate = new Date(h.createdAt);
-                        const checkDate = new Date(ymd);
-                        if (checkDate.getTime() < createdDate.getTime() - 86400000) {
-                            return; 
-                        }
-                    }
-                    activeHabitCount++;
-                    const s = logsForDay[h.id] || logsForDay[h.name] || 0;
-                    if (s < 1) {
-                        allAchieved = false;
-                    }
-                });
-                
-                const numEl = el.querySelector('.date-num');
-                if (numEl) {
-                    if (allAchieved && activeHabitCount > 0) {
-                        numEl.classList.add('perfect-day');
-                    } else {
-                        numEl.classList.remove('perfect-day');
+        updateAllPerfectDaysUI();
+        window.isInitialHabitLoad = false;
+    }
+
+    function updateAllPerfectDaysUI() {
+        const data = window.habitDataCache;
+        if (!data || !data.recentLogs || !data.habits) return;
+        document.querySelectorAll('.date-item').forEach(el => {
+            const ymd = el.dataset.ymd;
+            if (!ymd) return;
+            
+            const logsForDay = data.recentLogs[ymd] || {};
+            let allAchieved = true;
+            let activeHabitCount = 0;
+            
+            const dailyHabits = data.habits.filter(h => h.sectionId !== 'sec_weekly');
+            
+            dailyHabits.forEach(h => {
+                if (h.createdAt) {
+                    const createdDate = new Date(h.createdAt);
+                    const checkDate = new Date(ymd);
+                    if (checkDate.getTime() < createdDate.getTime() - 86400000) {
+                        return; 
                     }
                 }
+                activeHabitCount++;
+                const s = logsForDay[h.id] || logsForDay[h.name] || 0;
+                if (s < 1) {
+                    allAchieved = false;
+                }
             });
-        }
+            
+            const numEl = el.querySelector('.date-num');
+            if (numEl) {
+                if (allAchieved && activeHabitCount > 0) {
+                    numEl.classList.add('perfect-day');
+                } else {
+                    numEl.classList.remove('perfect-day');
+                }
+            }
+        });
     }
 
     function createHabitCard(h, isMovedToDone) {
@@ -619,6 +623,8 @@
         div.setAttribute('data-has-guide', h.hasGuide ? 'true' : 'false');
         div.setAttribute('data-guide-text', h.guideText || '');
         div.setAttribute('data-guide-image', h.guideImage || '');
+        div.setAttribute('data-guide-image2', h.guideImage2 || '');
+        div.setAttribute('data-guide-image3', h.guideImage3 || '');
         div.setAttribute('data-guide-youtube', h.guideYoutube || '');
 
 
@@ -716,27 +722,39 @@
         const titleEl = document.getElementById('hgm-title');
 
         if (modal && contentEl && item) {
-            let text = item.dataset.guideText || 'ガイドなし';
+            const guideText = item.dataset.guideText || '';
+            const guideImage = item.dataset.guideImage || '';
+            const guideImage2 = item.dataset.guideImage2 || '';
+            const guideImage3 = item.dataset.guideImage3 || '';
+            const guideYoutube = item.dataset.guideYoutube || '';
+
+            const hasOtherContent = !!(guideImage || guideImage2 || guideImage3 || guideYoutube);
+            let text = guideText;
+            if (!text && !hasOtherContent) {
+                text = 'ガイドなし';
+            }
             
             // Simple basic markdown-ish process: \n -> <br>
             let html = text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
-            if (html === '') html = ' '; // Prevents CSS layout collapse if empty text
+            if (html === '' && !hasOtherContent) html = ' '; // Prevents CSS layout collapse if empty text
             contentEl.innerHTML = html;
 
-            // Image Append
-            const guideImg = item.dataset.guideImage;
-            if (guideImg) {
-                const imgEl = document.createElement('img');
-                imgEl.src = guideImg;
-                imgEl.style.width = '100%';
-                imgEl.style.marginTop = '15px';
-                imgEl.style.borderRadius = '8px';
-                imgEl.style.border = '1px solid #eee';
-                contentEl.appendChild(imgEl);
-            }
+            // Images Append
+            const images = [guideImage, guideImage2, guideImage3];
+            
+            images.forEach(imgUrl => {
+                if (imgUrl) {
+                    const imgEl = document.createElement('img');
+                    imgEl.src = imgUrl;
+                    imgEl.style.width = '100%';
+                    imgEl.style.marginTop = '15px';
+                    imgEl.style.borderRadius = '8px';
+                    imgEl.style.border = '1px solid #eee';
+                    contentEl.appendChild(imgEl);
+                }
+            });
 
             // YouTube Append
-            const guideYoutube = item.dataset.guideYoutube;
             if (guideYoutube) {
                 let videoId = '';
                 const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
@@ -887,6 +905,14 @@
                         if (calGrid && calGrid.offsetParent) {
                             changeDetailMonth(0); // Refresh view
                         }
+                    }
+
+                    if (window.habitDataCache && window.habitDataCache.recentLogs) {
+                        if (!window.habitDataCache.recentLogs[currentHabitDate]) {
+                            window.habitDataCache.recentLogs[currentHabitDate] = {};
+                        }
+                        window.habitDataCache.recentLogs[currentHabitDate][hId] = newStatus;
+                        updateAllPerfectDaysUI();
                     }
 
                 } catch (err) {
